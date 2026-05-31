@@ -1,0 +1,110 @@
+<?= $this->extend('layouts/admin') ?>
+
+<?= $this->section('page_title') ?>Detail Jawaban: <?= esc($user->firstname) ?><?= $this->endSection() ?>
+
+<?= $this->section('content') ?>
+<div class="card shadow-sm mb-4">
+    <div class="card-body p-4 bg-light rounded-3">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h5 class="fw-bold text-dark mb-1">Lembar Jawaban: <?= esc($user->firstname . ' ' . $user->lastname) ?></h5>
+                <p class="text-muted mb-0">Ujian: <?= esc($test->name) ?> | Waktu Selesai: <?= date('d/m/Y H:i', strtotime($attempt->finished_at)) ?></p>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="display-6 fw-bold <?= $attempt->score >= $test->passing_score ? 'text-success' : 'text-danger' ?>">
+                    <?= number_format($attempt->score, 2) ?>
+                </div>
+                <div class="small text-muted">Skor Akhir</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Option to recount score here in future -->
+
+<div class="row g-4">
+    <?php $no = 1; foreach ($logs as $log): ?>
+        <div class="col-12">
+            <div class="card shadow-sm border-0 mb-2">
+                <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold">Soal No. <?= $no++ ?> <span class="badge bg-secondary ms-2">Level <?= $log->difficulty ?></span></h6>
+                    <div>
+                        <span class="badge <?= $log->score > 0 ? 'bg-success' : ($log->score < 0 ? 'bg-danger' : 'bg-warning text-dark') ?>">
+                            Poin Didapat: <?= $log->score ?>
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body p-4 fs-5" style="line-height: 1.6;">
+                    
+                    <div class="mb-4 text-dark">
+                        <?= $log->question_text ?>
+                    </div>
+
+                    <?php if ($log->question_type == 3): ?>
+                        <div class="alert alert-secondary border-0">
+                            <strong>Jawaban Esai Siswa:</strong>
+                            <p class="mb-0 mt-2"><?= nl2br(esc($log->answer_text ?: 'Tidak diisi')) ?></p>
+                        </div>
+                        
+                        <!-- Manual Grading Form -->
+                        <form action="<?= base_url('/admin/results/grade-essay') ?>" method="POST" class="mt-3">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="log_id" value="<?= $log->id ?>">
+                            <div class="input-group" style="max-width: 300px;">
+                                <span class="input-group-text fw-bold">Beri Skor</span>
+                                <input type="number" step="0.01" class="form-control" name="score" value="<?= $log->score ?>">
+                                <button class="btn btn-primary" type="submit"><i class="bi bi-save me-1"></i> Simpan Nilai</button>
+                            </div>
+                            <div class="form-text">Mengubah nilai ini akan secara otomatis mengkalkulasi ulang Skor Akhir siswa.</div>
+                        </form>
+                        
+                    <?php else: ?>
+                        <ul class="list-group list-group-flush border-top border-bottom">
+                            <?php 
+                            $logAnswers = $answers[$log->id] ?? [];
+                            foreach ($logAnswers as $ans): 
+                                $isSelected = $ans->is_selected == 1;
+                                $isCorrect = $ans->is_correct == 1;
+                                
+                                $bgClass = '';
+                                $icon = '';
+                                
+                                if ($isSelected && $isCorrect) {
+                                    $bgClass = 'list-group-item-success';
+                                    $icon = '<i class="bi bi-check-circle-fill text-success me-2"></i>';
+                                } elseif ($isSelected && !$isCorrect) {
+                                    $bgClass = 'list-group-item-danger';
+                                    $icon = '<i class="bi bi-x-circle-fill text-danger me-2"></i>';
+                                } elseif (!$isSelected && $isCorrect) {
+                                    $bgClass = 'list-group-item-warning'; // Missed correct answer
+                                    $icon = '<i class="bi bi-exclamation-circle-fill text-warning me-2"></i>';
+                                } else {
+                                    $icon = '<i class="bi bi-circle text-muted me-2"></i>';
+                                }
+                            ?>
+                                <li class="list-group-item <?= $bgClass ?> d-flex align-items-center py-3">
+                                    <?= $icon ?>
+                                    <div class="flex-grow-1">
+                                        <?= $ans->answer_text ?>
+                                    </div>
+                                    <?php if ($isSelected): ?>
+                                        <span class="badge bg-dark ms-3">Dipilih Siswa</span>
+                                    <?php endif; ?>
+                                    <?php if ($isCorrect): ?>
+                                        <span class="badge bg-success ms-2">Kunci Benar</span>
+                                    <?php endif; ?>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+
+                </div>
+            </div>
+        </div>
+    <?php endforeach; ?>
+</div>
+
+<div class="mt-4 text-center">
+    <a href="<?= base_url('/admin/results/view/' . $test->id) ?>" class="btn btn-light"><i class="bi bi-arrow-left me-1"></i> Kembali ke Daftar Nilai</a>
+</div>
+<?= $this->endSection() ?>

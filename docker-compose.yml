@@ -1,0 +1,100 @@
+services:
+  # ─── PHP 8.5 + Apache ───────────────────────────────────────
+  php:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    container_name: ujian_php
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./src:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
+      - ./docker/php/apache-vhost.conf:/etc/apache2/sites-available/000-default.conf
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ujian_network
+    environment:
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_DATABASE=sistem_ujian
+      - DB_USERNAME=ujian_user
+      - DB_PASSWORD=ujian_secret
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+  # ─── MariaDB ────────────────────────────────────────────────
+  mariadb:
+    image: mariadb:latest
+    container_name: ujian_mariadb
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secret
+      MYSQL_DATABASE: sistem_ujian
+      MYSQL_USER: ujian_user
+      MYSQL_PASSWORD: ujian_secret
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ujian_network
+
+  # ─── phpMyAdmin ─────────────────────────────────────────────
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: ujian_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      PMA_USER: ujian_user
+      PMA_PASSWORD: ujian_secret
+      UPLOAD_LIMIT: 64M
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - ujian_network
+
+  # ─── Redis ──────────────────────────────────────────────────
+  redis:
+    image: redis:alpine
+    container_name: ujian_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ujian_network
+
+volumes:
+  mariadb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  ujian_network:
+    driver: bridge

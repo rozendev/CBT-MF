@@ -1,0 +1,76 @@
+<?= $this->extend('layouts/admin') ?>
+
+<?= $this->section('page_title') ?>Nilai Siswa: <?= esc($test->name) ?><?= $this->endSection() ?>
+
+<?= $this->section('content') ?>
+<div class="card shadow-sm mb-4">
+    <div class="card-body p-4 bg-light rounded-3">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h5 class="fw-bold text-dark mb-1"><?= esc($test->name) ?></h5>
+                <p class="text-muted mb-0">Batas Lulus: <?= $test->passing_score ?> / <?= $test->max_score ?></p>
+            </div>
+            <div class="col-md-4 text-end">
+                <a href="<?= base_url('/admin/results') ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i> Kembali</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm">
+    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+        <h6 class="m-0 fw-bold text-primary"><i class="bi bi-people-fill me-2"></i>Daftar Nilai Siswa</h6>
+        <!-- Export buttons can be added here in the future -->
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="ps-4">No</th>
+                        <th>Nama Lengkap</th>
+                        <th>NIS/Nomor Induk</th>
+                        <th>Waktu Selesai</th>
+                        <th>Nilai Akhir</th>
+                        <th>Status Kelulusan</th>
+                        <th class="text-end pe-4">Detail</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if(empty($attempts)): ?>
+                        <tr>
+                            <td colspan="7" class="text-center py-4 text-muted">Belum ada siswa yang menyelesaikan ujian ini.</td>
+                        </tr>
+                    <?php endif; ?>
+                    
+                    <?php $i = 1; foreach ($attempts as $attempt): ?>
+                        <tr>
+                            <td class="ps-4 text-muted"><?= $i++ ?></td>
+                            <td class="fw-bold text-dark"><?= esc($attempt->firstname . ' ' . $attempt->lastname) ?></td>
+                            <td><?= esc($attempt->registration_number ?: $attempt->username) ?></td>
+                            <td class="small text-muted"><?= date('d/m/Y H:i', strtotime($attempt->finished_at)) ?></td>
+                            <td>
+                                <span class="fs-5 fw-bold <?= $attempt->score >= $test->passing_score ? 'text-success' : 'text-danger' ?>">
+                                    <?= number_format($attempt->score, 2) ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php if ($attempt->score >= $test->passing_score): ?>
+                                    <span class="badge bg-success rounded-pill px-3">LULUS</span>
+                                <?php else: ?>
+                                    <span class="badge bg-danger rounded-pill px-3">TIDAK LULUS</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="<?= base_url('/admin/results/detail/' . $attempt->id) ?>" class="btn btn-sm btn-outline-primary" title="Lihat Jawaban">
+                                    <i class="bi bi-card-checklist"></i> Rincian
+                                </a>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<?= $this->endSection() ?>

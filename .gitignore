@@ -1,0 +1,30 @@
+# Sistem Ujian - Dependencies
+/vendor/
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (persisted data)
+docker/mariadb/data/
+
+# Logs
+*.log
+
+# Cache
+/src/storage/cache/*
+/src/storage/logs/*
+/src/storage/sessions/*
