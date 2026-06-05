@@ -284,7 +284,7 @@ class WordImportController extends BaseController
                             @mkdir($uploadPath, 0777, true);
                         }
                         @file_put_contents($uploadPath . $filename, $raw);
-                        $paragraphText .= "<br><img src=\"" . base_url('uploads/questions/' . $filename) . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\"><br>";
+                        $paragraphText .= "<br><img src=\"/uploads/questions/" . $filename . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\"><br>";
                     }
                 }
             }
@@ -321,7 +321,7 @@ class WordImportController extends BaseController
                     @mkdir($uploadPath, 0777, true);
                 }
                 @file_put_contents($uploadPath . $filename, $raw);
-                $blocks[] = "<img src=\"" . base_url('uploads/questions/' . $filename) . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\">";
+                $blocks[] = "<img src=\"/uploads/questions/" . $filename . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\">";
             }
         } elseif (method_exists($element, 'getText')) {
             $text = trim($element->getText());
