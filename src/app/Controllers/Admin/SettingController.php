@@ -36,6 +36,12 @@ class SettingController extends BaseController
         
         if (is_array($settings)) {
             foreach ($settings as $key => $value) {
+                // Handle Special .env configuration
+                if ($key === 'installer_locked') {
+                    $this->updateEnv('INSTALLER_LOCKED', $value === '1' ? 'true' : 'false');
+                    continue;
+                }
+
                 // If it's a checkbox, it might not be sent if unchecked, so we handle boolean types manually later.
                 // However, for this simple array, we just update what is sent.
                 $existing = $this->settingModel->where('key', $key)->first();
@@ -75,6 +81,11 @@ class SettingController extends BaseController
                     $this->settingModel->update($existing['id'], ['value' => '0']);
                 }
             }
+        }
+
+        // Handle unchecked installer_locked
+        if (!isset($settings['installer_locked'])) {
+            $this->updateEnv('INSTALLER_LOCKED', 'false');
         }
 
         // Handle File Upload for Logo (if any)
@@ -125,5 +136,25 @@ class SettingController extends BaseController
         }
 
         return redirect()->to('/admin/settings')->with('success', 'Pengaturan berhasil diperbarui.');
+    }
+
+    private function updateEnv($key, $value)
+    {
+        $path = FCPATH . '../.env';
+        if (file_exists($path)) {
+            if (!is_writable($path)) {
+                session()->setFlashdata('warning', "Pengaturan berhasil disimpan, tetapi gagal memperbarui $key di .env karena masalah permission. Pastikan file .env memiliki hak akses tulis (writable) oleh web server.");
+                return;
+            }
+            $contents = file_get_contents($path);
+            if (preg_match("/^{$key}\s*=/m", $contents)) {
+                $contents = preg_replace("/^{$key}\s*=.*/m", "{$key} = {$value}", $contents);
+            } else {
+                $contents .= "\n{$key} = {$value}\n";
+            }
+            if (@file_put_contents($path, $contents) === false) {
+                session()->setFlashdata('warning', "Gagal menulis ke file .env. Silakan ubah $key = $value secara manual di file .env.");
+            }
+        }
     }
 }
