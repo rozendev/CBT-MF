@@ -56,15 +56,33 @@ class SuspendController extends BaseController
         $db->table('test_attempts')
            ->where('user_id', $userId)
            ->whereIn('status', [1, 2])
-           ->update(['status' => 4]); // Locked
+           ->update(['status' => 2]); // Paused instead of Locked, so progress is saved and can be resumed
 
         $db->transComplete();
+
+        // Invalidate session in Redis to kick immediately via MultiLoginFilter + SSE
+        try {
+            $redis = new \Redis();
+            if ($redis->connect('redis', 6379)) {
+                // Signal for MultiLoginFilter (existing)
+                $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
+                // Signal for SSE stream (new) — detected within 3 seconds
+                $redis->setex("ban_signal:{$userId}", 120, '1');
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error on ban: ' . $e->getMessage());
+        }
+
+        // Delete CI sessions from database to fully invalidate server-side
+        $db->table('ci_sessions')
+           ->like('data', "user_id|i:{$userId}")
+           ->delete();
 
         return redirect()->to('/admin/suspend')->with('success', "User {$user->username} telah di-BAN.");
     }
 
     /**
-     * Release a banned user: set is_active = 1
+     * Release a banned user: set is_active = 1 and clean up Redis ban keys
      */
     public function release($userId)
     {
@@ -74,6 +92,17 @@ class SuspendController extends BaseController
         }
 
         $this->userModel->update($userId, ['is_active' => 1]);
+
+        // Clean up Redis ban keys so they don't interfere with next login
+        try {
+            $redis = new \Redis();
+            if ($redis->connect('redis', 6379)) {
+                $redis->del("user_login_token:{$userId}");
+                $redis->del("ban_signal:{$userId}");
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error on release: ' . $e->getMessage());
+        }
 
         return redirect()->to('/admin/suspend')->with('success', "User {$user->username} telah di-RELEASE.");
     }
@@ -125,5 +154,68 @@ class SuspendController extends BaseController
         $db->transComplete();
 
         return redirect()->to('/admin/suspend')->with('success', "Seluruh sesi ujian {$user->username} telah direset.");
+    }
+
+    /**
+     * Get all exam attempts for a specific user via AJAX
+     */
+    public function getUserAttempts($userId)
+    {
+        $db = \Config\Database::connect();
+        $attempts = $db->table('test_attempts')
+            ->select('test_attempts.*, tests.name as title')
+            ->join('tests', 'tests.id = test_attempts.test_id')
+            ->where('test_attempts.user_id', $userId)
+            ->orderBy('test_attempts.created_at', 'DESC')
+            ->get()->getResult();
+        
+        return $this->response->setJSON($attempts);
+    }
+
+    /**
+     * Reset a specific exam attempt via AJAX
+     */
+    public function resetAttempt($attemptId)
+    {
+        $db = \Config\Database::connect();
+        $attempt = $db->table('test_attempts')->where('id', $attemptId)->get()->getRow();
+        if (!$attempt) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Sesi ujian tidak ditemukan.']);
+        }
+
+        $db->transStart();
+
+        // Delete log answers
+        $logIds = $db->table('test_logs')
+            ->where('test_attempt_id', $attemptId)
+            ->select('id')
+            ->get()->getResultArray();
+        $logIds = array_column($logIds, 'id');
+
+        if (!empty($logIds)) {
+            $db->table('test_log_answers')->whereIn('test_log_id', $logIds)->delete();
+        }
+        $db->table('test_logs')->where('test_attempt_id', $attemptId)->delete();
+
+        // Clear Redis cache for this attempt
+        try {
+            $redis = new \Redis();
+            if ($redis->connect('redis', 6379)) {
+                $redis->del("exam_answers:{$attemptId}");
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error on reset attempt: ' . $e->getMessage());
+        }
+
+        // Delete attempt
+        $db->table('test_attempts')->where('id', $attemptId)->delete();
+
+        $db->transComplete();
+
+        if ($db->transStatus() === false) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal menghapus progress ujian.']);
+        }
+
+        return $this->response->setJSON(['status' => 'success', 'message' => 'Progress ujian berhasil dihapus.']);
     }
 }

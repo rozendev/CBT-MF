@@ -45,19 +45,37 @@
                             <strong>Jawaban Esai Siswa:</strong>
                             <p class="mb-0 mt-2"><?= nl2br(esc($log->answer_text ?: 'Tidak diisi')) ?></p>
                         </div>
-                        
-                        <!-- Manual Grading Form -->
-                        <form action="<?= base_url('/admin/results/grade-essay') ?>" method="POST" class="mt-3">
-                            <?= csrf_field() ?>
-                            <input type="hidden" name="log_id" value="<?= $log->id ?>">
-                            <div class="input-group" style="max-width: 300px;">
-                                <span class="input-group-text fw-bold">Beri Skor</span>
-                                <input type="number" step="0.01" class="form-control" name="score" value="<?= $log->score ?>">
-                                <button class="btn btn-primary" type="submit"><i class="bi bi-save me-1"></i> Simpan Nilai</button>
-                            </div>
-                            <div class="form-text">Mengubah nilai ini akan secara otomatis mengkalkulasi ulang Skor Akhir siswa.</div>
-                        </form>
-                        
+                    <?php elseif ($log->question_type == 4 || $log->question_type == 5): ?>
+                        <?php 
+                            $studentAnswers = json_decode($log->answer_text, true) ?: [];
+                            $logAnswers = $answers[$log->id] ?? [];
+                        ?>
+                        <ul class="list-group list-group-flush border-top border-bottom">
+                            <?php foreach ($logAnswers as $ans): 
+                                $parts = explode('|::|', $ans->answer_text);
+                                $left = $parts[0] ?? '';
+                                $right = $parts[1] ?? '';
+                                $selectedRight = $studentAnswers[$left] ?? '';
+                                $isCorrect = ($selectedRight === $right);
+                                
+                                $bgClass = $isCorrect ? 'list-group-item-success' : 'list-group-item-danger';
+                                $icon = $isCorrect ? '<i class="bi bi-check-circle-fill text-success me-2"></i>' : '<i class="bi bi-x-circle-fill text-danger me-2"></i>';
+                            ?>
+                                <li class="list-group-item <?= $bgClass ?> py-3">
+                                    <div class="d-flex flex-column">
+                                        <div class="fw-bold mb-1"><?= esc($left) ?></div>
+                                        <div class="d-flex align-items-center mb-1">
+                                            <?= $icon ?> <span class="text-muted me-2">Jawaban Siswa:</span> <strong><?= esc($selectedRight ?: 'Tidak Dijawab') ?></strong>
+                                        </div>
+                                        <?php if (!$isCorrect): ?>
+                                            <div class="d-flex align-items-center text-success small">
+                                                <i class="bi bi-arrow-return-right me-2"></i> Kunci Jawaban: <strong><?= esc($right) ?></strong>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
                     <?php else: ?>
                         <ul class="list-group list-group-flush border-top border-bottom">
                             <?php 
@@ -97,6 +115,20 @@
                             <?php endforeach; ?>
                         </ul>
                     <?php endif; ?>
+
+                    <!-- Manual Grading Form (For All Question Types) -->
+                    <form action="<?= base_url('/admin/results/update-score') ?>" method="POST" class="mt-4 p-3 bg-light rounded border">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="log_id" value="<?= $log->id ?>">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <label class="fw-bold text-nowrap">Intervensi Nilai Soal Ini:</label>
+                            <div class="input-group" style="max-width: 250px;">
+                                <input type="number" step="0.01" class="form-control" name="score" value="<?= $log->score ?>">
+                                <button class="btn btn-primary" type="submit"><i class="bi bi-save me-1"></i> Simpan</button>
+                            </div>
+                        </div>
+                        <div class="form-text mt-2 mb-0">Disimpan ke database. Akan mengkalkulasi ulang Skor Akhir ujian siswa otomatis.</div>
+                    </form>
 
                 </div>
             </div>

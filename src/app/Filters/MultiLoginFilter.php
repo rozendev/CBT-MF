@@ -16,38 +16,47 @@ class MultiLoginFilter implements FilterInterface
             return;
         }
 
-        // Check if multi-login detection is enabled
+        // Check if multi-login prevention is enabled
         $db = \Config\Database::connect();
         $setting = $db->table('settings')
-                      ->where('key', 'enable_multi_login')
+                      ->where('key', 'prevent_multi_login')
                       ->get()
                       ->getRow();
 
-        // If multi-login is allowed, skip check
-        if ($setting && $setting->value === '1') {
+        // If prevent multi-login is NOT enabled, skip check
+        if (!$setting || $setting->value === '0') {
             return;
         }
 
-        $userId    = $session->get('user_id');
-        $sessionId = session_id();
+        $userId = $session->get('user_id');
+        $currentToken = $session->get('login_token');
 
-        // Use Redis to track active sessions per user
+        if (!$currentToken) {
+            return; // Legacy session or not fully logged in yet
+        }
+
+        // Use Redis to track active login tokens per user
         try {
             $redis = new \Redis();
             $redis->connect('redis', 6379);
 
-            $key = "user_session:{$userId}";
-            $storedSessionId = $redis->get($key);
+            $key = "user_login_token:{$userId}";
+            $storedToken = $redis->get($key);
 
-            if ($storedSessionId && $storedSessionId !== $sessionId) {
-                // Another session is active — destroy this one
+            if ($storedToken && $storedToken !== $currentToken) {
                 $session->destroy();
-                return redirect()->to('/login')
-                    ->with('error', 'Akun ini terdeteksi login di perangkat lain. Sesi Anda telah diakhiri.');
+                
+                $message = 'Akun ini telah digunakan untuk login di perangkat atau browser lain. Sesi Anda diakhiri demi keamanan.';
+                if ($storedToken === 'BANNED') {
+                    $message = 'Akun Anda telah ditangguhkan/diblokir oleh Admin. Hubungi pengawas ujian.';
+                }
+                
+                return redirect()->to('/login')->with('error', $message);
             }
+            
+            // Keep the TTL alive for active sessions
+            $redis->expire($key, 7200);
 
-            // Store/refresh current session mapping (TTL = session expiration)
-            $redis->setex($key, 7200, $sessionId);
         } catch (\Exception $e) {
             // If Redis fails, log and continue (don't block user)
             log_message('error', 'MultiLoginFilter Redis error: ' . $e->getMessage());

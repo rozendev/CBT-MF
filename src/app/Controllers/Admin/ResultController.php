@@ -86,9 +86,8 @@ class ResultController extends BaseController
 
         $db = \Config\Database::connect();
         $sql = "
-            SELECT tl.*, q.description as question_text, q.type as question_type, q.difficulty
+            SELECT tl.*, tl.question_difficulty as difficulty
             FROM test_logs tl
-            JOIN questions q ON q.id = tl.question_id
             WHERE tl.test_attempt_id = ?
             ORDER BY tl.display_order ASC
         ";
@@ -99,9 +98,8 @@ class ResultController extends BaseController
         
         if (!empty($logIds)) {
             $ansSql = "
-                SELECT tla.*, a.description as answer_text, a.is_correct
+                SELECT tla.*
                 FROM test_log_answers tla
-                JOIN answers a ON a.id = tla.answer_id
                 WHERE tla.test_log_id IN ?
                 ORDER BY tla.display_order ASC
             ";
@@ -122,9 +120,9 @@ class ResultController extends BaseController
     }
 
     /**
-     * Manually grade an essay question and recalculate total score
+     * Manually update question score and recalculate total score
      */
-    public function gradeEssay()
+    public function updateManualScore()
     {
         $logId = $this->request->getPost('log_id');
         $score = (float) $this->request->getPost('score');
@@ -148,14 +146,70 @@ class ResultController extends BaseController
         $attempt = $this->attemptModel->find($attemptId);
         $test = $this->testModel->find($attempt->test_id);
         
-        // Ensure max theoretical score is fetched from the ScoringEngine logic
-        // But since this is a manual override, we'll use a simplified proportion
-        // Actually, to be accurate, we should ideally reuse ScoringEngine logic.
-        // For now, we'll just re-fetch all questions and max scores
+        // Calculate Max Possible Points (Assuming each question is worth score_right)
+        $sqlMax = "SELECT COUNT(*) as num_questions FROM test_logs WHERE test_attempt_id = ?";
+        $resultMax = $db->query($sqlMax, [$attemptId])->getRow();
+        $numQuestions = $resultMax->num_questions ?? 0;
         
-        $scorer = new \App\Libraries\ScoringEngine();
-        $scorer->calculateAndSaveScore($attemptId);
+        $maxPossiblePoints = $numQuestions * $test->score_right;
+        
+        $finalScore = 0;
+        if ($maxPossiblePoints > 0) {
+            $finalScore = ($rawScore / $maxPossiblePoints) * $test->max_score;
+        }
 
-        return redirect()->back()->with('success', 'Nilai esai berhasil disimpan dan skor akhir telah dikalkulasi ulang.');
+        if ($finalScore < 0) $finalScore = 0;
+
+        $this->attemptModel->update($attemptId, ['score' => round($finalScore, 3)]);
+
+        return redirect()->back()->with('success', 'Nilai soal berhasil diperbarui dan skor akhir telah dikalkulasi ulang.');
+    }
+
+    /**
+     * Delete an exam result (attempt)
+     */
+    public function deleteAttempt($attemptId)
+    {
+        $db = \Config\Database::connect();
+        $attempt = $db->table('test_attempts')->where('id', $attemptId)->get()->getRow();
+        
+        if (!$attempt) {
+            return redirect()->back()->with('error', 'Data ujian tidak ditemukan.');
+        }
+
+        $db->transStart();
+
+        // Delete log answers
+        $logIds = $db->table('test_logs')
+            ->where('test_attempt_id', $attemptId)
+            ->select('id')
+            ->get()->getResultArray();
+        $logIds = array_column($logIds, 'id');
+
+        if (!empty($logIds)) {
+            $db->table('test_log_answers')->whereIn('test_log_id', $logIds)->delete();
+        }
+        $db->table('test_logs')->where('test_attempt_id', $attemptId)->delete();
+
+        // Clear Redis cache for this attempt
+        try {
+            $redis = new \Redis();
+            if ($redis->connect('redis', 6379)) {
+                $redis->del("exam_answers:{$attemptId}");
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error on delete attempt: ' . $e->getMessage());
+        }
+
+        // Delete attempt
+        $db->table('test_attempts')->where('id', $attemptId)->delete();
+
+        $db->transComplete();
+
+        if ($db->transStatus() === false) {
+            return redirect()->back()->with('error', 'Gagal menghapus hasil ujian.');
+        }
+
+        return redirect()->back()->with('success', 'Hasil ujian berhasil dihapus.');
     }
 }

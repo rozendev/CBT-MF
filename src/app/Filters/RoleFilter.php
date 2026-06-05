@@ -19,6 +19,7 @@ class RoleFilter implements FilterInterface
 
         // If no role arguments specified, allow any authenticated user
         if (empty($arguments)) {
+            $this->updateRedisActivity($session);
             return;
         }
 
@@ -32,6 +33,27 @@ class RoleFilter implements FilterInterface
                 ->setBody(view('errors/html/error_403', [
                     'message' => 'Anda tidak memiliki akses ke halaman ini.',
                 ]));
+        }
+
+        $this->updateRedisActivity($session);
+    }
+
+    private function updateRedisActivity($session)
+    {
+        $userId = $session->get('user_id');
+        if ($userId) {
+            try {
+                $redis = new \Redis();
+                if ($redis->connect('redis', 6379)) {
+                    // Update this user's last activity timestamp
+                    $redis->zAdd('active_sessions', time(), $userId);
+                    
+                    // Cleanup inactive sessions (idle > 5 minutes / 300 seconds)
+                    $redis->zRemRangeByScore('active_sessions', 0, time() - 300);
+                }
+            } catch (\Exception $e) {
+                log_message('error', 'Redis error in RoleFilter: ' . $e->getMessage());
+            }
         }
     }
 

@@ -191,6 +191,7 @@
             .btn-toggle-sidebar { display: block; }
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <?= $this->renderSection('styles') ?>
 </head>
 <body>
@@ -208,17 +209,28 @@
             <div class="nav-label">Menu Utama</div>
             <?php
             $currentUrl = current_url();
+            $isAdmin = session()->get('role') === 'admin';
+            
             $navItems = [
                 ['url' => '/admin/dashboard', 'icon' => 'bi-speedometer2',      'label' => 'Dashboard'],
-                ['url' => '/admin/users',     'icon' => 'bi-people',            'label' => 'Pengguna'],
-                ['url' => '/admin/groups',    'icon' => 'bi-collection',        'label' => 'Grup'],
-                ['url' => '/admin/suspend',   'icon' => 'bi-shield-lock',       'label' => 'Suspend & Blokir'],
+            ];
+            
+            if ($isAdmin) {
+                $navItems = array_merge($navItems, [
+                    ['url' => '/admin/users',     'icon' => 'bi-people',            'label' => 'Pengguna'],
+                    ['url' => '/admin/groups',    'icon' => 'bi-collection',        'label' => 'Grup'],
+                    ['url' => '/admin/suspend',   'icon' => 'bi-shield-lock',       'label' => 'Suspend & Blokir'],
+                ]);
+            }
+
+            $navItems = array_merge($navItems, [
                 ['url' => '/admin/modules',   'icon' => 'bi-folder2',           'label' => 'Modul'],
                 ['url' => '/admin/subjects',  'icon' => 'bi-book',              'label' => 'Subjek'],
                 ['url' => '/admin/questions', 'icon' => 'bi-question-circle',   'label' => 'Bank Soal'],
                 ['url' => '/admin/tests',     'icon' => 'bi-clipboard-check',   'label' => 'Ujian'],
                 ['url' => '/admin/results',   'icon' => 'bi-graph-up',          'label' => 'Hasil'],
-            ];
+            ]);
+            
             foreach ($navItems as $item):
                 $active = str_contains($currentUrl, $item['url']) ? 'active' : '';
             ?>
@@ -228,11 +240,13 @@
                 </a>
             <?php endforeach; ?>
 
+            <?php if ($isAdmin): ?>
             <div class="nav-label mt-2">Sistem</div>
             <a href="<?= base_url('/admin/settings') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/settings') ? 'active' : '' ?>">
                 <i class="bi bi-gear"></i>
                 Pengaturan
             </a>
+            <?php endif; ?>
         </nav>
 
         <div class="sidebar-footer">
@@ -363,6 +377,21 @@
             }, 5000);
         });
     </script>
+    <!-- Keep-Alive & Online Sync -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            setInterval(function() {
+                fetch('<?= base_url('/api/keep-alive') ?>', {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
+                    }
+                }).catch(e => console.error('Keep-alive failed:', e));
+            }, 30000); // every 30 seconds
+        });
+    </script>
+    
     <?= $this->renderSection('scripts') ?>
 </body>
 </html>

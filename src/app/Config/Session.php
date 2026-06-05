@@ -13,7 +13,7 @@ class Session extends BaseConfig
      *
      * @var class-string<BaseHandler>
      */
-    public string $driver = RedisHandler::class;
+    public string $driver = \CodeIgniter\Session\Handlers\DatabaseHandler::class;
 
     /**
      * Session Cookie Name
@@ -26,10 +26,9 @@ class Session extends BaseConfig
     public int $expiration = 7200;
 
     /**
-     * Session Save Path — Redis connection string
-     * Format: tcp://host:port
+     * Session Save Path — Database table name
      */
-    public string $savePath = 'tcp://redis:6379';
+    public string $savePath = 'ci_sessions';
 
     /**
      * Whether to match the user's IP address when reading the session data.

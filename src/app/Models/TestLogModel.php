@@ -16,8 +16,8 @@ class TestLogModel extends Model
     protected $updatedField     = 'updated_at';
 
     protected $allowedFields = [
-        'test_attempt_id', 'question_id', 'answer_text', 'score', 
-        'display_order', 'num_answers', 'user_ip', 'reaction_time_ms', 
-        'comment', 'displayed_at', 'answered_at'
+        'test_attempt_id', 'question_id', 'question_text', 'question_type', 'question_difficulty',
+        'answer_text', 'score', 'display_order', 'num_answers', 'user_ip', 
+        'reaction_time_ms', 'comment', 'displayed_at', 'answered_at'
     ];
 }

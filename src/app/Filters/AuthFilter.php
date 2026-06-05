@@ -26,6 +26,24 @@ class AuthFilter implements FilterInterface
             return redirect()->to('/login')
                 ->with('error', 'Akun Anda telah dinonaktifkan.');
         }
+
+        // Write-Through Active Session Tracking in Redis
+        $userId = $session->get('user_id');
+        if ($userId) {
+            try {
+                $redis = new \Redis();
+                if ($redis->connect('redis', 6379)) {
+                    // Update this user's last activity timestamp
+                    $redis->zAdd('active_sessions', time(), $userId);
+                    
+                    // Cleanup inactive sessions (idle > 5 minutes / 300 seconds)
+                    // This is extremely fast in Redis
+                    $redis->zRemRangeByScore('active_sessions', 0, time() - 300);
+                }
+            } catch (\Exception $e) {
+                log_message('error', 'Redis error in AuthFilter: ' . $e->getMessage());
+            }
+        }
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)

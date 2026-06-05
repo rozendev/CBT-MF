@@ -50,10 +50,11 @@ class UserController extends BaseController
         }
 
         return view('admin/users/index', [
-            'users'  => $users,
-            'pager'  => $pager,
-            'search' => $search,
-            'role'   => $role,
+            'users'     => $users,
+            'pager'     => $pager,
+            'search'    => $search,
+            'role'      => $role,
+            'allGroups' => $this->groupModel->where('is_active', 1)->findAll()
         ]);
     }
 
@@ -79,7 +80,7 @@ class UserController extends BaseController
         $data['is_active'] = $this->request->getPost('is_active') ? 1 : 0;
         
         // Convert empty strings to null for unique nullable fields
-        $nullableFields = ['birthdate', 'birthplace', 'registration_number', 'ssn'];
+        $nullableFields = ['birthdate', 'birthplace', 'registration_number', 'ssn', 'email'];
         foreach ($nullableFields as $field) {
             if (empty($data[$field])) {
                 $data[$field] = null;
@@ -149,7 +150,7 @@ class UserController extends BaseController
         $data['is_active'] = $this->request->getPost('is_active') ? 1 : 0;
 
         // Convert empty strings to null for unique nullable fields
-        $nullableFields = ['birthdate', 'birthplace', 'registration_number', 'ssn'];
+        $nullableFields = ['birthdate', 'birthplace', 'registration_number', 'ssn', 'email'];
         foreach ($nullableFields as $field) {
             if (empty($data[$field])) {
                 $data[$field] = null;
@@ -215,5 +216,130 @@ class UserController extends BaseController
         $this->activityLog->log('unlock', session('user_id'), 'user', $id, "Membuka kunci akun: {$user->username}");
         
         return redirect()->back()->with('success', 'Akun berhasil dibuka kuncinya.');
+    }
+
+    public function template()
+    {
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Headers
+        $sheet->setCellValue('A1', 'Username');
+        $sheet->setCellValue('B1', 'Password');
+        $sheet->setCellValue('C1', 'Nama Depan');
+        $sheet->setCellValue('D1', 'Nama Belakang');
+        $sheet->setCellValue('E1', 'Email');
+
+        // Styles
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E2EFDA']],
+            'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]]
+        ];
+        $sheet->getStyle('A1:E1')->applyFromArray($headerStyle);
+        
+        // Auto-size columns
+        foreach (range('A', 'E') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $filename = 'Template_Import_Siswa.xlsx';
+        
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="'. $filename .'"');
+        header('Cache-Control: max-age=0');
+        
+        $writer->save('php://output');
+        exit();
+    }
+
+    public function import()
+    {
+        $file = $this->request->getFile('excel_file');
+        $groupId = $this->request->getPost('group_id');
+
+        if (!$file || !$file->isValid() || $file->hasMoved()) {
+            return redirect()->back()->with('error', 'File tidak valid atau gagal diunggah.');
+        }
+
+        $ext = $file->getClientExtension();
+        if (!in_array(strtolower($ext), ['xls', 'xlsx'])) {
+            return redirect()->back()->with('error', 'Format file harus .xls atau .xlsx');
+        }
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getTempName());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            // Skip header (row 0)
+            array_shift($rows);
+
+            $successCount = 0;
+            $duplicateCount = 0;
+            
+            $db = \Config\Database::connect();
+            $db->transStart();
+
+            foreach ($rows as $row) {
+                $username  = trim((string)($row[0] ?? ''));
+                $password  = trim((string)($row[1] ?? ''));
+                $firstname = trim((string)($row[2] ?? ''));
+                $lastname  = trim((string)($row[3] ?? ''));
+                $email     = trim((string)($row[4] ?? ''));
+
+                if (empty($username) || empty($password) || empty($firstname)) {
+                    continue; // Skip invalid row
+                }
+
+                // Check duplicate username
+                if ($this->userModel->where('username', $username)->first()) {
+                    $duplicateCount++;
+                    continue;
+                }
+                
+                // Check duplicate email if provided
+                if (!empty($email) && $this->userModel->where('email', $email)->first()) {
+                    $duplicateCount++;
+                    continue;
+                }
+
+                $userData = [
+                    'username'  => $username,
+                    'password'  => $password, // Model will hash it
+                    'firstname' => $firstname,
+                    'lastname'  => $lastname,
+                    'email'     => empty($email) ? null : $email,
+                    'role'      => 'siswa',
+                    'is_active' => 1
+                ];
+
+                if ($this->userModel->skipValidation(true)->insert($userData)) {
+                    $userId = $this->userModel->getInsertID();
+                    if (!empty($groupId)) {
+                        $this->groupModel->addUserToGroup($userId, $groupId);
+                    }
+                    $successCount++;
+                }
+            }
+
+            $db->transComplete();
+
+            if ($db->transStatus() === false) {
+                return redirect()->back()->with('error', 'Gagal memproses transaksi database saat import.');
+            }
+
+            $this->activityLog->log('import', session('user_id'), 'user', 0, "Mengimport $successCount siswa baru.");
+
+            $msg = "Berhasil mengimport $successCount siswa.";
+            if ($duplicateCount > 0) {
+                $msg .= " ($duplicateCount siswa dilewati karena username/email duplikat).";
+            }
+            return redirect()->back()->with('success', $msg);
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal memproses file Excel: ' . $e->getMessage());
+        }
     }
 }

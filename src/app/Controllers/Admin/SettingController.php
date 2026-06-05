@@ -41,17 +41,33 @@ class SettingController extends BaseController
                 $existing = $this->settingModel->where('key', $key)->first();
                 if ($existing) {
                     // Checkbox handling (if value is string 'on' or '1')
-                    if ($existing['type'] === 'boolean') {
+                    if ($existing['type'] === 'boolean' || $key === 'prevent_multi_login') {
                         $value = ($value === 'on' || $value === '1') ? '1' : '0';
                     }
-                    $this->settingModel->update($existing['id'], ['value' => $value]);
+                    $updateData = ['value' => $value];
+                    
+                    // Auto-heal misplaced settings from previous bugs
+                    if ($key === 'prevent_multi_login') {
+                        $updateData['group'] = 'security';
+                        $updateData['type'] = 'boolean';
+                    }
+                    
+                    $this->settingModel->update($existing['id'], $updateData);
+                } else {
+                    $group = (strpos($key, 'color') !== false || $key === 'app_logo') ? 'logo' : 'general';
+                    if (strpos($key, 'anti_cheat') !== false || strpos($key, 'suspend_timer') !== false || strpos($key, 'max_cheat') !== false || strpos($key, 'multi_login') !== false || strpos($key, 'concurrent') !== false || strpos($key, 'queue') !== false) {
+                        $group = 'security';
+                    }
+                    // Force boolean type for checkboxes
+                    $type = in_array($key, $booleans ?? ['anti_cheat_enabled', 'allow_registration', 'prevent_multi_login', 'anti_cheat_force_logout']) ? 'boolean' : 'string';
+                    $this->settingModel->setValue($key, $value, $type, $group);
                 }
             }
         }
         
         // Handle unchecked booleans that are missing from POST payload
         // E.g., anti_cheat_enabled
-        $booleans = ['anti_cheat_enabled', 'allow_registration', 'enable_multi_login'];
+        $booleans = ['anti_cheat_enabled', 'allow_registration', 'prevent_multi_login', 'anti_cheat_force_logout'];
         foreach ($booleans as $boolKey) {
             if (!isset($settings[$boolKey])) {
                 $existing = $this->settingModel->where('key', $boolKey)->first();
@@ -64,9 +80,48 @@ class SettingController extends BaseController
         // Handle File Upload for Logo (if any)
         $logoFile = $this->request->getFile('app_logo');
         if ($logoFile && $logoFile->isValid() && !$logoFile->hasMoved()) {
-            $newName = $logoFile->getRandomName();
-            $logoFile->move(FCPATH . 'uploads', $newName);
-            $this->settingModel->setValue('app_logo', 'uploads/' . $newName, 'string', 'logo');
+            // Validate file to prevent RCE
+            $rules = [
+                'app_logo' => 'is_image[app_logo]|ext_in[app_logo,png,jpg,jpeg]|max_size[app_logo,2048]'
+            ];
+            
+            if ($this->validate($rules)) {
+                $newName = $logoFile->getRandomName();
+                $logoFile->move(FCPATH . 'uploads', $newName);
+                $this->settingModel->setValue('app_logo', 'uploads/' . $newName, 'string', 'logo');
+            } else {
+                return redirect()->back()->with('error', 'Format logo tidak valid. Harus berupa gambar (PNG/JPG) maksimal 2MB.');
+            }
+        }
+
+        $bgFile = $this->request->getFile('login_background');
+        if ($bgFile && $bgFile->isValid() && !$bgFile->hasMoved()) {
+            $rulesBg = [
+                'login_background' => 'is_image[login_background]|ext_in[login_background,png,jpg,jpeg]|max_size[login_background,5120]'
+            ];
+            
+            if ($this->validate($rulesBg)) {
+                $newName = $bgFile->getRandomName();
+                $bgFile->move(FCPATH . 'uploads', $newName);
+                $this->settingModel->setValue('login_background', 'uploads/' . $newName, 'string', 'logo');
+            } else {
+                return redirect()->back()->with('error', 'Format background tidak valid. Harus berupa gambar maksimal 5MB.');
+            }
+        }
+
+        $cheatLogoFile = $this->request->getFile('anti_cheat_logo');
+        if ($cheatLogoFile && $cheatLogoFile->isValid() && !$cheatLogoFile->hasMoved()) {
+            $rulesCheat = [
+                'anti_cheat_logo' => 'ext_in[anti_cheat_logo,svg]|max_size[anti_cheat_logo,1024]'
+            ];
+            
+            if ($this->validate($rulesCheat)) {
+                $newName = $cheatLogoFile->getRandomName();
+                $cheatLogoFile->move(FCPATH . 'uploads', $newName);
+                $this->settingModel->setValue('anti_cheat_logo', 'uploads/' . $newName, 'string', 'security');
+            } else {
+                return redirect()->back()->with('error', 'Format logo peringatan tidak valid. Harus berupa SVG maksimal 1MB.');
+            }
         }
 
         return redirect()->to('/admin/settings')->with('success', 'Pengaturan berhasil diperbarui.');

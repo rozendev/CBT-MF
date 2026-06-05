@@ -8,38 +8,51 @@ use CodeIgniter\Router\RouteCollection;
 $routes->get('login', 'Auth\AuthController::login');
 $routes->post('login', 'Auth\AuthController::attemptLogin');
 $routes->get('logout', 'Auth\AuthController::logout');
+$routes->get('queue', 'Auth\QueueController::index');
+$routes->post('queue/ping', 'Auth\QueueController::ping');
+
+$routes->group('api', ['filter' => 'auth'], static function ($routes) {
+    $routes->post('keep-alive', 'Api\SyncController::keepAlive');
+});
 
 // ── Admin Routes (role-protected) ───────────────────
 $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($routes) {
     $routes->get('/', 'Admin\DashboardController::index');
     $routes->get('dashboard', 'Admin\DashboardController::index');
 
-    // User Management
-    $routes->get('users', 'Admin\UserController::index');
-    $routes->get('users/create', 'Admin\UserController::create');
-    $routes->post('users/store', 'Admin\UserController::store');
-    $routes->get('users/edit/(:num)', 'Admin\UserController::edit/$1');
-    $routes->post('users/update/(:num)', 'Admin\UserController::update/$1');
-    $routes->delete('users/delete/(:num)', 'Admin\UserController::delete/$1');
-    
-    // Suspend & Lock
-    $routes->get('suspend', 'Admin\SuspendController::index');
-    $routes->post('suspend/release/(:num)', 'Admin\SuspendController::release/$1');
-    $routes->post('suspend/ban/(:num)', 'Admin\SuspendController::ban/$1');
-    $routes->post('suspend/reset/(:num)', 'Admin\SuspendController::reset/$1');
+    // ── Admin-Only Routes ───────────────────────────────
+    $routes->group('', ['filter' => 'role:admin'], static function ($routes) {
+        // User Management
+        $routes->get('users', 'Admin\UserController::index');
+        $routes->get('users/create', 'Admin\UserController::create');
+        $routes->post('users/store', 'Admin\UserController::store');
+        $routes->get('users/edit/(:num)', 'Admin\UserController::edit/$1');
+        $routes->post('users/update/(:num)', 'Admin\UserController::update/$1');
+        $routes->delete('users/delete/(:num)', 'Admin\UserController::delete/$1');
+        $routes->post('users/unlock/(:num)', 'Admin\UserController::unlock/$1');
+        $routes->get('users/template', 'Admin\UserController::template');
+        $routes->post('users/import', 'Admin\UserController::import');
+        
+        // Suspend & Lock
+        $routes->get('suspend', 'Admin\SuspendController::index');
+        $routes->post('suspend/release/(:num)', 'Admin\SuspendController::release/$1');
+        $routes->post('suspend/ban/(:num)', 'Admin\SuspendController::ban/$1');
+        $routes->post('suspend/reset/(:num)', 'Admin\SuspendController::reset/$1');
+        $routes->get('suspend/user-attempts/(:num)', 'Admin\SuspendController::getUserAttempts/$1');
+        $routes->post('suspend/reset-attempt/(:num)', 'Admin\SuspendController::resetAttempt/$1');
 
-    // Groups
-    $routes->get('groups', 'Admin\GroupController::index');
-    $routes->get('groups/create', 'Admin\GroupController::create');
-    $routes->post('groups/store', 'Admin\GroupController::store');
-    $routes->get('groups/edit/(:num)', 'Admin\GroupController::edit/$1');
-    $routes->post('groups/update/(:num)', 'Admin\GroupController::update/$1');
-    $routes->delete('groups/delete/(:num)', 'Admin\GroupController::delete/$1');
+        // Groups
+        $routes->get('groups', 'Admin\GroupController::index');
+        $routes->get('groups/create', 'Admin\GroupController::create');
+        $routes->post('groups/store', 'Admin\GroupController::store');
+        $routes->get('groups/edit/(:num)', 'Admin\GroupController::edit/$1');
+        $routes->post('groups/update/(:num)', 'Admin\GroupController::update/$1');
+        $routes->delete('groups/delete/(:num)', 'Admin\GroupController::delete/$1');
 
-    // Settings
-    $routes->get('settings', 'Admin\SettingController::index');
-    $routes->post('settings/update', 'Admin\SettingController::update');
-    $routes->post('users/unlock/(:num)', 'Admin\UserController::unlock/$1');
+        // Settings
+        $routes->get('settings', 'Admin\SettingController::index');
+        $routes->post('settings/update', 'Admin\SettingController::update');
+    });
 
     // Modules
     $routes->get('modules', 'Admin\ModuleController::index');
@@ -64,6 +77,10 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->get('questions/edit/(:num)', 'Admin\QuestionController::edit/$1');
     $routes->post('questions/update/(:num)', 'Admin\QuestionController::update/$1');
     $routes->delete('questions/delete/(:num)', 'Admin\QuestionController::delete/$1');
+    $routes->get('questions/word-import', 'Admin\WordImportController::index');
+    $routes->get('questions/word-import/template', 'Admin\WordImportController::downloadTemplate');
+    $routes->post('questions/word-import/process', 'Admin\WordImportController::process');
+    $routes->post('questions/bulk-delete', 'Admin\QuestionController::bulkDelete');
 
     $routes->get('tests', 'Admin\TestController::index');
     $routes->get('tests/create', 'Admin\TestController::create');
@@ -82,7 +99,8 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->get('results', 'Admin\ResultController::index');
     $routes->get('results/view/(:num)', 'Admin\ResultController::view/$1');
     $routes->get('results/detail/(:num)', 'Admin\ResultController::detail/$1');
-    $routes->post('results/grade-essay', 'Admin\ResultController::gradeEssay');
+    $routes->post('results/update-score', 'Admin\ResultController::updateManualScore');
+    $routes->post('results/delete-attempt/(:num)', 'Admin\ResultController::deleteAttempt/$1');
 });
 
 // ── Student Routes (role-protected: siswa) ───────────
@@ -93,10 +111,15 @@ $routes->group('student', ['filter' => 'role:siswa'], static function ($routes) 
     // Exam taking flows will go here
     $routes->get('exam/prepare/(:num)', 'Student\ExamController::prepare/$1');
     $routes->post('exam/start/(:num)', 'Student\ExamController::start/$1');
-    $routes->get('exam/take/(:num)', 'Student\ExamController::take/$1');
-    $routes->post('exam/save-answer', 'Student\ExamController::saveAnswer');
+    $routes->group('exam', static function ($routes) {
+        $routes->get('take/(:num)', 'Student\ExamController::take/$1');
+        $routes->get('stream/(:num)', 'Student\SseController::stream/$1');
+        $routes->post('autosave', 'Student\ExamController::saveAnswer');
+        $routes->post('auto-sync', 'Student\ExamController::autoSync');
+    });
     $routes->post('exam/report-cheat', 'Student\ExamController::reportCheat');
-    $routes->get('exam/heartbeat', 'Student\ExamController::heartbeat');
+
+    $routes->post('exam/check-score', 'Student\ExamController::checkCurrentScore');
     $routes->post('exam/finish/(:num)', 'Student\ExamController::finish/$1');
     
     // Results / Feedback

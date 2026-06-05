@@ -78,8 +78,7 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
-            // CSRF disabled — app uses session-based auth which is sufficient
-            'multilogin' => ['except' => ['login', 'logout']],
+            'multilogin' => ['except' => ['login', 'logout', 'student/exam/stream/*']],
         ],
         'after' => [
             'secureheaders',
@@ -110,5 +109,9 @@ class Filters extends BaseFilters
      *
      * @var array<string, array<string, list<string>>>
      */
-    public array $filters = [];
+    public array $filters = [
+        'csrf' => ['before' => [
+            'login',
+        ]],
+    ];
 }

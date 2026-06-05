@@ -102,27 +102,62 @@ class AuthController extends BaseController
         // Regenerate session ID to prevent fixation
         session()->regenerate(true);
 
+        // Check active sessions limit using Redis
+        $maxConnections = (int) $this->getSettingValue('max_concurrent_connections', 90);
+        $isQueued = false;
+        
+        try {
+            $redis = new \Redis();
+            if ($redis->connect('redis', 6379)) {
+                $redis->zRemRangeByScore('active_sessions', 0, time() - 300); // Clean dead sessions
+                $activeCount = $redis->zCard('active_sessions');
+                
+                // If this user is already in active_sessions, let them re-login without queuing
+                $score = $redis->zScore('active_sessions', $user->id);
+                
+                if ($score === false && $activeCount >= $maxConnections) {
+                    $isQueued = true;
+                    $redis->zAdd('login_queue', time(), $user->id);
+                } else {
+                    $redis->zAdd('active_sessions', time(), $user->id);
+                }
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error in AuthController: ' . $e->getMessage());
+        }
+
+        // Generate unique login token for multi-login prevention (immune to session regeneration)
+        $loginToken = bin2hex(random_bytes(16));
+
         // Login successful — set session
         $this->userModel->recordLogin($user->id, $this->request->getIPAddress());
 
         session()->set([
-            'user_id'   => $user->id,
-            'username'  => $user->username,
-            'role'      => $user->role,
-            'firstname' => $user->firstname ?? $user->username,
-            'lastname'  => $user->lastname ?? '',
-            'email'     => $user->email,
-            'is_active' => $user->is_active,
-            'logged_in' => true,
+            'user_id'     => $user->id,
+            'username'    => $user->username,
+            'role'        => $user->role,
+            'firstname'   => $user->firstname ?? $user->username,
+            'lastname'    => $user->lastname ?? '',
+            'email'       => $user->email,
+            'is_active'   => $user->is_active,
+            'logged_in'   => !$isQueued,
+            'is_queued'   => $isQueued,
+            'login_token' => $loginToken,
         ]);
 
-        // Store session ID in Redis for multi-login detection
+        // Store login token in Redis for multi-login detection (overwrites any old login token)
         try {
-            $redis = new \Redis();
-            $redis->connect('redis', 6379);
-            $redis->setex("user_session:{$user->id}", 7200, session_id());
+            if (isset($redis) && $redis->isConnected()) {
+                $redis->setex("user_login_token:{$user->id}", 7200, $loginToken);
+            }
         } catch (\Exception $e) {
             log_message('error', 'Redis session store error: ' . $e->getMessage());
+        }
+
+        // Redirect to queue if limited
+        if ($isQueued) {
+            $this->activityLog->log('login_queued', $user->id, 'user', $user->id, 'Login ditunda (masuk antrean)');
+            return redirect()->to('/queue');
         }
 
         // Log activity
@@ -146,11 +181,14 @@ class AuthController extends BaseController
         $userId = session()->get('user_id');
 
         if ($userId) {
-            // Remove Redis session tracking
+            // Remove Redis session tracking and active status
             try {
                 $redis = new \Redis();
-                $redis->connect('redis', 6379);
-                $redis->del("user_session:{$userId}");
+                if ($redis->connect('redis', 6379)) {
+                    $redis->del("user_login_token:{$userId}");
+                    $redis->zRem('active_sessions', $userId);
+                    $redis->zRem('login_queue', $userId);
+                }
             } catch (\Exception $e) {
                 log_message('error', 'Redis session cleanup error: ' . $e->getMessage());
             }

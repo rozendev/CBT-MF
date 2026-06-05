@@ -78,7 +78,7 @@ class QuestionController extends BaseController
     {
         $rules = [
             'subject_id'  => 'required|is_natural_no_zero',
-            'type'        => 'required|in_list[1,2,3,4]',
+            'type'        => 'required|in_list[1,2,3,4,5]',
             'description' => 'required',
             'difficulty'  => 'required|is_natural_no_zero',
         ];
@@ -149,7 +149,7 @@ class QuestionController extends BaseController
 
         $rules = [
             'subject_id'  => 'required|is_natural_no_zero',
-            'type'        => 'required|in_list[1,2,3,4]',
+            'type'        => 'required|in_list[1,2,3,4,5]',
             'description' => 'required',
             'difficulty'  => 'required|is_natural_no_zero',
         ];
@@ -171,8 +171,7 @@ class QuestionController extends BaseController
 
         if ($this->questionModel->skipValidation(true)->update($id, $data)) {
             // Delete old answers and recreate new ones for simplicity 
-            // In a real app we might want to update existing answers to preserve stats, 
-            // but for exams, recreating is often safer if the structure changes.
+            // This is now safe because we use a Snapshot Architecture (no FK restrict on test_log_answers)
             $this->answerModel->where('question_id', $id)->delete();
             
             $this->_saveAnswers($id, $type);
@@ -199,6 +198,29 @@ class QuestionController extends BaseController
         return redirect()->back()->with('error', 'Gagal menghapus soal.');
     }
 
+    public function bulkDelete()
+    {
+        $ids = $this->request->getPost('question_ids');
+        
+        if (empty($ids) || !is_array($ids)) {
+            return redirect()->back()->with('error', 'Tidak ada soal yang dipilih untuk dihapus.');
+        }
+
+        $deletedCount = 0;
+        foreach ($ids as $id) {
+            if ($this->questionModel->forceDeleteWithAnswers($id)) {
+                $deletedCount++;
+            }
+        }
+
+        if ($deletedCount > 0) {
+            $this->activityLog->log('delete', session('user_id'), 'question', 0, "Menghapus $deletedCount soal sekaligus");
+            return redirect()->back()->with('success', "$deletedCount soal berhasil dihapus secara permanen.");
+        }
+
+        return redirect()->back()->with('error', 'Gagal menghapus soal.');
+    }
+
     /**
      * Helper to parse and save answers from the POST request
      */
@@ -217,8 +239,8 @@ class QuestionController extends BaseController
 
             $isCorrect = in_array($key, $correctIds) ? 1 : 0;
             
-            // If Text/Essay (3), there might be no specific correct answer checkbox
-            if ($type == 3) {
+            // If Text/Essay (3) or Menjodohkan (4), all options might be implicitly correct or just reference
+            if ($type == 3 || $type == 4) {
                 $isCorrect = 1; // It's just a reference answer
             }
 

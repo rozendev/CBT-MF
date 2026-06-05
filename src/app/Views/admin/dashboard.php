@@ -85,25 +85,70 @@
     </div>
 </div>
 
-<!-- Recent Activity -->
-<div class="card">
-    <div class="card-body">
-        <h6 class="fw-bold mb-3"><i class="bi bi-clock-history me-1"></i> Aktivitas Terakhir</h6>
-        <?php if (!empty($activities)): ?>
-            <div class="list-group list-group-flush">
-                <?php foreach ($activities as $act): ?>
-                <div class="list-group-item px-0 d-flex justify-content-between align-items-start">
-                    <div>
-                        <span class="fw-semibold small"><?= esc($act->firstname ?? $act->username ?? 'System') ?></span>
-                        <span class="text-muted small ms-1"><?= esc($act->description ?? $act->action) ?></span>
+<!-- Bottom Section -->
+<div class="row g-4">
+    <!-- Recent Activity -->
+    <div class="col-md-7">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="bi bi-clock-history me-1"></i> Aktivitas Terakhir</h6>
+                <?php if (!empty($activities)): ?>
+                    <div class="list-group list-group-flush">
+                        <?php foreach ($activities as $act): ?>
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-start border-light">
+                            <div>
+                                <span class="fw-semibold small text-primary"><?= esc($act->firstname ?? $act->username ?? 'System') ?></span>
+                                <span class="text-muted small ms-1"><?= esc($act->description ?? $act->action) ?></span>
+                            </div>
+                            <small class="text-muted" style="font-size: 0.75rem;"><?= esc(date('d/m/Y H:i', strtotime($act->created_at))) ?></small>
+                        </div>
+                        <?php endforeach; ?>
                     </div>
-                    <small class="text-muted"><?= esc($act->created_at) ?></small>
-                </div>
-                <?php endforeach; ?>
+                <?php else: ?>
+                    <p class="text-muted small mb-0">Belum ada aktivitas tercatat.</p>
+                <?php endif; ?>
             </div>
-        <?php else: ?>
-            <p class="text-muted small mb-0">Belum ada aktivitas tercatat.</p>
-        <?php endif; ?>
+        </div>
+    </div>
+    
+    <!-- Online Users -->
+    <div class="col-md-5">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-header bg-white border-0 pt-4 pb-0">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="fw-bold mb-0"><i class="bi bi-broadcast text-success me-1"></i> User Online (Real-Time)</h6>
+                    <span class="badge bg-success rounded-pill px-3 py-2"><?= count($onlineUsers ?? []) ?> Aktif</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <?php if (!empty($onlineUsers)): ?>
+                    <div class="list-group list-group-flush" style="max-height: 350px; overflow-y: auto;">
+                        <?php foreach ($onlineUsers as $ou): ?>
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center border-light">
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle bg-light d-flex align-items-center justify-content-center text-primary fw-bold me-3" style="width: 35px; height: 35px; font-size: 0.9rem;">
+                                    <?= esc(strtoupper(substr($ou['firstname'] ?? $ou['username'], 0, 1))) ?>
+                                </div>
+                                <div>
+                                    <h6 class="mb-0 fs-6 fw-semibold text-dark"><?= esc($ou['firstname'] ?? $ou['username']) ?></h6>
+                                    <small class="text-muted" style="font-size: 0.75rem;"><i class="bi bi-person-badge"></i> <?= esc(ucfirst($ou['role'])) ?></small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="spinner-grow spinner-grow-sm text-success" role="status" style="width: 0.5rem; height: 0.5rem;"></span>
+                                <div class="text-muted mt-1" style="font-size: 0.7rem;"><?= date('H:i', strtotime($ou['last_active_at'])) ?></div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <div class="text-center py-5">
+                        <i class="bi bi-moon-stars text-muted fs-1 mb-3 d-block opacity-50"></i>
+                        <p class="text-muted small mb-0">Tidak ada user yang sedang online saat ini.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
 </div>
 <?= $this->endSection() ?>

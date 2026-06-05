@@ -42,6 +42,7 @@
                             <?php else: ?>
                                 <?php 
                                 $types = [
+                                    0 => 'Semua Tipe',
                                     1 => 'Pilihan Ganda',
                                     2 => 'Pilihan Ganda (Banyak)',
                                     3 => 'Esai / Teks',
@@ -56,13 +57,13 @@
                                             <?php endforeach; ?>
                                         </td>
                                         <td class="small text-muted"><?= $types[$set->question_type] ?? 'Unknown' ?></td>
-                                        <td><span class="badge bg-secondary"><?= $set->difficulty ?></span></td>
+                                        <td><span class="badge bg-secondary"><?= $set->difficulty == 0 ? 'Semua Level' : $set->difficulty ?></span></td>
                                         <td class="fw-bold text-primary"><?= $set->quantity ?> Soal</td>
                                         <td class="text-end pe-4">
-                                            <form action="<?= base_url('/admin/tests/config/subjects/' . $set->id) ?>" method="POST" class="d-inline">
+                                            <form action="<?= base_url('/admin/tests/config/subjects/' . $set->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi', text: 'Hapus set soal ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Hapus', cancelButtonText: 'Batal', confirmButtonColor: '#dc3545'}).then((res) => { if(res.isConfirmed) this.submit(); });">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="_method" value="DELETE">
-                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus Set" onclick="return confirm('Hapus set soal ini?')">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus Set">
                                                     <i class="bi bi-trash"></i>
                                                 </button>
                                             </form>
@@ -97,6 +98,7 @@
                         <div class="col-md-4">
                             <label class="form-label fw-semibold small">Tipe Soal</label>
                             <select class="form-select" name="question_type" required>
+                                <option value="0" class="fw-bold text-primary">Semua Tipe Acak</option>
                                 <option value="1">Pilihan Ganda</option>
                                 <option value="2">Pilihan Ganda (Banyak)</option>
                                 <option value="3">Esai / Teks</option>
@@ -104,7 +106,8 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold small">Level Kesulitan</label>
-                            <input type="number" class="form-control" name="difficulty" value="1" min="1" max="10" required>
+                            <input type="number" class="form-control" name="difficulty" value="0" min="0" max="10" required>
+                            <div class="form-text small">0 = Bebas Semua Level</div>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold small">Jumlah Soal ditarik</label>

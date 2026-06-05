@@ -228,8 +228,8 @@ class TestController extends BaseController
     {
         $rules = [
             'subjects'      => 'required',
-            'question_type' => 'required|in_list[1,2,3,4]',
-            'difficulty'    => 'required|is_natural_no_zero',
+            'question_type' => 'required|in_list[0,1,2,3,4]',
+            'difficulty'    => 'required|is_natural',
             'quantity'      => 'required|is_natural_no_zero',
         ];
 

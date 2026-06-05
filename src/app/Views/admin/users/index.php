@@ -37,8 +37,7 @@
             <a href="<?= base_url('/admin/users/create') ?>" class="btn btn-primary btn-sm rounded-pill">
                 <i class="bi bi-person-plus me-1"></i> Tambah Pengguna
             </a>
-            <!-- Placeholder for Excel Import -->
-            <button type="button" class="btn btn-outline-success btn-sm rounded-pill" disabled>
+            <button type="button" class="btn btn-outline-success btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#importModal">
                 <i class="bi bi-file-earmark-excel me-1"></i> Import
             </button>
         </div>
@@ -177,6 +176,49 @@
                     <button type="submit" class="btn btn-danger px-4">Ya, Hapus</button>
                 </form>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form action="<?= base_url('/admin/users/import') ?>" method="POST" enctype="multipart/form-data">
+                <?= csrf_field() ?>
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold text-success"><i class="bi bi-file-earmark-excel me-2"></i>Import Siswa</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body py-4">
+                    <div class="mb-4 text-center">
+                        <a href="<?= base_url('/admin/users/template') ?>" class="btn btn-outline-primary btn-sm rounded-pill">
+                            <i class="bi bi-download me-1"></i> Unduh Template Excel
+                        </a>
+                        <p class="text-muted small mt-2 mb-0">Gunakan template ini untuk mengisi data siswa yang akan diimport.</p>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Pilih Grup / Kelas (Opsional)</label>
+                        <select name="group_id" class="form-select">
+                            <option value="">-- Tidak dimasukkan ke grup --</option>
+                            <?php foreach ($allGroups as $g): ?>
+                                <option value="<?= $g->id ?>"><?= esc($g->name) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text small text-muted">Semua siswa yang diimport akan otomatis dimasukkan ke grup ini.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">File Excel (.xlsx)</label>
+                        <input type="file" name="excel_file" class="form-control" accept=".xlsx, .xls" required>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0 justify-content-center">
+                    <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-success px-4"><i class="bi bi-upload me-2"></i>Mulai Import</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

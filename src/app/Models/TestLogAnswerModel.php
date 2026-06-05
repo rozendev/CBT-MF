@@ -14,6 +14,7 @@ class TestLogAnswerModel extends Model
     protected $useTimestamps    = false;
 
     protected $allowedFields = [
-        'test_log_id', 'answer_id', 'is_selected', 'display_order', 'position'
+        'test_log_id', 'answer_id', 'answer_text', 'is_correct', 
+        'is_selected', 'display_order', 'position'
     ];
 }

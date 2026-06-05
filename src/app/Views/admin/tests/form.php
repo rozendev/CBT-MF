@@ -144,6 +144,11 @@
                             <label class="form-check-label">Izinkan Kosong (Tidak Dijawab)</label>
                         </div>
                         <div class="form-check form-switch mb-2">
+                            <input class="form-check-input bg-info border-info" type="checkbox" name="mcma_partial_score" value="1" 
+                                   <?= old('mcma_partial_score', $test->mcma_partial_score ?? '1') == '1' ? 'checked' : '' ?>>
+                            <label class="form-check-label fw-bold text-info">Gunakan Sistem Bobot (PG Kompleks)</label>
+                        </div>
+                        <div class="form-check form-switch mb-2">
                             <input class="form-check-input" type="checkbox" name="results_visible" value="1" 
                                    <?= old('results_visible', $test->results_visible ?? '0') == '1' ? 'checked' : '' ?>>
                             <label class="form-check-label">Tampilkan Nilai ke Siswa</label>

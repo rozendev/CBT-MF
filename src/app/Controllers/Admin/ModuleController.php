@@ -104,8 +104,20 @@ class ModuleController extends BaseController
         }
 
         if ($this->moduleModel->delete($id)) {
+            // Cascade delete subjects
+            $subjectModel = new \App\Models\SubjectModel();
+            $subjects = $subjectModel->where('module_id', $id)->findAll();
+            if (!empty($subjects)) {
+                $subIds = array_column($subjects, 'id');
+                $subjectModel->delete($subIds);
+                
+                // Cascade delete questions
+                $questionModel = new \App\Models\QuestionModel();
+                $questionModel->whereIn('subject_id', $subIds)->delete();
+            }
+
             $this->activityLog->log('delete', session('user_id'), 'module', $id, "Menghapus modul: {$module->name}");
-            return redirect()->to('/admin/modules')->with('success', 'Modul berhasil dihapus.');
+            return redirect()->to('/admin/modules')->with('success', 'Modul beserta seluruh subjek dan soal di dalamnya berhasil dihapus.');
         }
 
         return redirect()->back()->with('error', 'Gagal menghapus modul.');

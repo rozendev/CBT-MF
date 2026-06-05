@@ -95,7 +95,8 @@
                             <option value="1" <?= $selectedType == 1 ? 'selected' : '' ?>>Pilihan Ganda (1 Benar)</option>
                             <option value="2" <?= $selectedType == 2 ? 'selected' : '' ?>>Pilihan Ganda (Banyak Benar)</option>
                             <option value="3" <?= $selectedType == 3 ? 'selected' : '' ?>>Esai / Teks</option>
-                            <!-- <option value="4" <?= $selectedType == 4 ? 'selected' : '' ?>>Mengurutkan</option> -->
+                            <option value="4" <?= $selectedType == 4 ? 'selected' : '' ?>>Menjodohkan (Pasangan)</option>
+                            <option value="5" <?= $selectedType == 5 ? 'selected' : '' ?>>Pilihan Ganda Kompleks (Benar/Salah)</option>
                         </select>
                     </div>
 
@@ -146,6 +147,27 @@
 
         // Initialize answers UI
         renderAnswerUI();
+
+        // Hook for form submission to handle Type 4 (Matching) & Type 5 (Complex T/F)
+        $('form').on('submit', function() {
+            const type = parseInt($('#question_type').val());
+            if (type === 4 || type === 5) {
+                $('.matching-hidden').remove();
+                $('#answers-container .answer-row').each(function(i) {
+                    let left = $(this).find('.match-left').val();
+                    let right = '';
+                    if (type === 4) {
+                        right = $(this).find('.match-right').val();
+                    } else if (type === 5) {
+                        right = $(this).find('input[type="radio"]:checked').val() || 'Benar';
+                    }
+                    let combined = left + '|::|' + right;
+                    // append to form
+                    $(this).append(`<input type="hidden" name="answers[${i}]" value="${combined.replace(/"/g, '&quot;')}" class="matching-hidden">`);
+                    $(this).append(`<input type="hidden" name="correct_answers[]" value="${i}" class="matching-hidden">`);
+                });
+            }
+        });
     });
 
     // Existing Answers from PHP to JS
@@ -157,15 +179,102 @@
         const container = $('#answers-container');
         
         if (type === 3) {
-            // Essay
+            // Essay / Short Answer
+            let desc = '';
+            let id = '';
+            if (existingAnswers[0]) {
+                desc = existingAnswers[0].description;
+                id = existingAnswers[0].id;
+            }
+
             container.html(`
-                <div class="p-4 text-center text-muted">
-                    <i class="bi bi-text-paragraph fs-1 d-block mb-2"></i>
-                    Soal tipe Esai tidak membutuhkan pilihan jawaban.<br>
-                    Siswa akan diberikan kotak teks untuk menjawab.
+                <div class="p-4 bg-light rounded-3">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-key text-success me-2"></i>Kunci Jawaban Persis (Isian Singkat)</h6>
+                    <p class="text-muted small mb-3">Masukkan teks yang harus persis sama (mengabaikan huruf besar/kecil) untuk dianggap benar secara otomatis.</p>
+                    <input type="hidden" name="correct_answers[]" value="0">
+                    <input type="hidden" name="answer_ids[0]" value="${id}">
+                    <input type="text" class="form-control form-control-lg" name="answers[0]" value="${desc.replace(/"/g, '&quot;')}" placeholder="Ketik kunci jawaban di sini..." required>
                 </div>
             `);
             $('#answers-card .btn-outline-primary').hide(); // Hide Add button
+            return;
+        } else if (type === 5) {
+            $('#answers-card .btn-outline-primary').show();
+            let html = `
+                <div class="alert alert-info border-0 rounded-0 mb-0">
+                    <i class="bi bi-info-circle me-1"></i> Masukkan daftar pernyataan dan tentukan kunci jawabannya (Benar atau Salah).
+                </div>
+            `;
+            
+            const loops = Math.max(answerCount, existingAnswers.length > 0 ? existingAnswers.length : 3);
+            for (let i = 0; i < loops; i++) {
+                let left = ''; let right = 'Benar';
+                if (existingAnswers[i]) {
+                    let parts = existingAnswers[i].description.split('|::|');
+                    left = parts[0] || ''; right = parts[1] || 'Benar';
+                }
+                html += `
+                    <div class="answer-row d-flex align-items-center p-3 border-bottom" id="ans-row-${i}">
+                        <div class="flex-grow-1 row g-3 align-items-center">
+                            <div class="col-md-8">
+                                <label class="form-label small text-muted mb-1">Pernyataan</label>
+                                <input type="text" class="form-control match-left" value="${left.replace(/"/g, '&quot;')}" placeholder="Contoh: Matahari terbit dari timur" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small text-muted mb-1 d-block">Kunci Jawaban</label>
+                                <div class="btn-group w-100" role="group">
+                                    <input type="radio" class="btn-check" name="bs_key_${i}" id="bs_benar_${i}" value="Benar" ${right === 'Benar' ? 'checked' : ''}>
+                                    <label class="btn btn-outline-success" for="bs_benar_${i}">Benar</label>
+
+                                    <input type="radio" class="btn-check" name="bs_key_${i}" id="bs_salah_${i}" value="Salah" ${right === 'Salah' ? 'checked' : ''}>
+                                    <label class="btn btn-outline-danger" for="bs_salah_${i}">Salah</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ms-3 pe-2 mt-4">
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="$('#ans-row-${i}').remove()"><i class="bi bi-x-lg"></i></button>
+                        </div>
+                    </div>
+                `;
+            }
+            container.html(html);
+            answerCount = loops;
+            return;
+        } else if (type === 4) {
+            $('#answers-card .btn-outline-primary').show();
+            let html = `
+                <div class="alert alert-info border-0 rounded-0 mb-0">
+                    <i class="bi bi-info-circle me-1"></i> Masukkan pasangan yang benar. Saat ujian, sistem otomatis mengacak jawaban Kanan.
+                </div>
+            `;
+            
+            const loops = Math.max(answerCount, existingAnswers.length > 0 ? existingAnswers.length : 3);
+            for (let i = 0; i < loops; i++) {
+                let left = ''; let right = '';
+                if (existingAnswers[i]) {
+                    let parts = existingAnswers[i].description.split('|::|');
+                    left = parts[0] || ''; right = parts[1] || '';
+                }
+                html += `
+                    <div class="answer-row d-flex align-items-center p-3 border-bottom" id="ans-row-${i}">
+                        <div class="flex-grow-1 row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted mb-1">Kiri (Premis)</label>
+                                <input type="text" class="form-control match-left" value="${left.replace(/"/g, '&quot;')}" placeholder="Contoh: Ibukota Indonesia" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted mb-1">Kanan (Jawaban)</label>
+                                <input type="text" class="form-control match-right" value="${right.replace(/"/g, '&quot;')}" placeholder="Contoh: Jakarta" required>
+                            </div>
+                        </div>
+                        <div class="ms-3 pe-2 mt-4">
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="$('#ans-row-${i}').remove()"><i class="bi bi-x-lg"></i></button>
+                        </div>
+                    </div>
+                `;
+            }
+            container.html(html);
+            answerCount = loops;
             return;
         }
 
@@ -194,6 +303,7 @@
                         <input class="form-check-input fs-4" type="${inputType}" name="correct_answers[]" value="${i}" ${isCorrect ? 'checked' : ''}>
                     </div>
                     <div class="flex-grow-1">
+                        <input type="hidden" name="answer_ids[${i}]" value="${id}">
                         <input type="text" class="form-control" name="answers[${i}]" value="${desc.replace(/"/g, '&quot;')}" placeholder="Ketik pilihan jawaban..." required>
                     </div>
                     <div class="ms-3 pe-2">
@@ -211,22 +321,68 @@
         const type = parseInt($('#question_type').val());
         if (type === 3) return; // Not for essay
 
-        const inputType = (type === 2) ? 'checkbox' : 'radio';
         const i = answerCount++;
+        let html = '';
         
-        const html = `
-            <div class="answer-row d-flex align-items-center p-3 border-bottom" id="ans-row-${i}">
-                <div class="me-3 ps-2">
-                    <input class="form-check-input fs-4" type="${inputType}" name="correct_answers[]" value="${i}">
+        if (type === 4) {
+            html = `
+                <div class="answer-row d-flex align-items-center p-3 border-bottom" id="ans-row-${i}">
+                    <div class="flex-grow-1 row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted mb-1">Kiri (Premis)</label>
+                            <input type="text" class="form-control match-left" placeholder="Contoh: Ibukota Indonesia" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted mb-1">Kanan (Jawaban)</label>
+                            <input type="text" class="form-control match-right" placeholder="Contoh: Jakarta" required>
+                        </div>
+                    </div>
+                    <div class="ms-3 pe-2 mt-4">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="$('#ans-row-${i}').remove()"><i class="bi bi-x-lg"></i></button>
+                    </div>
                 </div>
-                <div class="flex-grow-1">
-                    <input type="text" class="form-control" name="answers[${i}]" placeholder="Ketik pilihan jawaban..." required>
+            `;
+        } else if (type === 5) {
+            html = `
+                <div class="answer-row d-flex align-items-center p-3 border-bottom" id="ans-row-${i}">
+                    <div class="flex-grow-1 row g-3 align-items-center">
+                        <div class="col-md-8">
+                            <label class="form-label small text-muted mb-1">Pernyataan</label>
+                            <input type="text" class="form-control match-left" placeholder="Ketik pernyataan baru..." required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted mb-1 d-block">Kunci Jawaban</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="bs_key_${i}" id="bs_benar_${i}" value="Benar" checked>
+                                <label class="btn btn-outline-success" for="bs_benar_${i}">Benar</label>
+
+                                <input type="radio" class="btn-check" name="bs_key_${i}" id="bs_salah_${i}" value="Salah">
+                                <label class="btn btn-outline-danger" for="bs_salah_${i}">Salah</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ms-3 pe-2 mt-4">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="$('#ans-row-${i}').remove()"><i class="bi bi-x-lg"></i></button>
+                    </div>
                 </div>
-                <div class="ms-3 pe-2">
-                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="$('#ans-row-${i}').remove()"><i class="bi bi-x-lg"></i></button>
+            `;
+        } else {
+            const inputType = (type === 2) ? 'checkbox' : 'radio';
+            html = `
+                <div class="answer-row d-flex align-items-center p-3 border-bottom" id="ans-row-${i}">
+                    <div class="me-3 ps-2">
+                        <input class="form-check-input fs-4" type="${inputType}" name="correct_answers[]" value="${i}">
+                    </div>
+                    <div class="flex-grow-1">
+                        <input type="hidden" name="answer_ids[${i}]" value="">
+                        <input type="text" class="form-control" name="answers[${i}]" placeholder="Ketik pilihan jawaban..." required>
+                    </div>
+                    <div class="ms-3 pe-2">
+                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="$('#ans-row-${i}').remove()"><i class="bi bi-x-lg"></i></button>
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
+        }
         $('#answers-container').append(html);
     }
 </script>

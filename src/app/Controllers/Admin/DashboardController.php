@@ -24,9 +24,19 @@ class DashboardController extends BaseController
         $activityLog = new ActivityLogModel();
         $activities = $activityLog->getRecent(10);
 
+        // Fetch online users (last_active_at within 5 minutes)
+        $fiveMinsAgo = date('Y-m-d H:i:s', time() - 300);
+        $onlineUsers = $db->table('users')
+                          ->where('last_active_at >=', $fiveMinsAgo)
+                          ->where('deleted_at', null)
+                          ->orderBy('last_active_at', 'DESC')
+                          ->get()
+                          ->getResultArray();
+
         return view('admin/dashboard', [
             'stats'      => $stats,
             'activities' => $activities,
+            'onlineUsers'=> $onlineUsers,
         ]);
     }
 }

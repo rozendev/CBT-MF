@@ -134,8 +134,15 @@ class SubjectController extends BaseController
         }
 
         if ($this->subjectModel->delete($id)) {
+            // Cascade delete questions
+            $questionModel = new \App\Models\QuestionModel();
+            $questions = $questionModel->where('subject_id', $id)->findAll();
+            if (!empty($questions)) {
+                $qIds = array_column($questions, 'id');
+                $questionModel->delete($qIds);
+            }
             $this->activityLog->log('delete', session('user_id'), 'subject', $id, "Menghapus subjek: {$subject->name}");
-            return redirect()->to('/admin/subjects')->with('success', 'Subjek berhasil dihapus.');
+            return redirect()->to('/admin/subjects')->with('success', 'Subjek beserta semua soal di dalamnya berhasil dihapus.');
         }
 
         return redirect()->back()->with('error', 'Gagal menghapus subjek.');

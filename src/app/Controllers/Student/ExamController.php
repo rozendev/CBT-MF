@@ -114,9 +114,14 @@ class ExamController extends BaseController
             // Fetch eligible questions
             $qBuilder = $db->table('questions')
                            ->whereIn('subject_id', $subjectIds)
-                           ->where('type', $set->question_type)
-                           ->where('difficulty', $set->difficulty)
                            ->where('is_enabled', 1);
+
+            if ($set->question_type != 0) {
+                $qBuilder->where('type', $set->question_type);
+            }
+            if ($set->difficulty != 0) {
+                $qBuilder->where('difficulty', $set->difficulty);
+            }
 
             // Fetch exactly $set->quantity random questions
             // Order by RAND() can be slow on huge tables, but it's the standard way for this scope
@@ -125,11 +130,14 @@ class ExamController extends BaseController
             foreach ($questions as $q) {
                 // Insert into test_logs
                 $testLogModel->insert([
-                    'test_attempt_id' => $attemptId,
-                    'question_id'     => $q->id,
-                    'display_order'   => $displayOrder,
-                    'num_answers'     => $set->num_answers ?: 0,
-                    'user_ip'         => $this->request->getIPAddress(),
+                    'test_attempt_id'     => $attemptId,
+                    'question_id'         => $q->id,
+                    'question_text'       => $q->description,
+                    'question_type'       => $q->type,
+                    'question_difficulty' => $q->difficulty,
+                    'display_order'       => $displayOrder,
+                    'num_answers'         => $set->num_answers ?: 0,
+                    'user_ip'             => $this->request->getIPAddress(),
                 ]);
                 
                 $testLogId = $testLogModel->getInsertID();
@@ -147,6 +155,8 @@ class ExamController extends BaseController
                     $testLogAnswerModel->insert([
                         'test_log_id'   => $testLogId,
                         'answer_id'     => $ans->id,
+                        'answer_text'   => $ans->description,
+                        'is_correct'    => $ans->is_correct,
                         'display_order' => $ansOrder,
                         'position'      => $ans->position,
                         'is_selected'   => 0
@@ -196,12 +206,9 @@ class ExamController extends BaseController
         // Fetch questions generated for this attempt
         $db = \Config\Database::connect();
         
-        // This is a complex but crucial query to load the exam state
         $sql = "
-            SELECT tl.id as log_id, tl.display_order, tl.answer_text,
-                   q.id as question_id, q.description as question_text, q.type as question_type
+            SELECT tl.*, tl.id as log_id
             FROM test_logs tl
-            JOIN questions q ON q.id = tl.question_id
             WHERE tl.test_attempt_id = ?
             ORDER BY tl.display_order ASC
         ";
@@ -212,10 +219,8 @@ class ExamController extends BaseController
         $answers = [];
         if (!empty($logIds)) {
             $ansSql = "
-                SELECT tla.id as log_answer_id, tla.test_log_id, tla.is_selected,
-                       a.id as answer_id, a.description as answer_text
+                SELECT tla.*, tla.id as log_answer_id
                 FROM test_log_answers tla
-                JOIN answers a ON a.id = tla.answer_id
                 WHERE tla.test_log_id IN ?
                 ORDER BY tla.display_order ASC
             ";
@@ -242,6 +247,9 @@ class ExamController extends BaseController
                             if ($q->question_type == 3) {
                                 // Essay override
                                 $q->answer_text = $saved['answer_text'] ?? '';
+                            } elseif ($q->question_type == 4 || $q->question_type == 5) {
+                                // Matching override
+                                $q->answer_text = json_encode($saved['matching_answers'] ?? []);
                             } else {
                                 // Multiple Choice override
                                 $selectedIds = $saved['selected_answers'] ?? [];
@@ -267,6 +275,7 @@ class ExamController extends BaseController
         ]);
     }
 
+
     /**
      * Save an answer via AJAX
      */
@@ -283,9 +292,28 @@ class ExamController extends BaseController
         $log = $testLogModel->find($logId);
         if (!$log) return $this->response->setJSON(['status' => 'error']);
 
+        $attemptModel = new \App\Models\TestAttemptModel();
+        $attempt = $attemptModel->find($log->test_attempt_id);
+        if (!$attempt || $attempt->user_id !== session('user_id')) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Unauthorized']);
+        }
+
+        // Check if student was kicked/banned/finished
+        if ($attempt->status == 3) {
+            return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian Anda telah diselesaikan (waktu habis/dikumpulkan).']);
+        }
+        if ($attempt->status == 4) {
+            return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian Anda telah dikunci karena melanggar aturan.']);
+        }
+
+        // Release session lock early to prevent Redis bottleneck and CSRF token loss on concurrent AJAX
+        session_write_close();
+
         $payload = [];
         if ($questionType == 3) {
             $payload['answer_text'] = $this->request->getPost('answer_text');
+        } elseif ($questionType == 4 || $questionType == 5) {
+            $payload['matching_answers'] = json_decode($this->request->getPost('matching_answers_json') ?? '{}', true) ?: [];
         } else {
             $selectedIds = $this->request->getPost('selected_answers') ?? [];
             if (!is_array($selectedIds)) {
@@ -363,26 +391,46 @@ class ExamController extends BaseController
             return $this->response->setJSON(['status' => 'success', 'action' => 'none']);
         }
 
+        $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
         $suspendTimer = (int) $settingModel->getValue('suspend_timer_seconds', 30);
+        $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
         $currentStrikes = (int) $attempt->cheat_strikes + 1;
 
-        if ($cheatType === 'tab_switch') {
-            // TAB SWITCH = INSTANT BAN
+        if ($cheatType === 'tab_switch' || $currentStrikes >= $maxStrikes || $forceLogout) {
+            // INSTANT BAN (tab switch OR strike limit reached OR force logout enabled)
             $this->attemptModel->update($attemptId, [
                 'cheat_strikes' => $currentStrikes,
-                'status' => 4
+                'status' => 2 // Paused instead of Locked, so progress is saved
             ]);
             // Also deactivate user account
             $userModel = new \App\Models\UserModel();
             $userModel->update($userId, ['is_active' => 0]);
 
+            // Delete session from Redis to kick immediately
+            try {
+                $redis = new \Redis();
+                if ($redis->connect('redis', 6379)) {
+                    $redis->del("user_session:{$userId}");
+                    // Signal for SSE stream — detected within 3 seconds
+                    $redis->setex("ban_signal:{$userId}", 120, '1');
+                }
+            } catch (\Exception $e) {}
+            session()->destroy();
+
+            $reason = '';
+            if ($forceLogout) {
+                $reason = 'melakukan pelanggaran saat ujian (Auto-Lock)';
+            } else {
+                $reason = $cheatType === 'tab_switch' ? 'mengganti tab' : 'melewati batas maksimal peringatan keluar layar penuh';
+            }
+            
             $this->activityLog->log('exam_locked', $userId, 'test', $attempt->test_id, 
-                "INSTANT BAN: Siswa mengganti tab saat ujian (Strike: $currentStrikes)");
+                "INSTANT BAN: Siswa $reason saat ujian (Strike: $currentStrikes)");
             
             return $this->response->setJSON([
                 'status' => 'success',
                 'action' => 'lock',
-                'message' => 'Anda terdeteksi membuka tab lain. Ujian dikunci dan akun Anda di-suspend. Hubungi admin.'
+                'message' => "Ujian dikunci karena Anda terdeteksi $reason. Akun Anda dikunci."
             ]);
         } else {
             // FULLSCREEN EXIT = WARNING (suspend sementara)
@@ -401,37 +449,59 @@ class ExamController extends BaseController
         }
     }
 
+
     /**
-     * Heartbeat: Check if student is still allowed to take exam
-     * Called periodically by frontend to detect admin bans in real-time
+     * Helper to automatically flush Redis cached answers to MySQL every 1 minute
      */
-    public function heartbeat()
+    public function autoSync()
     {
+        $attemptId = $this->request->getPost('attempt_id');
         $userId = session('user_id');
-        $attemptId = $this->request->getGet('attempt_id');
 
-        // Check if user account is still active
-        $userModel = new \App\Models\UserModel();
-        $user = $userModel->find($userId);
-        if (!$user || !$user->is_active) {
-            return $this->response->setJSON(['status' => 'kicked', 'message' => 'Akun Anda telah di-suspend oleh admin.']);
+        // Release session lock early
+        session_write_close();
+
+        $attempt = $this->attemptModel->where('id', $attemptId)->where('user_id', $userId)->first();
+        if (!$attempt) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
         }
 
-        // Check if attempt is still active
-        $attempt = $this->attemptModel->find($attemptId);
-        if (!$attempt || $attempt->status == 4) {
-            return $this->response->setJSON(['status' => 'kicked', 'message' => 'Sesi ujian Anda telah dikunci.']);
-        }
-        if ($attempt->status == 3) {
-            return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian telah selesai.']);
-        }
+        // Flush redis cache 
+        $this->flushRedisAnswersToDb($attemptId);
 
-        return $this->response->setJSON(['status' => 'ok']);
+        return $this->response->setJSON(['status' => 'success']);
     }
 
     /**
-     * Helper to flush Redis cached answers to MySQL
+     * Helper to flush Redis cached answers to MySQL and check score
      */
+    public function checkCurrentScore()
+    {
+        $attemptId = $this->request->getPost('attempt_id');
+        $userId = session('user_id');
+
+        // Release session lock early
+        session_write_close();
+
+        $attemptModel = new \App\Models\TestAttemptModel();
+        $attempt = $attemptModel->where('id', $attemptId)->where('user_id', $userId)->first();
+        if (!$attempt) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
+        }
+
+        // Flush redis cache first
+        $this->flushRedisAnswersToDb($attemptId);
+
+        // Preview score
+        $scoringEngine = new \App\Libraries\ScoringEngine();
+        $score = $scoringEngine->calculateScorePreview($attemptId);
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'score' => $score
+        ]);
+    }
+
     private function flushRedisAnswersToDb($attemptId)
     {
         try {
@@ -453,6 +523,11 @@ class ExamController extends BaseController
                         $db->table('test_logs')
                            ->where('id', $logId)
                            ->update(['answer_text' => $payload['answer_text']]);
+                    } elseif (isset($payload['matching_answers'])) {
+                        // Matching
+                        $db->table('test_logs')
+                           ->where('id', $logId)
+                           ->update(['answer_text' => json_encode($payload['matching_answers'])]);
                     } elseif (isset($payload['selected_answers'])) {
                         // Multiple choice
                         $selectedIds = $payload['selected_answers'];

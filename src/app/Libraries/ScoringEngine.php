@@ -24,9 +24,8 @@ class ScoringEngine
 
         // Fetch all test logs for this attempt with question details
         $sql = "
-            SELECT tl.id as log_id, tl.question_id, tl.answer_text, q.type as question_type
+            SELECT tl.id as log_id, tl.question_id, tl.answer_text, tl.question_type
             FROM test_logs tl
-            JOIN questions q ON q.id = tl.question_id
             WHERE tl.test_attempt_id = ?
         ";
         $logs = $db->query($sql, [$attemptId])->getResult();
@@ -56,10 +55,48 @@ class ScoringEngine
                 $maxPossiblePoints += $test->score_right;
 
             } elseif ($log->question_type == 3) {
-                // Essay
-                // For essays, auto-scoring is 0 by default. A teacher must manually grade them later.
-                // But we add to maxPossiblePoints so the scale is correct when grading is done.
-                $questionScore = 0; 
+                // Essay string matching
+                $isCorrect = $this->isEssayCorrect($log->log_id, $log->answer_text);
+                if ($isCorrect) {
+                    $questionScore = $test->score_right;
+                } else {
+                    $questionScore = 0; // Or score_wrong, depending on requirements, but essay usually 0
+                }
+                $maxPossiblePoints += $test->score_right;
+
+            } elseif ($log->question_type == 4 || $log->question_type == 5) {
+                // Menjodohkan (Matching) or Pilihan Ganda Kompleks (True/False)
+                $correctPairs = 0;
+                $totalPairs = 0;
+                
+                $originalAnswers = $db->table('test_log_answers')
+                                      ->where('test_log_id', $log->log_id)
+                                      ->get()
+                                      ->getResult();
+                                      
+                $studentAnswers = [];
+                if ($log->answer_text) {
+                    $studentAnswers = json_decode($log->answer_text, true) ?: [];
+                }
+
+                foreach ($originalAnswers as $ans) {
+                    $parts = explode('|::|', $ans->answer_text);
+                    if (count($parts) >= 2) {
+                        $left = $parts[0];
+                        $right = $parts[1];
+                        $totalPairs++;
+                        
+                        if (isset($studentAnswers[$left]) && $studentAnswers[$left] === $right) {
+                            $correctPairs++;
+                        }
+                    }
+                }
+                
+                if ($totalPairs > 0) {
+                    $questionScore = ($correctPairs / $totalPairs) * $test->score_right;
+                } else {
+                    $questionScore = 0;
+                }
                 $maxPossiblePoints += $test->score_right;
             }
 
@@ -88,6 +125,103 @@ class ScoringEngine
     }
 
     /**
+     * Calculates the current score without saving to the database or finishing the attempt.
+     */
+    public function calculateScorePreview(int $attemptId)
+    {
+        $db = \Config\Database::connect();
+        $testAttemptModel = new TestAttemptModel();
+        $testModel = new TestModel();
+        
+        $attempt = $testAttemptModel->find($attemptId);
+        if (!$attempt) return 0;
+
+        $test = $testModel->find($attempt->test_id);
+        if (!$test) return 0;
+
+        $sql = "
+            SELECT tl.id as log_id, tl.question_id, tl.answer_text, tl.question_type
+            FROM test_logs tl
+            WHERE tl.test_attempt_id = ?
+        ";
+        $logs = $db->query($sql, [$attemptId])->getResult();
+
+        $totalScorePoints = 0;
+        $maxPossiblePoints = 0;
+
+        foreach ($logs as $log) {
+            $questionScore = 0;
+
+            if ($log->question_type == 1) {
+                $isCorrect = $this->isSingleChoiceCorrect($log->log_id);
+                if ($isCorrect === true) {
+                    $questionScore = $test->score_right;
+                } elseif ($isCorrect === false) {
+                    $questionScore = $test->score_wrong;
+                } else {
+                    $questionScore = $test->score_unanswered;
+                }
+                $maxPossiblePoints += $test->score_right;
+                
+            } elseif ($log->question_type == 2) {
+                $scoreResult = $this->calculateMultipleChoiceScore($log->log_id, $test);
+                $questionScore = $scoreResult['score'];
+                $maxPossiblePoints += $test->score_right;
+
+            } elseif ($log->question_type == 3) {
+                $isCorrect = $this->isEssayCorrect($log->log_id, $log->answer_text);
+                if ($isCorrect) {
+                    $questionScore = $test->score_right;
+                } else {
+                    $questionScore = 0;
+                }
+                $maxPossiblePoints += $test->score_right;
+
+            } elseif ($log->question_type == 4 || $log->question_type == 5) {
+                $correctPairs = 0;
+                $totalPairs = 0;
+                
+                $originalAnswers = $db->table('test_log_answers')
+                                      ->where('test_log_id', $log->log_id)
+                                      ->get()
+                                      ->getResult();
+                                      
+                $studentAnswers = [];
+                if ($log->answer_text) {
+                    $studentAnswers = json_decode($log->answer_text, true) ?: [];
+                }
+
+                foreach ($originalAnswers as $ans) {
+                    $parts = explode('|::|', $ans->answer_text);
+                    if (count($parts) >= 2) {
+                        $left = $parts[0];
+                        $right = $parts[1];
+                        $totalPairs++;
+                        if (isset($studentAnswers[$left]) && $studentAnswers[$left] === $right) {
+                            $correctPairs++;
+                        }
+                    }
+                }
+                
+                if ($totalPairs > 0) {
+                    $questionScore = ($correctPairs / $totalPairs) * $test->score_right;
+                }
+                $maxPossiblePoints += $test->score_right;
+            }
+            $totalScorePoints += $questionScore;
+        }
+
+        $finalScore = 0;
+        if ($maxPossiblePoints > 0) {
+            $finalScore = ($totalScorePoints / $maxPossiblePoints) * $test->max_score;
+        }
+
+        if ($finalScore < 0) $finalScore = 0;
+
+        return round($finalScore, 3);
+    }
+
+    /**
      * Checks if single choice is correct.
      * Returns true (correct), false (incorrect), or null (unanswered)
      */
@@ -95,9 +229,8 @@ class ScoringEngine
     {
         $db = \Config\Database::connect();
         $sql = "
-            SELECT tla.is_selected, a.is_correct
+            SELECT tla.is_selected, tla.is_correct
             FROM test_log_answers tla
-            JOIN answers a ON a.id = tla.answer_id
             WHERE tla.test_log_id = ?
         ";
         $answers = $db->query($sql, [$logId])->getResult();
@@ -114,6 +247,25 @@ class ScoringEngine
     }
 
     /**
+     * Checks if essay answer matches the saved correct answer exactly (case-insensitive).
+     */
+    private function isEssayCorrect($logId, $studentAnswer)
+    {
+        if (empty(trim($studentAnswer ?? ''))) return false;
+
+        $db = \Config\Database::connect();
+        $sql = "SELECT answer_text FROM test_log_answers WHERE test_log_id = ? LIMIT 1";
+        $correctAnswer = $db->query($sql, [$logId])->getRow();
+        
+        if (!$correctAnswer || empty(trim($correctAnswer->answer_text ?? ''))) return false;
+
+        $correctStr = strtolower(trim($correctAnswer->answer_text));
+        $studentStr = strtolower(trim($studentAnswer));
+
+        return $correctStr === $studentStr;
+    }
+
+    /**
      * Calculates score for Multiple Choice Multiple Answers.
      * Handles partial scoring if enabled.
      */
@@ -121,9 +273,8 @@ class ScoringEngine
     {
         $db = \Config\Database::connect();
         $sql = "
-            SELECT tla.is_selected, a.is_correct
+            SELECT tla.is_selected, tla.is_correct
             FROM test_log_answers tla
-            JOIN answers a ON a.id = tla.answer_id
             WHERE tla.test_log_id = ?
         ";
         $answers = $db->query($sql, [$logId])->getResult();
@@ -150,7 +301,8 @@ class ScoringEngine
             return ['score' => $test->score_unanswered];
         }
 
-        // If no partial score allowed, must get ALL correct options and NO wrong options
+        // Strict Mode: Must get ALL correct options AND ZERO wrong options.
+        // Memaksa siswa untuk berhati-hati dan melarang eksploitasi "centang semua".
         if (!$test->mcma_partial_score) {
             if ($selectedCorrect == $totalCorrectOptions && $selectedWrong == 0) {
                 return ['score' => $test->score_right];

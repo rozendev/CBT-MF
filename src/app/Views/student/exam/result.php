@@ -72,6 +72,37 @@
                                     <strong>Jawaban Anda:</strong>
                                     <p class="mb-0 mt-2"><?= nl2br(esc($log->answer_text ?: 'Tidak dijawab')) ?></p>
                                 </div>
+                            <?php elseif ($log->question_type == 4 || $log->question_type == 5): ?>
+                                <?php 
+                                    $studentAnswers = json_decode($log->answer_text, true) ?: [];
+                                    $logAnswers = $answers[$log->id] ?? [];
+                                ?>
+                                <ul class="list-group list-group-flush border-top border-bottom rounded-3">
+                                    <?php foreach ($logAnswers as $ans): 
+                                        $parts = explode('|::|', $ans->answer_text);
+                                        $left = $parts[0] ?? '';
+                                        $right = $parts[1] ?? '';
+                                        $selectedRight = $studentAnswers[$left] ?? '';
+                                        $isCorrect = ($selectedRight === $right);
+                                        
+                                        $bgClass = $isCorrect ? 'list-group-item-success' : 'list-group-item-danger';
+                                        $icon = $isCorrect ? '<i class="bi bi-check-circle-fill text-success me-2"></i>' : '<i class="bi bi-x-circle-fill text-danger me-2"></i>';
+                                    ?>
+                                        <li class="list-group-item <?= $bgClass ?> py-3">
+                                            <div class="d-flex flex-column">
+                                                <div class="fw-bold mb-1"><?= esc($left) ?></div>
+                                                <div class="d-flex align-items-center mb-1">
+                                                    <?= $icon ?> <span class="text-muted me-2">Jawaban Anda:</span> <strong><?= esc($selectedRight ?: 'Tidak Dijawab') ?></strong>
+                                                </div>
+                                                <?php if (!$isCorrect): ?>
+                                                    <div class="d-flex align-items-center text-success small">
+                                                        <i class="bi bi-arrow-return-right me-2"></i> Kunci Jawaban: <strong><?= esc($right) ?></strong>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
                             <?php else: ?>
                                 <ul class="list-group list-group-flush border-top border-bottom rounded-3">
                                     <?php 

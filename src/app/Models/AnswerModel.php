@@ -31,6 +31,7 @@ class AnswerModel extends Model
     public function getAnswersByQuestion(int $questionId)
     {
         return $this->where('question_id', $questionId)
+                    ->where('is_enabled', 1)
                     ->orderBy('position', 'ASC')
                     ->orderBy('id', 'ASC')
                     ->findAll();
