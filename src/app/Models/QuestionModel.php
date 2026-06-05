@@ -25,7 +25,7 @@ class QuestionModel extends Model
     protected $validationRules = [
         'subject_id'  => 'required|is_natural_no_zero',
         'description' => 'required',
-        'type'        => 'required|in_list[1,2,3,4]',
+        'type'        => 'required|in_list[1,2,3,4,5]',
         'difficulty'  => 'required|in_list[1,2,3,4,5,6,7,8,9,10]',
     ];
 

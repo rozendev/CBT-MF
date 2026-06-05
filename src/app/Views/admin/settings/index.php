@@ -161,11 +161,28 @@
                             
                             <div class="card bg-light border-0 mb-4">
                                 <div class="card-body">
-                                    <div class="form-check form-switch mb-2">
+                                    <div class="form-check form-switch mt-2">
                                         <input class="form-check-input fs-4" type="checkbox" role="switch" id="multiLoginToggle" name="settings[prevent_multi_login]" value="1" <?= (isset($groupedSettings['security']['prevent_multi_login']) && $groupedSettings['security']['prevent_multi_login']['value'] == '1') ? 'checked' : '' ?>>
                                         <label class="form-check-label fs-5 ms-2 mt-1 fw-bold text-dark" for="multiLoginToggle">Cegah Multi-Login</label>
                                     </div>
                                     <p class="text-muted mb-0 ms-1 small">Jika diaktifkan, satu akun hanya bisa login di satu perangkat/browser pada waktu yang sama. Akun tidak akan bisa digunakan login di tempat lain jika masih ada sesi aktif.</p>
+                                </div>
+                            </div>
+                            
+                            <hr class="my-4">
+                            <h6 class="fw-bold mb-3 text-secondary">Akses Installer & Migrasi</h6>
+                            
+                            <div class="row mb-4">
+                                <div class="col-12">
+                                    <div class="form-check form-switch mt-2">
+                                        <?php 
+                                            // Baca dari .env langsung karena ini spesifik
+                                            $installerLocked = env('INSTALLER_LOCKED', false);
+                                        ?>
+                                        <input class="form-check-input fs-4" type="checkbox" role="switch" id="installerLockToggle" name="settings[installer_locked]" value="1" <?= $installerLocked ? 'checked' : '' ?>>
+                                        <label class="form-check-label fs-5 ms-2 mt-1 fw-bold text-danger" for="installerLockToggle"><i class="bi bi-lock-fill"></i> Kunci Akses Web Installer (Sangat Disarankan)</label>
+                                    </div>
+                                    <p class="text-muted mb-0 ms-1 small">Jika diaktifkan, siapapun (termasuk Anda) tidak akan bisa mengakses URL <code>/install</code> demi keamanan. Matikan (buka kunci) hanya jika Anda perlu melakukan rekonfigurasi Database atau Cloudflare via Web Installer.</p>
                                 </div>
                             </div>
 

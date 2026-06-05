@@ -199,4 +199,16 @@ class App extends BaseConfig
      * @see http://www.w3.org/TR/CSP/
      */
     public bool $CSPEnabled = false;
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Automatically configure Cloudflare IPs if enabled
+        if (env('CLOUDFLARE_REAL_IP', false)) {
+            $this->proxyIPs = [
+                '*' => 'CF-Connecting-IP',
+            ];
+        }
+    }
 }

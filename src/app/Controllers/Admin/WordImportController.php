@@ -70,14 +70,9 @@ class WordImportController extends BaseController
         $filepath = $file->getTempName();
 
         try {
-            // Read document using robust XML extraction to prevent line squashing
-            $blocks = $this->extractTextFromDocx($filepath);
-            
-            // Fallback to PHPWord if ZipArchive extraction failed (empty)
-            if (empty($blocks)) {
-                $phpWord = IOFactory::load($filepath);
-                $blocks = $this->extractTextUsingPhpWord($phpWord);
-            }
+            // Read document using PhpWord to support Images and Tables
+            $phpWord = IOFactory::load($filepath);
+            $blocks = $this->extractTextUsingPhpWord($phpWord);
 
             $parsedQuestions = $this->parseBlocks($blocks);
             
@@ -114,6 +109,12 @@ class WordImportController extends BaseController
                     'difficulty' => 1,
                     'is_enabled' => 1
                 ]);
+
+                if ($questionId === false) {
+                    $db->transRollback();
+                    $errors = implode(', ', $this->questionModel->errors());
+                    return redirect()->back()->with('error', 'Gagal menyimpan soal ke database. Cek format Anda. Error: ' . $errors);
+                }
 
                 // Insert Options
                 $position = 1;
@@ -225,6 +226,22 @@ class WordImportController extends BaseController
         $section->addText('TYPE:TRUEFALSE', $fontStyleNormal);
         $section->addText('MATCH:Matahari terbit dari timur|::|Benar', $fontStyleNormal);
         $section->addText('MATCH:Bumi itu berbentuk datar|::|Salah', $fontStyleNormal);
+        $section->addTextBreak(1);
+
+        $section->addText('Q:7) Soal dengan Tabel:', $fontStyleNormal);
+        $tableStyle = array('borderSize' => 6, 'borderColor' => '999999');
+        $table = $section->addTable($tableStyle);
+        $table->addRow();
+        $table->addCell(2000)->addText('Nama', $fontStyleTitle);
+        $table->addCell(2000)->addText('Usia', $fontStyleTitle);
+        $table->addRow();
+        $table->addCell(2000)->addText('Andi', $fontStyleNormal);
+        $table->addCell(2000)->addText('15 Tahun', $fontStyleNormal);
+        $section->addText('Berdasarkan tabel di atas, berapakah usia Andi?', $fontStyleNormal);
+        $section->addText('A:) 10 Tahun', $fontStyleNormal);
+        $section->addText('B:) 15 Tahun', $fontStyleNormal);
+        $section->addText('C:) 20 Tahun', $fontStyleNormal);
+        $section->addText('RIGHT:B', $fontStyleNormal);
 
         $fileName = 'Template_Import_Soal_CBT.docx';
         $tempFile = tempnam(sys_get_temp_dir(), 'phpword');
@@ -235,69 +252,74 @@ class WordImportController extends BaseController
         return $this->response->download($tempFile, null)->setFileName($fileName);
     }
 
-    private function extractTextFromDocx($filepath)
-    {
-        $zip = new \ZipArchive();
-        if ($zip->open($filepath) === true) {
-            $xmlContent = $zip->getFromName('word/document.xml');
-            $zip->close();
-
-            if ($xmlContent === false) return [];
-
-            // Replace paragraph endings and line breaks with actual newlines
-            $xmlContent = str_replace('</w:p>', "\n", $xmlContent);
-            $xmlContent = preg_replace('/<w:br[^>]*>/i', "\n", $xmlContent);
-
-            // Decode HTML entities if any
-            $xmlContent = html_entity_decode($xmlContent, ENT_QUOTES, 'UTF-8');
-
-            // Strip all XML tags to leave only plain text
-            $text = strip_tags($xmlContent);
-
-            // Split into array by newline
-            $lines = explode("\n", $text);
-            $blocks = [];
-            foreach ($lines as $line) {
-                // Remove non-breaking spaces and trim
-                $line = trim(str_replace("\xC2\xA0", ' ', $line));
-                if (!empty($line)) {
-                    $blocks[] = $line;
-                }
-            }
-            return $blocks;
-        }
-        return [];
-    }
-
     private function extractTextUsingPhpWord($phpWord)
     {
         $blocks = [];
         foreach ($phpWord->getSections() as $section) {
             foreach ($section->getElements() as $element) {
-                if (method_exists($element, 'getElements')) {
-                    $paragraphText = '';
-                    foreach ($element->getElements() as $textElement) {
-                        if (method_exists($textElement, 'getText')) {
-                            $paragraphText .= $textElement->getText();
-                        } elseif (get_class($textElement) === 'PhpOffice\PhpWord\Element\TextBreak') {
-                            $paragraphText .= "\n";
-                        }
-                    }
-                    $lines = explode("\n", $paragraphText);
-                    foreach ($lines as $line) {
-                        $line = trim($line);
-                        if (!empty($line)) {
-                            $blocks[] = $line;
-                        }
-                    }
-                } elseif (method_exists($element, 'getText')) {
-                    $text = trim($element->getText());
-                    if (!empty($text)) {
-                        $blocks[] = $text;
+                $blocks = array_merge($blocks, $this->processPhpWordElement($element));
+            }
+        }
+        return $blocks;
+    }
+
+    private function processPhpWordElement($element)
+    {
+        $blocks = [];
+        
+        if ($element instanceof \PhpOffice\PhpWord\Element\TextRun || method_exists($element, 'getElements')) {
+            $paragraphText = '';
+            foreach ($element->getElements() as $textElement) {
+                if (method_exists($textElement, 'getText')) {
+                    $paragraphText .= htmlspecialchars($textElement->getText(), ENT_QUOTES, 'UTF-8');
+                } elseif (get_class($textElement) === 'PhpOffice\PhpWord\Element\TextBreak') {
+                    $paragraphText .= "\n";
+                } elseif ($textElement instanceof \PhpOffice\PhpWord\Element\Image) {
+                    $raw = $textElement->getImageStringData();
+                    if ($raw) {
+                        $ext = $textElement->getImageExtension();
+                        $base64 = base64_encode($raw);
+                        $paragraphText .= "<br><img src=\"data:image/{$ext};base64,{$base64}\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\"><br>";
                     }
                 }
             }
+            $lines = explode("\n", $paragraphText);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if (!empty($line)) {
+                    $blocks[] = $line;
+                }
+            }
+        } elseif ($element instanceof \PhpOffice\PhpWord\Element\Table) {
+            $html = '<div class="table-responsive my-3"><table class="table table-bordered table-sm" style="border-collapse: collapse; width: 100%;" border="1">';
+            foreach ($element->getRows() as $row) {
+                $html .= '<tr>';
+                foreach ($row->getCells() as $cell) {
+                    $html .= '<td style="padding: 8px; border: 1px solid #dee2e6;">';
+                    foreach ($cell->getElements() as $cellElement) {
+                        $cellBlocks = $this->processPhpWordElement($cellElement);
+                        $html .= implode('<br>', $cellBlocks);
+                    }
+                    $html .= '</td>';
+                }
+                $html .= '</tr>';
+            }
+            $html .= '</table></div>';
+            $blocks[] = $html;
+        } elseif ($element instanceof \PhpOffice\PhpWord\Element\Image) {
+            $raw = $element->getImageStringData();
+            if ($raw) {
+                $ext = $element->getImageExtension();
+                $base64 = base64_encode($raw);
+                $blocks[] = "<img src=\"data:image/{$ext};base64,{$base64}\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\">";
+            }
+        } elseif (method_exists($element, 'getText')) {
+            $text = trim($element->getText());
+            if (!empty($text)) {
+                $blocks[] = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+            }
         }
+        
         return $blocks;
     }
 
