@@ -278,8 +278,13 @@ class WordImportController extends BaseController
                     $raw = $textElement->getImageStringData();
                     if ($raw) {
                         $ext = $textElement->getImageExtension();
-                        $base64 = base64_encode($raw);
-                        $paragraphText .= "<br><img src=\"data:image/{$ext};base64,{$base64}\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\"><br>";
+                        $filename = uniqid('img_') . '.' . $ext;
+                        $uploadPath = FCPATH . 'uploads/questions/';
+                        if (!is_dir($uploadPath)) {
+                            @mkdir($uploadPath, 0777, true);
+                        }
+                        @file_put_contents($uploadPath . $filename, $raw);
+                        $paragraphText .= "<br><img src=\"" . base_url('uploads/questions/' . $filename) . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\"><br>";
                     }
                 }
             }
@@ -310,8 +315,13 @@ class WordImportController extends BaseController
             $raw = $element->getImageStringData();
             if ($raw) {
                 $ext = $element->getImageExtension();
-                $base64 = base64_encode($raw);
-                $blocks[] = "<img src=\"data:image/{$ext};base64,{$base64}\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\">";
+                $filename = uniqid('img_') . '.' . $ext;
+                $uploadPath = FCPATH . 'uploads/questions/';
+                if (!is_dir($uploadPath)) {
+                    @mkdir($uploadPath, 0777, true);
+                }
+                @file_put_contents($uploadPath . $filename, $raw);
+                $blocks[] = "<img src=\"" . base_url('uploads/questions/' . $filename) . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\">";
             }
         } elseif (method_exists($element, 'getText')) {
             $text = trim($element->getText());
