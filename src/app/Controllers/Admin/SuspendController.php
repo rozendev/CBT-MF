@@ -75,7 +75,10 @@ class SuspendController extends BaseController
 
         // Delete CI sessions from database to fully invalidate server-side
         $db->table('ci_sessions')
-           ->like('data', "user_id|i:{$userId}")
+           ->groupStart()
+               ->like('data', "user_id|i:{$userId};")
+               ->orLike('data', "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";")
+           ->groupEnd()
            ->delete();
 
         return redirect()->to('/admin/suspend')->with('success', "User {$user->username} telah di-BAN.");
