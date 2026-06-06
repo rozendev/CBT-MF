@@ -60,6 +60,10 @@ class InitialSeeder extends Seeder
             ['key' => 'anti_cheat_enabled',  'value' => '1',               'type' => 'boolean', 'group' => 'security', 'description' => 'Aktifkan Anti-Cheat Sederhana'],
             ['key' => 'suspend_timer_seconds', 'value' => '30',            'type' => 'integer', 'group' => 'security', 'description' => 'Durasi suspend sementara (detik)'],
             ['key' => 'max_cheat_strikes',   'value' => '2',               'type' => 'integer', 'group' => 'security', 'description' => 'Toleransi pelanggaran sebelum blokir permanen'],
+            ['key' => 'primary_color',       'value' => '#0d6efd',         'type' => 'string',  'group' => 'logo',     'description' => 'Warna Utama'],
+            ['key' => 'secondary_color',     'value' => '#f4f6f9',         'type' => 'string',  'group' => 'logo',     'description' => 'Warna Sekunder'],
+            ['key' => 'navbar_color',        'value' => '#ffffff',         'type' => 'string',  'group' => 'logo',     'description' => 'Warna Navbar'],
+            ['key' => 'text_color',          'value' => '#212529',         'type' => 'string',  'group' => 'logo',     'description' => 'Warna Teks'],
         ];
 
         $now = date('Y-m-d H:i:s');
