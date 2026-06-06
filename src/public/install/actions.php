@@ -133,7 +133,7 @@ ENV;
         
         // Try running spark using PHP via shell_exec
         $phpBin = PHP_BINARY;
-        if (strpos(php_sapi_name(), 'fpm') !== false || strpos(php_sapi_name(), 'cgi') !== false) {
+        if (empty($phpBin) || strpos(php_sapi_name(), 'apache') !== false || strpos(php_sapi_name(), 'fpm') !== false || strpos(php_sapi_name(), 'cgi') !== false) {
             $phpBin = 'php'; // Fallback to PATH php
         }
         
