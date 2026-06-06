@@ -1,7 +1,7 @@
 <?php
 session_start();
 $envPath = __DIR__ . '/../../.env';
-$isInstalled = file_exists($envPath);
+$isInstalled = false;
 
 // Define base URL for installer
 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
@@ -25,6 +25,9 @@ function getEnvVars($path) {
 
 $envVars = getEnvVars($envPath);
 $installerLocked = isset($envVars['INSTALLER_LOCKED']) && $envVars['INSTALLER_LOCKED'] === 'true';
+if (isset($envVars['database.default.hostname']) && isset($envVars['database.default.username'])) {
+    $isInstalled = true;
+}
 
 // 404 if locked
 if ($isInstalled && $installerLocked) {

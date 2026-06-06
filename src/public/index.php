@@ -8,7 +8,16 @@ use Config\Paths;
  * CHECK INSTALLER
  *---------------------------------------------------------------
  */
-if (!file_exists(__DIR__ . '/../.env')) {
+$envPath = __DIR__ . '/../.env';
+$needsInstall = true;
+if (file_exists($envPath)) {
+    $envContent = file_get_contents($envPath);
+    if (strpos($envContent, 'INSTALLER_LOCKED = true') !== false) {
+        $needsInstall = false;
+    }
+}
+
+if ($needsInstall) {
     header('Location: /install/index.php');
     exit;
 }
