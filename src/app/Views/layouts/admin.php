@@ -13,10 +13,10 @@ else $greeting = 'Malam';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title><?= $this->renderSection('page_title') ?> — Sistem Ujian</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css') ?>" rel="stylesheet">
     <!-- Menggunakan font modern (Outfit) -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="<?= base_url('assets/css/outfit.css') ?>" rel="stylesheet">
     <style>
         :root {
             --sidebar-width: 260px;
@@ -275,7 +275,7 @@ else $greeting = 'Malam';
             .greeting-text { display: none !important; }
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js') ?>"></script>
     <script>
         // Init theme right away to prevent flash
         const savedTheme = localStorage.getItem('theme') || 'light';
@@ -413,7 +413,7 @@ else $greeting = 'Malam';
         <?= $this->renderSection('content') ?>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js') ?>"></script>
     <script>
         // Sidebar toggle
         const sidebar = document.getElementById('sidebar');

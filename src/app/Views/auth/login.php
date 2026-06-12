@@ -22,8 +22,7 @@ $hasToast = session()->getFlashdata('error') || session()->getFlashdata('success
     <title>Login — <?= esc($appName) ?></title>
 
     <!-- Preconnect: hint browser to open connections early -->
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="stylesheet" href="<?= base_url('assets/css/inter.css') ?>">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <!-- Preload critical images to avoid LCP penalty -->
@@ -35,14 +34,11 @@ $hasToast = session()->getFlashdata('error') || session()->getFlashdata('success
     <?php endif; ?>
 
     <!-- Google Fonts with display=swap to prevent FOIT (Flash of Invisible Text) -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
 
     <!-- Bootstrap CSS (render-critical, stays synchronous) -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- Bootstrap Icons: load non-blocking via media trick -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" media="print" onload="this.media='all'">
-    <noscript><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"></noscript>
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css') ?>" rel="stylesheet">
 
     <style>
         :root {
@@ -255,7 +251,7 @@ $hasToast = session()->getFlashdata('error') || session()->getFlashdata('success
 
     <!-- SweetAlert2 dimuat HANYA jika ada notifikasi yang perlu ditampilkan -->
     <?php if ($hasToast): ?>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
+    <script src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js') ?>" defer></script>
     <?php endif; ?>
 
     <script>
