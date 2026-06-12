@@ -16,6 +16,12 @@ class MultiLoginFilter implements FilterInterface
             return;
         }
 
+        // Allow Admin and Guru to have multiple active sessions
+        $role = $session->get('role');
+        if (in_array($role, ['admin', 'guru'])) {
+            return;
+        }
+
         // Check if multi-login prevention is enabled
         $db = \Config\Database::connect();
         $setting = $db->table('settings')

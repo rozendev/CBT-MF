@@ -33,10 +33,32 @@ class DashboardController extends BaseController
                           ->get()
                           ->getResultArray();
 
+        // Fetch Chart Data (Pie Chart: Belum vs Sudah Mengerjakan)
+        $totalStudents = $db->table('users')
+                            ->where('role', 'siswa')
+                            ->where('deleted_at', null)
+                            ->countAllResults();
+
+        $studentsTakenQuery = $db->query("
+            SELECT COUNT(DISTINCT user_id) as total 
+            FROM test_attempts ta
+            JOIN users u ON u.id = ta.user_id
+            WHERE u.role = 'siswa' AND u.deleted_at IS NULL
+        ")->getRow();
+        
+        $studentsTaken = $studentsTakenQuery ? (int)$studentsTakenQuery->total : 0;
+        $studentsNotTaken = max(0, $totalStudents - $studentsTaken);
+
+        $chartData = [
+            'labels' => ['Sudah Mengerjakan', 'Belum Mengerjakan'],
+            'data'   => [$studentsTaken, $studentsNotTaken]
+        ];
+
         return view('admin/dashboard', [
             'stats'      => $stats,
             'activities' => $activities,
             'onlineUsers'=> $onlineUsers,
+            'chartData'  => json_encode($chartData),
         ]);
     }
 }

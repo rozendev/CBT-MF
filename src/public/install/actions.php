@@ -42,6 +42,12 @@ if ($action === 'test_db') {
     exit;
 }
 
+if ($action === 'save_server') {
+    $_SESSION['server_setup'] = $_POST;
+    echo json_encode(['status' => 'success']);
+    exit;
+}
+
 if ($action === 'save_db') {
     $_SESSION['db_setup'] = $_POST;
     echo json_encode(['status' => 'success']);
@@ -50,7 +56,7 @@ if ($action === 'save_db') {
 
 if ($action === 'save_cf') {
     $_SESSION['cf_setup'] = $_POST;
-    header("Location: index.php?step=4");
+    header("Location: index.php?step=5");
     exit;
 }
 
@@ -78,10 +84,14 @@ if ($action === 'install') {
         $envContent = file_get_contents($envPath);
     }
     
+    $serverData = $_SESSION['server_setup'] ?? [];
+    $appUrl = $serverData['app_url'] ?? $baseInstallerUrl . '../';
+    
     // We will generate a fresh .env
     $newEnv = <<<ENV
 CI_ENVIRONMENT = production
-app.baseURL = '{$baseInstallerUrl}../'
+app.baseURL = '{$appUrl}'
+app.indexPage = ''
 app.forceGlobalSecureRequests = false
 
 database.default.hostname = {$dbData['db_host']}

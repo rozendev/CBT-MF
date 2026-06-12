@@ -82,6 +82,9 @@ class SseController extends BaseController
             $redis = null;
         }
 
+        $lastExamMode = null;
+        $lastStaticPath = null;
+
         // Main SSE loop — poll every 3 seconds
         while (true) {
             // Check if client disconnected
@@ -118,8 +121,9 @@ class SseController extends BaseController
             if (!$shouldKick) {
                 try {
                     $currentAttempt = $db->table('test_attempts')
-                                         ->select('status')
-                                         ->where('id', $attemptId)
+                                         ->select('test_attempts.status, tests.exam_mode, tests.static_page_path')
+                                         ->join('tests', 'tests.id = test_attempts.test_id')
+                                         ->where('test_attempts.id', $attemptId)
                                          ->get()->getRow();
 
                     if ($currentAttempt) {
@@ -131,6 +135,18 @@ class SseController extends BaseController
                             $shouldKick = true;
                             $kickMessage = 'Ujian Anda telah diselesaikan.';
                             $kickEvent = 'finished';
+                        }
+                        
+                        // Check if exam mode changed
+                        if (!$shouldKick) {
+                            if ($lastExamMode !== $currentAttempt->exam_mode || $lastStaticPath !== $currentAttempt->static_page_path) {
+                                $lastExamMode = $currentAttempt->exam_mode;
+                                $lastStaticPath = $currentAttempt->static_page_path;
+                                $this->sendSseEvent('sync_mode', [
+                                    'exam_mode' => $currentAttempt->exam_mode,
+                                    'static_page_path' => $currentAttempt->static_page_path
+                                ]);
+                            }
                         }
                     } else {
                         // Attempt deleted (admin reset)

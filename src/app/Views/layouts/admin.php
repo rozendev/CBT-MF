@@ -1,3 +1,11 @@
+<?php
+// Tentukan waktu greeting
+$hour = date('H');
+if ($hour < 11) $greeting = 'Pagi';
+elseif ($hour < 15) $greeting = 'Siang';
+elseif ($hour < 18) $greeting = 'Sore';
+else $greeting = 'Malam';
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -7,25 +15,61 @@
     <title><?= $this->renderSection('page_title') ?> — Sistem Ujian</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Menggunakan font modern (Outfit) -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --sidebar-width: 260px;
-            --sidebar-bg: #1e293b;
-            --sidebar-hover: rgba(255,255,255,0.06);
-            --sidebar-active: rgba(79,70,229,0.15);
-            --sidebar-accent: #4f46e5;
-            --topbar-height: 60px;
-            --content-bg: #f1f5f9;
-            --card-bg: #ffffff;
+            --topbar-height: 80px;
+            
+            /* Light Theme (Default) */
+            --bg-body: #f4f7fe;
+            --bg-surface: #ffffff;
+            --text-primary: #2b3674;
+            --text-secondary: #a3aed1;
+            --border-color: #e2e8f0;
+            --card-shadow: 0 4px 15px rgba(0,0,0,0.03);
+            
+            --sidebar-bg: #ffffff;
+            --sidebar-text: #a3aed1;
+            --sidebar-hover-bg: #f4f7fe;
+            --sidebar-hover-text: #2b3674;
+            --sidebar-active-bg: #f4e8ff; /* Soft purple */
+            --sidebar-active-text: #4318ff; /* Deep purple */
+            
+            --topbar-bg: rgba(255, 255, 255, 0.85);
+            --brand-color: #4318ff;
         }
+
+        [data-theme="dark"] {
+            /* Dark Theme */
+            --bg-body: #13131a;
+            --bg-surface: #1c1c24;
+            --text-primary: #ffffff;
+            --text-secondary: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.05);
+            --card-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            
+            --sidebar-bg: #1c1c24;
+            --sidebar-text: #94a3b8;
+            --sidebar-hover-bg: rgba(255,255,255,0.05);
+            --sidebar-hover-text: #ffffff;
+            --sidebar-active-bg: rgba(67, 24, 255, 0.15); 
+            --sidebar-active-text: #7551ff;
+            
+            --topbar-bg: rgba(28, 28, 36, 0.85);
+            --brand-color: #7551ff;
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Inter', sans-serif;
-            background: var(--content-bg);
-            color: #1e293b;
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-body);
+            color: var(--text-primary);
             overflow-x: hidden;
+            transition: background 0.3s ease, color 0.3s ease;
         }
+
         /* ── Sidebar ─────────────────────────────────────── */
         .sidebar {
             position: fixed;
@@ -34,98 +78,72 @@
             width: var(--sidebar-width);
             height: 100vh;
             background: var(--sidebar-bg);
-            color: #e2e8f0;
             z-index: 1040;
             display: flex;
             flex-direction: column;
-            transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+            transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), background 0.3s ease;
         }
         .sidebar-brand {
-            padding: 1.25rem 1.5rem;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            padding: 1.5rem 1.8rem;
             display: flex;
             align-items: center;
-            gap: 0.6rem;
+            gap: 0.8rem;
         }
-        .sidebar-brand .icon { font-size: 1.5rem; }
-        .sidebar-brand h5 {
+        .sidebar-brand .icon-box { 
+            width: 32px; height: 32px;
+            background: var(--brand-color);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 1.2rem;
+        }
+        .sidebar-brand h4 {
             margin: 0;
             font-weight: 700;
-            font-size: 1.1rem;
-            color: #f1f5f9;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
         }
         .sidebar-nav {
             flex: 1;
             overflow-y: auto;
-            padding: 0.75rem 0;
+            padding: 1rem 1.2rem;
         }
         .sidebar-nav::-webkit-scrollbar { width: 4px; }
-        .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 4px; }
+        [data-theme="dark"] .sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+        
         .nav-label {
-            padding: 1rem 1.5rem 0.4rem;
-            font-size: 0.7rem;
+            padding: 1.2rem 0.6rem 0.5rem;
+            font-size: 0.75rem;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: #64748b;
+            letter-spacing: 1.2px;
+            color: var(--text-secondary);
             font-weight: 600;
         }
         .nav-item {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
-            padding: 0.65rem 1.5rem;
-            color: #94a3b8;
+            gap: 0.8rem;
+            padding: 0.75rem 1rem;
+            color: var(--sidebar-text);
             text-decoration: none;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             font-weight: 500;
-            border-left: 3px solid transparent;
+            border-radius: 10px;
+            margin-bottom: 0.2rem;
             transition: all 0.2s ease;
         }
         .nav-item:hover {
-            background: var(--sidebar-hover);
-            color: #e2e8f0;
+            background: var(--sidebar-hover-bg);
+            color: var(--sidebar-hover-text);
         }
         .nav-item.active {
-            background: var(--sidebar-active);
-            color: #a5b4fc;
-            border-left-color: var(--sidebar-accent);
-        }
-        .nav-item i { font-size: 1.1rem; width: 20px; text-align: center; }
-        .sidebar-footer {
-            padding: 1rem 1.5rem;
-            border-top: 1px solid rgba(255,255,255,0.06);
-        }
-        .sidebar-user {
-            display: flex;
-            align-items: center;
-            gap: 0.6rem;
-        }
-        .sidebar-user .avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 0.85rem;
-            color: white;
-        }
-        .sidebar-user .info { flex: 1; min-width: 0; }
-        .sidebar-user .name {
+            background: var(--sidebar-active-bg);
+            color: var(--sidebar-active-text);
             font-weight: 600;
-            font-size: 0.85rem;
-            color: #f1f5f9;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
-        .sidebar-user .role {
-            font-size: 0.7rem;
-            color: #64748b;
-            text-transform: capitalize;
-        }
+        .nav-item i { font-size: 1.2rem; }
+
         /* ── Topbar ──────────────────────────────────────── */
         .topbar {
             position: fixed;
@@ -133,51 +151,116 @@
             left: var(--sidebar-width);
             right: 0;
             height: var(--topbar-height);
-            background: rgba(255,255,255,0.85);
+            background: var(--topbar-bg);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid #e2e8f0;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 0 1.5rem;
+            padding: 0 2rem;
             z-index: 1030;
-            transition: left 0.3s cubic-bezier(0.4,0,0.2,1);
+            transition: left 0.3s cubic-bezier(0.4,0,0.2,1), background 0.3s ease;
         }
-        .topbar-title { font-weight: 600; font-size: 1.1rem; color: #1e293b; }
-        .topbar-actions { display: flex; align-items: center; gap: 0.75rem; }
         .btn-toggle-sidebar {
             display: none;
             background: none;
             border: none;
-            font-size: 1.3rem;
-            color: #475569;
+            font-size: 1.5rem;
+            color: var(--text-primary);
             cursor: pointer;
             padding: 0.25rem;
         }
+        .topbar-icon-btn {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            background: var(--bg-body);
+            color: var(--text-secondary);
+            display: flex; align-items: center; justify-content: center;
+            border: none; cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .topbar-icon-btn:hover { color: var(--brand-color); }
+        .user-profile-btn {
+            display: flex; align-items: center; gap: 0.6rem;
+            background: none; border: none; padding: 0; cursor: pointer;
+        }
+        .user-avatar {
+            width: 40px; height: 40px; border-radius: 12px;
+            background: linear-gradient(135deg, var(--brand-color), #bc95ff);
+            color: white; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 1rem;
+        }
+
         /* ── Main Content ────────────────────────────────── */
         .main-content {
             margin-left: var(--sidebar-width);
             margin-top: var(--topbar-height);
-            padding: 1.5rem;
+            padding: 2rem;
             min-height: calc(100vh - var(--topbar-height));
             transition: margin-left 0.3s cubic-bezier(0.4,0,0.2,1);
         }
-        /* ── Cards ───────────────────────────────────────── */
+        
+        /* Utility overrides for components */
         .card {
+            background: var(--bg-surface);
             border: none;
-            border-radius: 14px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
-            transition: box-shadow 0.2s, transform 0.2s;
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            transition: background 0.3s, box-shadow 0.2s;
         }
-        .card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        /* Global Text Overrides */
+        body, h1, h2, h3, h4, h5, h6, p, label, .h1, .h2, .h3, .h4, .h5, .h6 { color: var(--text-primary); }
+        .text-body { color: var(--text-primary) !important; }
+        .text-dark { color: var(--text-primary) !important; }
+        .text-muted { color: var(--text-secondary) !important; }
+        .bg-white { background: var(--bg-surface) !important; }
+        .bg-light { background: var(--bg-body) !important; }
+        .border, .border-bottom, .border-top, .border-start, .border-end { border-color: var(--border-color) !important; }
+        
+        /* Buttons Overrides */
+        [data-theme="dark"] .btn-outline-secondary { color: var(--text-secondary); border-color: var(--border-color); }
+        [data-theme="dark"] .btn-outline-secondary:hover { background-color: rgba(255,255,255,0.1); color: var(--text-primary); }
+        [data-theme="dark"] .btn-light { background-color: rgba(255,255,255,0.05); color: var(--text-primary); border-color: transparent; }
+        [data-theme="dark"] .btn-light:hover { background-color: rgba(255,255,255,0.1); }
+        [data-theme="dark"] .btn-outline-dark { color: var(--text-primary); border-color: var(--border-color); }
+        [data-theme="dark"] .btn-outline-dark:hover { background-color: rgba(255,255,255,0.1); }
+        
+        /* Table overrides */
+        .table { color: var(--text-primary) !important; }
+        .table-light { background: var(--bg-body) !important; color: var(--text-primary) !important; }
+        .table-light th { background: var(--bg-body) !important; color: var(--text-secondary) !important; border-bottom: none; }
+        .table>:not(caption)>*>* { background-color: transparent !important; border-bottom-color: var(--border-color); color: var(--text-primary); }
+        .table-striped>tbody>tr:nth-of-type(odd)>* { color: var(--text-primary); }
+        [data-theme="dark"] .table-striped>tbody>tr:nth-of-type(odd)>* { background-color: rgba(255,255,255,0.02) !important; }
+        .table-hover>tbody>tr:hover>* { color: var(--text-primary); }
+        [data-theme="dark"] .table-hover>tbody>tr:hover>* { background-color: rgba(255,255,255,0.05) !important; }
+
+        /* Form Controls & Modals & List Group */
+        .form-control, .form-select { 
+            background-color: var(--bg-body); 
+            border-color: var(--border-color); 
+            color: var(--text-primary); 
         }
+        .form-control:focus, .form-select:focus { 
+            background-color: var(--bg-body); 
+            color: var(--text-primary); 
+            border-color: var(--brand-color);
+            box-shadow: 0 0 0 0.25rem rgba(67, 24, 255, 0.25);
+        }
+        [data-theme="dark"] .form-control::placeholder { color: #64748b; }
+        .modal-content { background-color: var(--bg-surface); color: var(--text-primary); border-color: var(--border-color); }
+        .modal-header, .modal-footer { border-color: var(--border-color); }
+        .list-group-item { background-color: transparent; color: var(--text-primary); border-color: var(--border-color); }
+        .dropdown-menu { background-color: var(--bg-surface); border-color: var(--border-color); }
+        .dropdown-item { color: var(--text-primary); }
+        .dropdown-item:hover { background-color: var(--bg-body); color: var(--brand-color); }
+        .alert-info { background-color: rgba(13, 110, 253, 0.1); color: #0d6efd; border: none; }
+        [data-theme="dark"] .alert-info { background-color: rgba(13, 110, 253, 0.15); color: #6ea8fe; }
+
         /* ── Overlay for mobile ──────────────────────────── */
         .sidebar-overlay {
             display: none;
-            position: fixed;
-            inset: 0;
+            position: fixed; inset: 0;
             background: rgba(0,0,0,0.5);
             z-index: 1035;
         }
@@ -186,12 +269,18 @@
             .sidebar { transform: translateX(-100%); }
             .sidebar.show { transform: translateX(0); }
             .sidebar-overlay.show { display: block; }
-            .topbar { left: 0; }
-            .main-content { margin-left: 0; }
+            .topbar { left: 0; padding: 0 1rem; }
+            .main-content { margin-left: 0; padding: 1.5rem 1rem; }
             .btn-toggle-sidebar { display: block; }
+            .greeting-text { display: none !important; }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        // Init theme right away to prevent flash
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
     <?= $this->renderSection('styles') ?>
 </head>
 <body>
@@ -201,88 +290,103 @@
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
-            <span class="icon">🎓</span>
-            <h5>Sistem Ujian</h5>
+            <div class="icon-box"><i class="bi bi-hexagon-fill"></i></div>
+            <h4>Sistem Ujian</h4>
         </div>
 
         <nav class="sidebar-nav">
-            <div class="nav-label">Menu Utama</div>
+            <div class="nav-label">MAIN</div>
             <?php
             $currentUrl = current_url();
             $isAdmin = session()->get('role') === 'admin';
             
-            $navItems = [
-                ['url' => '/admin/dashboard', 'icon' => 'bi-speedometer2',      'label' => 'Dashboard'],
+            $mainNav = [
+                ['url' => '/admin/dashboard', 'icon' => 'bi-house-door', 'label' => 'Dashboard'],
+                ['url' => '/admin/tests',     'icon' => 'bi-file-earmark-text', 'label' => 'Ujian'],
             ];
-            
-            if ($isAdmin) {
-                $navItems = array_merge($navItems, [
-                    ['url' => '/admin/users',     'icon' => 'bi-people',            'label' => 'Pengguna'],
-                    ['url' => '/admin/groups',    'icon' => 'bi-collection',        'label' => 'Grup'],
-                    ['url' => '/admin/suspend',   'icon' => 'bi-shield-lock',       'label' => 'Suspend & Blokir'],
-                ]);
-            }
-
-            $navItems = array_merge($navItems, [
-                ['url' => '/admin/modules',   'icon' => 'bi-folder2',           'label' => 'Modul'],
-                ['url' => '/admin/subjects',  'icon' => 'bi-book',              'label' => 'Subjek'],
-                ['url' => '/admin/questions', 'icon' => 'bi-question-circle',   'label' => 'Bank Soal'],
-                ['url' => '/admin/tests',     'icon' => 'bi-clipboard-check',   'label' => 'Ujian'],
-                ['url' => '/admin/results',   'icon' => 'bi-graph-up',          'label' => 'Hasil'],
-            ]);
-            
-            foreach ($navItems as $item):
+            foreach ($mainNav as $item):
                 $active = str_contains($currentUrl, $item['url']) ? 'active' : '';
             ?>
                 <a href="<?= base_url($item['url']) ?>" class="nav-item <?= $active ?>">
-                    <i class="bi <?= $item['icon'] ?>"></i>
-                    <?= $item['label'] ?>
+                    <i class="bi <?= $item['icon'] ?>"></i> <?= $item['label'] ?>
+                </a>
+            <?php endforeach; ?>
+
+            <div class="nav-label">MANAGEMENT</div>
+            <?php
+            $mgtNav = [
+                ['url' => '/admin/results',   'icon' => 'bi-bar-chart', 'label' => 'Hasil Ujian'],
+                ['url' => '/admin/reports',   'icon' => 'bi-file-earmark-spreadsheet', 'label' => 'Export Laporan'],
+                ['url' => '/admin/questions', 'icon' => 'bi-journal-text', 'label' => 'Bank Soal'],
+                ['url' => '/admin/subjects',  'icon' => 'bi-book', 'label' => 'Subjek'],
+                ['url' => '/admin/modules',   'icon' => 'bi-folder2', 'label' => 'Modul'],
+            ];
+            if ($isAdmin) {
+                array_unshift($mgtNav, ['url' => '/admin/users', 'icon' => 'bi-people', 'label' => 'Siswa/Pengguna']);
+                $mgtNav[] = ['url' => '/admin/groups', 'icon' => 'bi-collection', 'label' => 'Grup'];
+            }
+            foreach ($mgtNav as $item):
+                $active = str_contains($currentUrl, $item['url']) ? 'active' : '';
+            ?>
+                <a href="<?= base_url($item['url']) ?>" class="nav-item <?= $active ?>">
+                    <i class="bi <?= $item['icon'] ?>"></i> <?= $item['label'] ?>
                 </a>
             <?php endforeach; ?>
 
             <?php if ($isAdmin): ?>
-            <div class="nav-label mt-2">Sistem</div>
+            <div class="nav-label">SYSTEM</div>
+            <a href="<?= base_url('/admin/analytics') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/analytics') ? 'active' : '' ?>">
+                <i class="bi bi-graph-up-arrow"></i> Web Analytics
+            </a>
+            <a href="<?= base_url('/admin/suspend') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/suspend') ? 'active' : '' ?>">
+                <i class="bi bi-shield-lock"></i> Keamanan (Suspend)
+            </a>
             <a href="<?= base_url('/admin/settings') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/settings') ? 'active' : '' ?>">
-                <i class="bi bi-gear"></i>
-                Pengaturan
+                <i class="bi bi-gear"></i> Pengaturan
             </a>
             <?php endif; ?>
         </nav>
-
-        <div class="sidebar-footer">
-            <div class="sidebar-user">
-                <div class="avatar">
-                    <?= strtoupper(substr(session()->get('firstname') ?? 'A', 0, 1)) ?>
-                </div>
-                <div class="info">
-                    <div class="name"><?= esc(session()->get('firstname') ?? 'User') ?></div>
-                    <div class="role"><?= esc(session()->get('role') ?? '') ?></div>
-                </div>
-                <a href="<?= base_url('logout') ?>" class="text-decoration-none" title="Logout">
-                    <i class="bi bi-box-arrow-right" style="color:#94a3b8;font-size:1.1rem;"></i>
-                </a>
-            </div>
-        </div>
     </aside>
 
     <!-- Topbar -->
-    <header class="topbar">
-        <div class="d-flex align-items-center gap-2">
+    <header class="topbar d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-3">
             <button class="btn-toggle-sidebar" id="toggleSidebar">
                 <i class="bi bi-list"></i>
             </button>
-            <span class="topbar-title"><?= $this->renderSection('page_title') ?></span>
+            <div class="greeting-text d-none d-md-block">
+                <h5 class="mb-0 fw-bold" style="color: var(--text-primary);">Selamat <?= $greeting ?>, <?= esc(session()->get('firstname') ?? 'Admin') ?></h5>
+                <small style="color: var(--text-secondary); font-size: 0.85rem;">Tanggal: <?= date('d M, Y') ?></small>
+            </div>
         </div>
-        <div class="topbar-actions">
+
+        <div class="d-flex align-items-center gap-2 gap-md-3">
+            <!-- Theme Toggle -->
+            <button class="topbar-icon-btn" id="btnThemeToggle" title="Toggle Theme">
+                <i class="bi bi-moon-stars" id="themeIcon"></i>
+            </button>
+            
+            <a href="<?= base_url('/admin/results') ?>" class="topbar-icon-btn" title="Laporan">
+                <i class="bi bi-bell"></i>
+            </a>
+
+            <!-- User Profile Dropdown -->
             <div class="dropdown">
-                <button class="btn btn-sm btn-light rounded-pill dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                    <i class="bi bi-person-circle me-1"></i>
-                    <?= esc(session()->get('firstname') ?? 'User') ?>
+                <button class="user-profile-btn ms-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <div class="d-none d-md-block text-end me-1">
+                        <div class="fw-bold" style="font-size: 0.9rem; color: var(--text-primary); line-height:1.2;"><?= esc(session()->get('firstname') ?? 'User') ?></div>
+                        <small style="font-size: 0.75rem; color: var(--text-secondary);"><?= esc(session()->get('username')) ?></small>
+                    </div>
+                    <div class="user-avatar">
+                        <?= strtoupper(substr(session()->get('firstname') ?? 'A', 0, 1)) ?>
+                    </div>
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="<?= base_url('/admin/tests') ?>"><i class="bi bi-file-earmark-text me-2"></i> Manajemen Ujian</a></li>
-                    <li><a class="dropdown-item" href="<?= base_url('/admin/results') ?>"><i class="bi bi-bar-chart-fill me-2"></i> Laporan Ujian</a></li>
-                    <li><a class="dropdown-item" href="<?= base_url('logout') ?>"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                <ul class="dropdown-menu dropdown-menu-end border-0 shadow-sm" style="border-radius: 12px; background: var(--bg-surface);">
+                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/tests') ?>" style="color: var(--text-primary);"><i class="bi bi-file-earmark-text me-2 text-muted"></i> Manajemen Ujian</a></li>
+                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/results') ?>" style="color: var(--text-primary);"><i class="bi bi-bar-chart-fill me-2 text-muted"></i> Laporan Ujian</a></li>
+                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/reports') ?>" style="color: var(--text-primary);"><i class="bi bi-file-earmark-spreadsheet-fill me-2 text-success"></i> Export Laporan</a></li>
+                    <li><hr class="dropdown-divider" style="border-color: var(--border-color);"></li>
+                    <li><a class="dropdown-item py-2 text-danger fw-semibold" href="<?= base_url('logout') ?>"><i class="bi bi-box-arrow-right me-2"></i> Logout</a></li>
                 </ul>
             </div>
         </div>
@@ -292,15 +396,15 @@
     <main class="main-content">
         <!-- Flash Messages -->
         <?php if (session()->getFlashdata('success')): ?>
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                <i class="bi bi-check-circle-fill me-1"></i>
+            <div class="alert alert-success alert-dismissible fade show border-0 shadow-sm rounded-3" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i>
                 <?= esc(session()->getFlashdata('success')) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         <?php endif; ?>
         <?php if (session()->getFlashdata('error')): ?>
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm rounded-3" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
                 <?= esc(session()->getFlashdata('error')) ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
@@ -314,9 +418,9 @@
         // Sidebar toggle
         const sidebar = document.getElementById('sidebar');
         const overlay = document.getElementById('sidebarOverlay');
-        const toggle = document.getElementById('toggleSidebar');
+        const toggleBtn = document.getElementById('toggleSidebar');
 
-        toggle?.addEventListener('click', () => {
+        toggleBtn?.addEventListener('click', () => {
             sidebar.classList.toggle('show');
             overlay.classList.toggle('show');
         });
@@ -326,72 +430,48 @@
             overlay.classList.remove('show');
         });
 
-        // Sidebar Submenu Pinning via localStorage
-        const openMenus = JSON.parse(localStorage.getItem('pinnedMenus') || '[]');
-        
-        // Restore pinned menus on load (if they aren't already open due to active route)
-        openMenus.forEach(id => {
-            const el = document.getElementById(id);
-            if (el && !el.classList.contains('show')) {
-                const bsCollapse = new bootstrap.Collapse(el, {toggle: false});
-                bsCollapse.show();
-                const trigger = document.querySelector(`[href="#${id}"]`);
-                if(trigger) trigger.setAttribute('aria-expanded', 'true');
-            }
-        });
-
-        // Save state on toggle
-        document.querySelectorAll('.submenu-collapse').forEach(el => {
-            el.addEventListener('shown.bs.collapse', e => {
-                let current = JSON.parse(localStorage.getItem('pinnedMenus') || '[]');
-                if (!current.includes(e.target.id)) {
-                    current.push(e.target.id);
-                    localStorage.setItem('pinnedMenus', JSON.stringify(current));
-                }
-                const trigger = document.querySelector(`[href="#${e.target.id}"] .submenu-icon`);
-                if(trigger) trigger.classList.replace('bi-chevron-down', 'bi-chevron-up');
-            });
-            el.addEventListener('hidden.bs.collapse', e => {
-                let current = JSON.parse(localStorage.getItem('pinnedMenus') || '[]');
-                current = current.filter(id => id !== e.target.id);
-                localStorage.setItem('pinnedMenus', JSON.stringify(current));
-                
-                const trigger = document.querySelector(`[href="#${e.target.id}"] .submenu-icon`);
-                if(trigger) trigger.classList.replace('bi-chevron-up', 'bi-chevron-down');
-            });
-        });
-        
-        // Ensure chevron icons match initial state
-        document.querySelectorAll('.submenu-collapse').forEach(el => {
-            if (el.classList.contains('show')) {
-                const trigger = document.querySelector(`[href="#${el.id}"] .submenu-icon`);
-                if(trigger) trigger.classList.replace('bi-chevron-down', 'bi-chevron-up');
-            }
-        });
-        
-        // Auto-dismiss alerts after 5s
+        // Auto-dismiss alerts
         document.querySelectorAll('.alert-dismissible').forEach(el => {
             setTimeout(() => {
                 const bs = bootstrap.Alert.getOrCreateInstance(el);
                 bs.close();
             }, 5000);
         });
-    </script>
-    <!-- Keep-Alive & Online Sync -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            setInterval(function() {
-                fetch('<?= base_url('/api/keep-alive') ?>', {
-                    method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
-                    }
-                }).catch(e => console.error('Keep-alive failed:', e));
-            }, 30000); // every 30 seconds
+
+        // Theme Toggle Logic
+        const btnThemeToggle = document.getElementById('btnThemeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        
+        function updateThemeIcon(theme) {
+            if (theme === 'dark') {
+                themeIcon.className = 'bi bi-sun-fill';
+            } else {
+                themeIcon.className = 'bi bi-moon-stars';
+            }
+        }
+        
+        updateThemeIcon(document.documentElement.getAttribute('data-theme'));
+
+        btnThemeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon(newTheme);
         });
+
+        // Keep-Alive Ping
+        setInterval(function() {
+            fetch('<?= base_url('/api/keep-alive') ?>', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
+                }
+            }).catch(e => console.error('Keep-alive failed:', e));
+        }, 30000);
     </script>
-    
     <?= $this->renderSection('scripts') ?>
 </body>
 </html>

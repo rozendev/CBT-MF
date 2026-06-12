@@ -99,6 +99,24 @@ class AuthController extends BaseController
                 ->with('error', 'Username atau password salah.');
         }
 
+        // Block second login for students if prevent_multi_login is enabled
+        if ($user->role === 'siswa' && $this->getSettingValue('prevent_multi_login', 1) == 1) {
+            try {
+                $redis = new \Redis();
+                if ($redis->connect('redis', 6379)) {
+                    $existingToken = $redis->get("user_login_token:{$user->id}");
+                    // If a token exists and isn't a BANNED marker, they are already logged in elsewhere
+                    if ($existingToken && $existingToken !== 'BANNED') {
+                        return redirect()->back()
+                            ->withInput()
+                            ->with('error', 'Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
+                    }
+                }
+            } catch (\Exception $e) {
+                log_message('error', 'Redis multi-login block error: ' . $e->getMessage());
+            }
+        }
+
         // Regenerate session ID to prevent fixation
         session()->regenerate(true);
 

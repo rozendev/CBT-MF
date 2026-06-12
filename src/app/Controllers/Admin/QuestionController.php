@@ -112,6 +112,26 @@ class QuestionController extends BaseController
         return redirect()->back()->withInput()->with('error', 'Gagal menyimpan soal.');
     }
 
+    public function preview($id)
+    {
+        $question = $this->questionModel->select('questions.*, subjects.name as subject_name, modules.name as module_name')
+            ->join('subjects', 'subjects.id = questions.subject_id')
+            ->join('modules', 'modules.id = subjects.module_id')
+            ->where('questions.id', $id)
+            ->first();
+
+        if (!$question) {
+            return '<div class="p-4 text-center text-danger"><i class="bi bi-exclamation-triangle-fill fs-1"></i><br>Soal tidak ditemukan.</div>';
+        }
+
+        $answers = $this->answerModel->getAnswersByQuestion($id);
+
+        return view('admin/questions/preview', [
+            'question' => $question,
+            'answers'  => $answers
+        ]);
+    }
+
     public function edit($id)
     {
         $question = $this->questionModel->find($id);

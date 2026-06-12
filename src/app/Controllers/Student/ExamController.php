@@ -38,6 +38,9 @@ class ExamController extends BaseController
         // Check if user has an active attempt
         $activeAttempt = $this->attemptModel->getActiveAttempt($id, session('user_id'));
         if ($activeAttempt) {
+            if ($test->exam_mode == 'static' && !empty($test->static_page_path)) {
+                return redirect()->to(base_url($test->static_page_path));
+            }
             return redirect()->to('/student/exam/take/' . $id)->with('info', 'Anda memiliki ujian yang sedang berlangsung.');
         }
 
@@ -125,7 +128,11 @@ class ExamController extends BaseController
 
             // Fetch exactly $set->quantity random questions
             // Order by RAND() can be slow on huge tables, but it's the standard way for this scope
-            $questions = $qBuilder->orderBy('RAND()')->limit($set->quantity)->get()->getResult();
+            if ($test->exam_mode === 'static') {
+                $questions = $qBuilder->orderBy("RAND({$test->id})")->limit($set->quantity)->get()->getResult();
+            } else {
+                $questions = $qBuilder->orderBy('RAND()')->limit($set->quantity)->get()->getResult();
+            }
 
             foreach ($questions as $q) {
                 // Insert into test_logs
@@ -147,7 +154,19 @@ class ExamController extends BaseController
                 
                 // Shuffle answers if test configured to randomize answers
                 if ($test->random_answers && in_array($q->type, [1, 2])) {
-                    shuffle($answers);
+                    if ($test->exam_mode === 'static') {
+                        mt_srand($test->id + $q->id);
+                        $keys = array_keys($answers);
+                        shuffle($keys);
+                        $shuffledAnswers = [];
+                        foreach ($keys as $key) {
+                            $shuffledAnswers[] = $answers[$key];
+                        }
+                        $answers = $shuffledAnswers;
+                        mt_srand(); // reset seed
+                    } else {
+                        shuffle($answers);
+                    }
                 }
 
                 $ansOrder = 1;
@@ -186,6 +205,10 @@ class ExamController extends BaseController
         }
 
         $this->activityLog->log('start_test', $userId, 'test', $id, "Memulai ujian: {$test->name}");
+        
+        if ($test->exam_mode === 'static' && !empty($test->static_page_path)) {
+            return redirect()->to(base_url($test->static_page_path));
+        }
         return redirect()->to('/student/exam/take/' . $id);
     }
 
@@ -202,6 +225,10 @@ class ExamController extends BaseController
         }
 
         $test = $this->testModel->find($id);
+
+        if ($test->exam_mode == 'static' && !empty($test->static_page_path)) {
+            return redirect()->to(base_url($test->static_page_path));
+        }
 
         // Fetch questions generated for this attempt
         $db = \Config\Database::connect();
@@ -267,11 +294,15 @@ class ExamController extends BaseController
             // If Redis fails, gracefully fall back to DB only
         }
 
+        $settingModel = new \App\Models\SettingModel();
+        $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
+
         return view('student/exam/take', [
             'test' => $test,
             'attempt' => $attempt,
             'questions' => $questions,
-            'answers' => $answers
+            'answers' => $answers,
+            'isAntiCheatEnabled' => $isAntiCheatEnabled
         ]);
     }
 

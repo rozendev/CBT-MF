@@ -38,7 +38,17 @@
         <div class="code">403</div>
         <h2>Akses Ditolak</h2>
         <p><?= $message ?? 'Anda tidak memiliki izin untuk mengakses halaman ini.' ?></p>
-        <a href="javascript:history.back()" class="btn">← Kembali</a>
+        <a href="javascript:void(0)" onclick="goBack()" class="btn">← Kembali</a>
     </div>
+
+    <script>
+        function goBack() {
+            if (document.referrer === "" || document.referrer === window.location.href) {
+                window.location.href = '/';
+            } else {
+                window.history.back();
+            }
+        }
+    </script>
 </body>
 </html>

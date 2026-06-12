@@ -1,0 +1,1551 @@
+<?php
+/**
+ * Static Exam Template
+ *
+ * This file is rendered ONCE at generation time to produce a self-contained HTML file.
+ * At runtime it is pure HTML/CSS/JS — no PHP processing required.
+ *
+ * Required PHP variables at generation time:
+ *   $test        — test object (id, name, duration_minutes, passing_score, max_score, show_menu, allow_noanswer, auto_logout_on_timeout, password)
+ *   $antiCheat   — anti-cheat config array
+ *   $apiBaseUrl   — base URL for the API endpoints
+ */
+$settingModel = new \App\Models\SettingModel();
+$primaryColor = $settingModel->getValue('primary_color', '#0d6efd');
+$secondaryColor = $settingModel->getValue('secondary_color', '#f4f6f9');
+$textColor = $settingModel->getValue('text_color', '#212529');
+$appName = $settingModel->getValue('app_name', 'Sistem Ujian');
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ujian: <?= esc($test->name) ?> - <?= esc($appName) ?></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root {
+            --color-background: <?= $secondaryColor ?>;
+            --color-primary: <?= $primaryColor ?>;
+            --color-primary-rgb: <?= sscanf($primaryColor, "#%02x%02x%02x")[0] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[1] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[2] ?>;
+            --color-primary-dark: color-mix(in srgb, var(--color-primary) 85%, black);
+            --color-surface: #ffffff;
+            --color-text: <?= $textColor ?>;
+            --color-text-muted: #6c757d;
+            --color-danger: #dc3545;
+            --color-warning: #ffc107;
+        }
+        body {
+            background-color: var(--color-background); 
+            color: var(--color-text);
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            padding-bottom: 80px; /* Space for bottom nav */
+        }
+        
+        .noselect { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+
+        /* Fullscreen Gate & Anti Cheat Overlay */
+        .fullscreen-gate {
+            position: fixed; inset: 0; z-index: 99999;
+            background-color: var(--color-background);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: var(--color-text); text-align: center;
+        }
+        
+        /* Beautiful Desktop Drawer */
+        .desktop-drawer-wrapper {
+            position: fixed;
+            right: 0;
+            top: 0;
+            height: 100vh;
+            width: 40px; /* Trigger area */
+            z-index: 1040;
+        }
+        .desktop-drawer-trigger {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--color-surface);
+            border: 1px solid rgba(0,0,0,0.08);
+            border-right: none;
+            border-radius: 16px 0 0 16px;
+            padding: 20px 8px;
+            box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .desktop-drawer-wrapper:hover .desktop-drawer-trigger {
+            transform: translateY(-50%) translateX(100%);
+            opacity: 0;
+        }
+        .desktop-drawer {
+            position: absolute;
+            right: -360px; /* Hidden */
+            top: 0;
+            width: 360px;
+            height: 100vh;
+            background: var(--color-surface);
+            box-shadow: -10px 0 30px rgba(0,0,0,0.1);
+            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            flex-direction: column;
+            padding: 30px 24px;
+            overflow-y: auto;
+            border-left: 1px solid rgba(0,0,0,0.05);
+        }
+        .desktop-drawer-wrapper:hover .desktop-drawer {
+            right: 0; /* Slide in on hover */
+        }
+        .desktop-drawer-wrapper:hover {
+            width: 360px; /* Expand hover area so drawer stays open */
+        }
+        .fullscreen-gate .gate-icon { font-size: 5rem; margin-bottom: 1.5rem; color: var(--color-primary); }
+        .fullscreen-gate .gate-btn {
+            background-color: var(--color-primary);
+            border: none; color: white; font-size: 1.2rem; font-weight: 700;
+            padding: 1rem 3rem; border-radius: 9999px; cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .login-gate {
+            position:fixed; inset:0; z-index:100000;
+            background-color:var(--color-background);
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            color:var(--color-text); text-align:center;
+        }
+        .suspend-overlay {
+            position: fixed; inset: 0; z-index: 99998;
+            background: #000000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; text-align: center;
+        }
+
+        /* Top Navigation */
+        .exam-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 1020;
+            background: var(--color-surface);
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .exam-title-area {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-width: 60%;
+        }
+        .exam-title-text {
+            font-weight: 700;
+            font-size: 16px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--color-text);
+        }
+        .exam-student-text {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .exam-timer-chip {
+            background: rgba(var(--color-primary-rgb), 0.1);
+            color: var(--color-primary);
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-weight: 700;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .exam-timer-chip.danger {
+            background: rgba(220,53,69,0.1);
+            color: var(--color-danger);
+        }
+        
+        /* Progress Bar */
+        .progress-wrapper {
+            width: 100%;
+            height: 4px;
+            background: rgba(0,0,0,0.05);
+            position: sticky;
+            top: 61px; /* approximate height of topbar */
+            z-index: 1019;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--color-primary);
+            transition: width 0.3s ease;
+        }
+
+        /* Question Area */
+        .question-container {
+            padding: 24px 16px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .question-label {
+            font-size: 13px;
+            color: var(--color-text-muted);
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .question-text {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 32px;
+            color: var(--color-text);
+        }
+        .question-text img {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* Answer Options */
+        .answer-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 2px solid rgba(0,0,0,0.08);
+            border-radius: 12px;
+            background: var(--color-surface);
+            cursor: pointer;
+            transition: all 150ms ease;
+            min-height: 56px;
+        }
+        .answer-option:hover {
+            border-color: rgba(var(--color-primary-rgb), 0.3);
+        }
+        .answer-option.selected {
+            border-color: var(--color-primary);
+            background: rgba(var(--color-primary-rgb), 0.05);
+        }
+        .answer-option .form-check-input {
+            margin-top: 3px;
+            transform: scale(1.2);
+            cursor: pointer;
+        }
+        .answer-content {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--color-text);
+            flex-grow: 1;
+        }
+        .answer-content img {
+            max-width: 100%;
+            height: auto;
+        }
+
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--color-surface);
+            border-top: 1px solid rgba(0,0,0,0.08);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1020;
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+        }
+        .btn-nav {
+            height: 48px;
+            border-radius: 9999px;
+            font-weight: 600;
+            padding: 0 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 150ms ease;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-nav.ghost {
+            background: transparent;
+            color: var(--color-text-muted);
+        }
+        .btn-nav.ghost:active { background: rgba(0,0,0,0.05); }
+        .btn-nav.filled {
+            background: var(--color-primary);
+            color: #fff;
+        }
+        .btn-nav.filled:active { transform: scale(0.96); }
+        
+        .btn-flag {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid rgba(0,0,0,0.08);
+            background: var(--color-surface);
+            color: var(--color-text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 150ms ease;
+            cursor: pointer;
+        }
+        .btn-flag.active {
+            border-color: var(--color-warning);
+            color: var(--color-warning);
+            background: rgba(255,193,7,0.1);
+        }
+
+        /* End Exam Button */
+        .end-exam-container {
+            margin-top: 48px;
+            padding-top: 32px;
+            border-top: 1px dashed rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .btn-end-exam {
+            background: transparent;
+            border: 2px solid var(--color-text-muted);
+            color: var(--color-text-muted);
+            height: 48px;
+            border-radius: 9999px;
+            padding: 0 32px;
+            font-weight: 600;
+            transition: all 150ms ease;
+        }
+        .btn-end-exam:hover {
+            border-color: var(--color-danger);
+            color: var(--color-danger);
+        }
+
+        /* Bottom Sheet Modal */
+        .offcanvas-bottom {
+            height: auto;
+            max-height: 70vh;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+        }
+        .sheet-drag-handle {
+            width: 40px;
+            height: 4px;
+            background: #dee2e6;
+            border-radius: 4px;
+            margin: 12px auto;
+        }
+        .q-grid-container {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            padding: 16px;
+            max-height: calc(70vh - 150px);
+            overflow-y: auto;
+        }
+        .q-grid-btn {
+            width: 100%;
+            height: 48px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            border-radius: 12px;
+            border: 2px solid transparent;
+            font-size: 14px;
+            transition: all 150ms ease;
+            cursor: pointer;
+        }
+        .q-grid-btn.answered {
+            background-color: var(--color-primary);
+            color: white;
+        }
+        .q-grid-btn.flagged {
+            background-color: var(--color-warning);
+            color: #000;
+        }
+        .q-grid-btn.unanswered {
+            background-color: var(--color-surface);
+            border-color: rgba(0,0,0,0.15);
+            color: var(--color-text-muted);
+        }
+        .q-grid-btn.current {
+            border-color: var(--color-text) !important;
+        }
+
+        /* Auto-save chip */
+        .autosave-chip {
+            position: fixed;
+            bottom: 80px;
+            left: 16px;
+            background: var(--color-surface);
+            color: var(--color-text);
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            z-index: 1010;
+        }
+
+        /* Loading Spinner */
+        .loading-screen {
+            position:fixed; inset:0; z-index:100001;
+            background:var(--color-background); display:flex; flex-direction:column; align-items:center; justify-content:center;
+            color: var(--color-text);
+        }
+
+        /* Image Lightbox Overlay */
+        .image-lightbox {
+            position: fixed; inset: 0; z-index: 1050;
+            background: rgba(0,0,0,0.9);
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        .image-lightbox.active { display: flex; }
+        .image-lightbox img {
+            max-width: 90vw; max-height: 90vh;
+            border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            object-fit: contain;
+        }
+        .image-lightbox-close {
+            position: absolute; top: 20px; right: 20px;
+            color: white; font-size: 40px; line-height: 1; cursor: pointer;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .question-container img { cursor: zoom-in; }
+    </style>
+</head>
+<body class="noselect">
+    <script>
+        // ═══════════════════════════════════════════════════════
+        //  EXAM CONFIGURATION (embedded at generation time)
+        // ═══════════════════════════════════════════════════════
+        const EXAM_CONFIG = {
+            testId: <?= $test->id ?>,
+            testName: <?= json_encode($test->name) ?>,
+            durationMinutes: <?= (int)$test->duration_minutes ?>,
+            passingScore: <?= (float)$test->passing_score ?>,
+            maxScore: <?= (float)$test->max_score ?>,
+            showMenu: <?= (int)$test->show_menu ?>,
+            allowNoanswer: <?= (int)$test->allow_noanswer ?>,
+            autoLogoutOnTimeout: <?= (int)$test->auto_logout_on_timeout ?>,
+            hasPassword: <?= !empty($test->password) ? 'true' : 'false' ?>,
+            antiCheat: <?= json_encode($antiCheat) ?>,
+            apiBaseUrl: <?= json_encode($apiBaseUrl) ?>,
+            questionsData: <?= json_encode($questionsData ?? []) ?>,
+            answersData: <?= json_encode($answersData ?? []) ?>,
+            randomQuestions: <?= $test->random_questions ? 'true' : 'false' ?>,
+            randomAnswers: <?= $test->random_answers ? 'true' : 'false' ?>,
+        };
+
+        // ═══════════════════════════════════════════════════════
+        //  CLIENT-SIDE SHUFFLING (Randomized per page load)
+        // ═══════════════════════════════════════════════════════
+        if (EXAM_CONFIG.randomQuestions) {
+            EXAM_CONFIG.questionsData.sort(() => Math.random() - 0.5);
+        }
+        if (EXAM_CONFIG.randomAnswers) {
+            for (let qId in EXAM_CONFIG.answersData) {
+                EXAM_CONFIG.answersData[qId].sort(() => Math.random() - 0.5);
+            }
+        }
+    </script>
+
+    <!-- ▼ LOADING SCREEN ▼ -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;" role="status">
+            <span class="visually-hidden">Memuat...</span>
+        </div>
+        <h5 class="text-muted">Memuat ujian...</h5>
+    </div>
+
+    <!-- Image Lightbox Overlay -->
+    <div class="image-lightbox" id="imageLightbox">
+        <div class="image-lightbox-close" id="imageLightboxClose">&times;</div>
+        <img src="" id="imageLightboxImg" alt="Preview">
+    </div>
+
+    <!-- ▼ SUSPEND OVERLAY (Anti-Cheat) ▼ -->
+    <div class="suspend-overlay" id="suspendOverlay" style="display:none;">
+        <?php if (!empty($antiCheat['logo'])): ?>
+            <img src="<?= base_url($antiCheat['logo']) ?>" alt="Warning Logo" class="mb-4" id="antiCheatLogoImg" style="max-height: 120px;">
+        <?php else: ?>
+            <img src="" alt="Warning Logo" class="mb-4" id="antiCheatLogoImg" style="max-height: 120px; display: none;">
+        <?php endif; ?>
+        
+        <h2 class="fw-bold text-danger mb-3" id="antiCheatTitle"><?= esc($antiCheat['title']) ?></h2>
+        <p class="fs-5 px-4 mb-4" style="max-width:600px;" id="antiCheatMessage"><?= esc($antiCheat['message']) ?></p>
+        
+        <div class="mb-4">
+            <span class="fs-1 fw-bold text-white" id="suspendTimerDisplay" style="font-size:5rem !important;"><?= $antiCheat['suspend_timer'] ?></span>
+        </div>
+        
+        <p class="mb-2 text-warning">Pelanggaran: <span id="strikeCount" class="fw-bold fs-5">1</span> / <span id="maxStrikes" class="fw-bold fs-5"><?= $antiCheat['max_strikes'] ?></span></p>
+    </div>
+
+    <!-- ▼ EXAM CONTENT ▼ -->
+    <div id="examContent" style="display:none;" x-data="examApp()">
+        <!-- Top Navigation -->
+        <div class="exam-topbar">
+            <div class="exam-title-area">
+                <div class="exam-title-text" x-text="testName"></div>
+                <div class="exam-student-text" x-text="studentName"></div>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <template x-if="durationMinutes > 0">
+                    <div class="exam-timer-chip" :class="{'danger': timeLeft <= 300000}">
+                        <i class="bi bi-clock-history"></i> <span x-text="formatTime(timeLeft)">--:--:--</span>
+                    </div>
+                </template>
+                <button type="button" class="btn text-dark border-0 p-1" data-bs-toggle="offcanvas" data-bs-target="#questionGridSheet">
+                    <i class="bi bi-grid-fill fs-3"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-wrapper">
+            <div class="progress-fill" :style="'width: ' + ((countAnswered() / questions.length) * 100) + '%'"></div>
+        </div>
+
+        <!-- Autosave Indicator -->
+        <div class="autosave-chip" x-show="showSavedToast" x-transition.opacity.duration.300ms style="display: none;">
+            <i class="bi bi-check-circle-fill" style="color: #198754;"></i> Tersimpan
+        </div>
+        <div class="autosave-chip" x-show="isSaving" x-transition.opacity.duration.150ms style="display: none;">
+            <span class="spinner-border spinner-border-sm text-primary" role="status" style="width: 1rem; height: 1rem;"></span> Menyimpan...
+        </div>
+
+        <!-- Main Content -->
+        <div class="question-container">
+            <div class="question-label">Soal No. <span x-text="currentIndex + 1"></span> dari <span x-text="questions.length"></span></div>
+            
+            <div class="question-text" x-html="currentQuestion.question_text"></div>
+            
+            <!-- Type 1: MCSA (Radio) -->
+            <template x-if="currentQuestion.question_type == 1">
+                <div>
+                    <template x-for="(answer, i) in currentAnswers" :key="answer.answer_id">
+                        <label class="answer-option" :class="{'selected': answer.is_selected == 1}" @click="selectRadio(answer.answer_id)">
+                            <input type="radio" :name="'q_' + currentQuestion.question_id" class="form-check-input flex-shrink-0" :checked="answer.is_selected == 1">
+                            <div class="answer-content" x-html="answer.answer_text"></div>
+                        </label>
+                    </template>
+                </div>
+            </template>
+            
+            <!-- Type 2: MCMA (Checkbox) -->
+            <template x-if="currentQuestion.question_type == 2">
+                <div>
+                    <template x-for="(answer, i) in currentAnswers" :key="answer.answer_id">
+                        <label class="answer-option" :class="{'selected': answer.is_selected == 1}">
+                            <input type="checkbox" class="form-check-input flex-shrink-0" :checked="answer.is_selected == 1" @change="toggleCheckbox(answer.answer_id, $event.target.checked)">
+                            <div class="answer-content" x-html="answer.answer_text"></div>
+                        </label>
+                    </template>
+                </div>
+            </template>
+            
+            <!-- Type 3: Essay -->
+            <template x-if="currentQuestion.question_type == 3">
+                <div>
+                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input.debounce.500ms="saveAnswer()" placeholder="Tulis jawaban Anda di sini..."></textarea>
+                </div>
+            </template>
+            
+            <!-- Type 4: Matching -->
+            <template x-if="currentQuestion.question_type == 4">
+                <div>
+                    <div class="alert alert-info border-0 rounded-3 mb-4" style="font-size:14px;">
+                        <i class="bi bi-info-circle me-1"></i> Jodohkan Kiri (Premis) dengan Kanan (Jawaban) yang tepat.
+                    </div>
+                    <template x-for="(pair, i) in currentQuestion.matchingPairs" :key="i">
+                        <div class="row align-items-center mb-3 p-3 rounded-3" style="background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05);">
+                            <div class="col-12 col-md-6 fw-bold mb-2 mb-md-0" x-html="pair.left"></div>
+                            <div class="col-12 col-md-6">
+                                <select class="form-select border-primary" style="border-radius:8px;" :value="pair.selected" @change="updateMatching(i, $event.target.value)">
+                                    <option value="" :selected="pair.selected === ''">-- Pilih Jawaban --</option>
+                                    <template x-for="opt in currentQuestion.matchingOptions" :key="opt">
+                                        <option :value="opt" x-text="opt" :selected="pair.selected === opt"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </template>
+            
+            <!-- Type 5: True/False -->
+            <template x-if="currentQuestion.question_type == 5">
+                <div>
+                    <div class="alert alert-info border-0 rounded-3 mb-4" style="font-size:14px;">
+                        <i class="bi bi-info-circle me-1"></i> Pilih Benar atau Salah untuk setiap pernyataan di bawah ini.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead class="text-center" style="font-size:14px; opacity:0.8;">
+                                <tr>
+                                    <th class="text-start border-bottom">Pernyataan</th>
+                                    <th class="border-bottom" style="width: 80px;">Benar</th>
+                                    <th class="border-bottom" style="width: 80px;">Salah</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(pair, i) in currentQuestion.matchingPairs" :key="i">
+                                    <tr>
+                                        <td x-html="pair.left" class="fs-6 py-3 border-bottom"></td>
+                                        <td class="text-center py-3 border-bottom">
+                                            <input type="radio" :name="'tf_' + currentQuestion.question_id + '_' + i" value="Benar" :checked="pair.selected === 'Benar'" class="form-check-input" style="transform: scale(1.5);" @change="updateMatching(i, 'Benar')">
+                                        </td>
+                                        <td class="text-center py-3 border-bottom">
+                                            <input type="radio" :name="'tf_' + currentQuestion.question_id + '_' + i" value="Salah" :checked="pair.selected === 'Salah'" class="form-check-input" style="transform: scale(1.5);" @change="updateMatching(i, 'Salah')">
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </template>
+            
+            <div class="end-exam-container" x-show="currentIndex === questions.length - 1">
+                <button type="button" class="btn-end-exam" @click="confirmFinish()">
+                    Akhiri Ujian
+                </button>
+            </div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav">
+            <button class="btn-nav ghost" @click="prevQuestion()" :style="currentIndex === 0 ? 'visibility: hidden;' : ''">
+                <i class="bi bi-chevron-left"></i> <span class="d-none d-sm-inline">Sebelumnya</span>
+            </button>
+            <button class="btn-flag" :class="{'active': currentQuestion.is_flagged}" @click="toggleFlag()">
+                <i class="bi bi-flag-fill"></i>
+            </button>
+            <button class="btn-nav filled" @click="nextQuestion()">
+                <span class="d-none d-sm-inline" x-text="currentIndex === questions.length - 1 ? 'Selesai' : 'Selanjutnya'"></span>
+                <i class="bi bi-chevron-right" x-show="currentIndex !== questions.length - 1"></i>
+                <i class="bi bi-check-lg" x-show="currentIndex === questions.length - 1"></i>
+            </button>
+        </div>
+
+        <!-- Bottom Sheet Question Grid -->
+        <div class="offcanvas offcanvas-bottom" tabindex="-1" id="questionGridSheet" aria-labelledby="questionGridSheetLabel">
+            <div class="sheet-drag-handle"></div>
+            <div class="offcanvas-header pb-0 pt-2 border-bottom-0">
+                <h5 class="offcanvas-title fw-bold" id="questionGridSheetLabel" style="font-size: 18px;">Navigasi Soal</h5>
+            </div>
+            <div class="offcanvas-body">
+                <div class="q-grid-container">
+                    <template x-for="(q, idx) in questions" :key="q.question_id">
+                        <button class="q-grid-btn" :class="getGridButtonClass(idx)" @click="goToQuestion(idx)" data-bs-dismiss="offcanvas" data-bs-target="#questionGridSheet" x-text="idx + 1"></button>
+                    </template>
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center mt-3 px-3 py-2 rounded-3 mx-3" style="background: rgba(0,0,0,0.03); font-size:13px;">
+                    <div class="d-flex align-items-center gap-1"><span class="d-inline-block rounded-circle" style="width:10px;height:10px;background:var(--color-primary);"></span> <span x-text="countAnswered()"></span></div>
+                    <div class="d-flex align-items-center gap-1"><span class="d-inline-block rounded-circle" style="width:10px;height:10px;background:var(--color-warning);"></span> <span x-text="countFlagged()"></span></div>
+                    <div class="d-flex align-items-center gap-1"><span class="d-inline-block rounded-circle border" style="width:10px;height:10px;background:var(--color-surface);border-color:rgba(0,0,0,0.3);"></span> <span x-text="questions.length - countAnswered()"></span></div>
+                </div>
+
+                <div class="mt-4 px-3 pb-3">
+                    <button type="button" class="btn btn-outline-secondary w-100 rounded-pill" style="height:48px;font-weight:600;" data-bs-dismiss="offcanvas">Tutup</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Desktop Sidebar (always visible on lg+, opens on hover) -->
+        <div class="desktop-drawer-wrapper d-none d-lg-block">
+            <div class="desktop-drawer-trigger">
+                <i class="bi bi-grid-3x3-gap-fill text-primary mb-2 fs-5"></i>
+                <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 13px; font-weight: 700; letter-spacing: 2px; color: var(--color-text-muted);">
+                    SOAL
+                </div>
+            </div>
+            
+            <div class="desktop-drawer">
+                <div class="drawer-header border-bottom pb-3 mb-4">
+                    <h5 class="fw-bold mb-0 text-primary"><i class="bi bi-grid-3x3-gap-fill me-2"></i>Navigasi Soal</h5>
+                </div>
+                
+                <div class="q-grid-container mb-4">
+                    <template x-for="(q, idx) in questions" :key="q.log_id || q.question_id">
+                        <button class="q-grid-btn shadow-sm" :class="getGridButtonClass(idx)" @click="goToQuestion(idx)" x-text="idx + 1"></button>
+                    </template>
+                </div>
+                
+                <div class="sidebar-legend mb-4">
+                    <div class="sidebar-legend-item mb-2"><span class="legend-dot shadow-sm d-inline-block rounded-circle me-2" style="width:12px;height:12px;background:var(--color-primary);"></span> Dijawab: <strong x-text="countAnswered()"></strong></div>
+                    <div class="sidebar-legend-item mb-2"><span class="legend-dot shadow-sm d-inline-block rounded-circle me-2" style="width:12px;height:12px;background:var(--color-warning);"></span> Ditandai: <strong x-text="countFlagged()"></strong></div>
+                    <div class="sidebar-legend-item"><span class="legend-dot shadow-sm d-inline-block rounded-circle me-2" style="width:12px;height:12px;background:rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.1);"></span> Belum: <strong x-text="questions.length - countAnswered()"></strong></div>
+                </div>
+                
+                <div class="mt-auto pt-3 border-top">
+                    <button type="button" class="btn btn-danger w-100 rounded-3 fw-bold py-2 shadow-sm" style="height: 48px;" @click="confirmFinish()">
+                        <i class="bi bi-stop-circle-fill me-2"></i>Akhiri Ujian
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Finish Confirmation Modal -->
+        <div class="modal fade" id="finishModal" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content rounded-3 border-0 shadow">
+                    <div class="modal-header border-bottom-0 pb-0">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill text-warning me-2"></i>Konfirmasi Selesai</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body py-4 text-center">
+                        <div x-show="countAnswered() < questions.length" class="alert alert-warning border-0">
+                            <i class="bi bi-exclamation-triangle-fill fs-4 d-block mb-2"></i>
+                            Masih ada <strong><span x-text="questions.length - countAnswered()"></span> soal</strong> yang belum dijawab!
+                        </div>
+                        <p class="mb-0 fs-5">Apakah Anda yakin ingin mengakhiri ujian ini?</p>
+                        <p class="text-muted small mt-2">Anda tidak dapat mengubah jawaban lagi setelah ini.</p>
+                    </div>
+                    <div class="modal-footer border-top-0 pt-0 justify-content-center">
+                        <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Batal, Lanjut Kerjakan</button>
+                        <button type="button" class="btn btn-success px-5 fw-bold" @click="submitFinish()">Ya, Selesai</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Warning Minimum Score Modal -->
+        <div class="modal fade" id="warningFinishModal" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content rounded-3 border-0 shadow">
+                    <div class="modal-header bg-danger text-white border-bottom-0 pb-3">
+                        <h5 class="modal-title fw-bold"><i class="bi bi-x-octagon-fill me-2"></i>Peringatan Nilai Minimum</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body py-4 text-center">
+                        <i class="bi bi-exclamation-triangle text-danger" style="font-size:4rem;"></i>
+                        <h4 class="fw-bold mt-3">Belum Memenuhi Syarat!</h4>
+                        <p class="mb-0 fs-5">Nilai ujian Anda saat ini belum memenuhi kriteria batas kelulusan.</p>
+                        <p class="text-danger fw-bold mt-2">Anda diwajibkan untuk melanjutkan pengerjaan ujian!</p>
+                    </div>
+                    <div class="modal-footer border-top-0 pt-0 flex-column">
+                        <button type="button" class="btn btn-primary w-100 py-2 fw-bold mb-2" data-bs-dismiss="modal">
+                            <i class="bi bi-pencil-square me-2"></i>Kembali Mengerjakan
+                        </button>
+                        <button type="button" class="btn btn-link text-danger w-100 text-decoration-none" @click="forceSubmit()">
+                            Akhiri sekarang juga (Nyerah)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- /examContent -->
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+    // ═══════════════════════════════════════════════════════
+    //  RUNTIME STATE
+    // ═══════════════════════════════════════════════════════
+    let examStarted = false;
+    let ATTEMPT_ID  = null;
+    let CSRF_NAME   = '';
+    let CSRF_HASH   = '';
+    let STUDENT_NAME = '';
+    let START_TIME  = 0;
+
+    const API = EXAM_CONFIG.apiBaseUrl;
+
+    $.ajaxSetup({
+        xhrFields: {
+            withCredentials: true
+        }
+    });
+
+    // ═══════════════════════════════════════════════════════
+    //  UTILITY: Build form data with CSRF
+    // ═══════════════════════════════════════════════════════
+    function buildFormData(obj) {
+        const fd = new FormData();
+        if (CSRF_NAME) fd.append(CSRF_NAME, CSRF_HASH);
+        for (const key in obj) {
+            if (Array.isArray(obj[key])) {
+                obj[key].forEach(v => fd.append(key + '[]', v));
+            } else {
+                fd.append(key, obj[key]);
+            }
+        }
+        return fd;
+    }
+
+    function updateCsrf(res) {
+        if (res && res.csrf_name && res.csrf_hash) {
+            CSRF_NAME = res.csrf_name;
+            CSRF_HASH = res.csrf_hash;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  1. INIT FLOW — Sync with backend session
+    // ═══════════════════════════════════════════════════════
+    async function initExam() {
+        const loading = document.getElementById('loadingScreen');
+
+        loading.style.display = 'flex';
+
+        try {
+            const body = { test_id: EXAM_CONFIG.testId };
+            if (CSRF_NAME) body[CSRF_NAME] = CSRF_HASH;
+
+            const res = await $.ajax({
+                url: API + '/api/exam/init',
+                type: 'POST',
+                data: body,
+                dataType: 'json'
+            });
+
+            updateCsrf(res);
+
+            if (res.status === 'need_prepare') {
+                window.location.href = API + '/student/exam/prepare/' + EXAM_CONFIG.testId;
+                return;
+            }
+
+            if (res.status === 'error') {
+                loading.style.display = 'none';
+                Swal.fire('Error', res.message || 'Terjadi kesalahan saat memuat ujian.', 'error');
+                return;
+            }
+
+            if (res.status === 'success') {
+                // Check if admin deleted the static page while student was trying to access it from cache
+                if (res.test && (res.test.exam_mode !== 'static' || !res.test.static_page_path)) {
+                    window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
+                    return;
+                }
+
+                // Store runtime data
+                ATTEMPT_ID   = res.attempt_id;
+                STUDENT_NAME = res.user ? (res.user.firstname + ' ' + res.user.lastname).trim() : '';
+                START_TIME   = (res.test && res.test.started_at_ms) ? res.test.started_at_ms : Date.now();
+                const serverNow = (res.test && res.test.server_now_ms) ? res.test.server_now_ms : Date.now();
+                const timeOffset = serverNow - Date.now();
+
+                // Merge saved answers into embedded questions
+                const mergedQuestions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData));
+                const mergedAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData));
+
+                if (res.answers) {
+                    for (const [qId, savedAnswers] of Object.entries(res.answers)) {
+                        if (mergedAnswers[qId]) {
+                            const savedMap = {};
+                            savedAnswers.forEach(sa => { savedMap[sa.answer_id] = sa.is_selected; });
+                            mergedAnswers[qId].forEach(ma => {
+                                if (savedMap[ma.answer_id] !== undefined) ma.is_selected = savedMap[ma.answer_id];
+                            });
+                        }
+                    }
+                }
+                
+                if (res.questions) {
+                    const qSavedMap = {};
+                    res.questions.forEach(q => { qSavedMap[q.question_id] = q; });
+                    mergedQuestions.forEach(mq => {
+                        if (qSavedMap[mq.question_id]) {
+                            mq.answer_text = qSavedMap[mq.question_id].answer_text || '';
+                        }
+                    });
+                }
+
+                // Store questions and answers globally for Alpine
+                window.__examData = {
+                    questions: mergedQuestions,
+                    answers: mergedAnswers,
+                    attemptId: ATTEMPT_ID,
+                    studentName: STUDENT_NAME,
+                    beginTimeMs: res.test.begin_time_ms,
+                    timeOffset: timeOffset,
+                };
+
+                // Notify AlpineJS that data with saved answers has been merged and loaded
+                document.dispatchEvent(new CustomEvent('exam-data-loaded'));
+
+                // Update anti-cheat overlay text if provided
+                if (res.anti_cheat) {
+                    EXAM_CONFIG.antiCheat = res.anti_cheat;
+                    document.getElementById('antiCheatTitle').textContent = res.anti_cheat.title || 'Peringatan Kecurangan!';
+                    document.getElementById('antiCheatMessage').textContent = res.anti_cheat.message || 'Sistem mendeteksi Anda meninggalkan halaman ujian.';
+                    if (res.anti_cheat.suspend_timer) document.getElementById('suspendTimerDisplay').textContent = res.anti_cheat.suspend_timer;
+                    if (res.anti_cheat.max_strikes) document.getElementById('maxStrikes').textContent = res.anti_cheat.max_strikes;
+                    
+                    const logoImg = document.getElementById('antiCheatLogoImg');
+                    if (res.anti_cheat.logo) {
+                        logoImg.src = '<?= base_url() ?>' + res.anti_cheat.logo;
+                        logoImg.style.display = 'inline-block';
+                    } else {
+                        logoImg.style.display = 'none';
+                    }
+                }
+
+                loading.style.display = 'none';
+                document.getElementById('examContent').style.display = 'block';
+                examStarted = true;
+            }
+        } catch (err) {
+            loading.style.display = 'none';
+            const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : 'Gagal menghubungi server. Periksa koneksi Anda.';
+            Swal.fire('Error', msg, 'error');
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  2. AUTO FULLSCREEN ON INTERACTION
+    // ═══════════════════════════════════════════════════════
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+        document.addEventListener(evt, function() {
+            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) return;
+            if (!document.fullscreenElement && examStarted && !window.isSubmitting) {
+                const el = document.documentElement;
+                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                if (rfs) rfs.call(el).catch(()=>{});
+            }
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════
+    //  3. ALPINE.JS EXAM APP
+    // ═══════════════════════════════════════════════════════
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('examApp', () => ({
+            questions: [],
+            allAnswers: {},
+            currentIndex: 0,
+            isSaving: false,
+            showSavedToast: false,
+            timeLeft: EXAM_CONFIG.durationMinutes * 60 * 1000,
+            timerInterval: null,
+            warningShown: false,
+            testName: EXAM_CONFIG.testName,
+            studentName: '',
+            durationMinutes: EXAM_CONFIG.durationMinutes,
+            sseSource: null,
+            sseErrorCount: 0,
+            syncInterval: null,
+
+            parseMatching() {
+                // Parse matching/TF options for type 4 & 5
+                this.questions.forEach(q => {
+                    q.is_flagged = false;
+                    if (q.question_type == 4 || q.question_type == 5) {
+                        q.matchingPairs = [];
+                        let rights = [];
+                        let savedMatching = {};
+                        try { if (q.answer_text) savedMatching = JSON.parse(q.answer_text); } catch(e) {}
+
+                        let ansList = this.allAnswers[q.question_id] || [];
+                        ansList.forEach(a => {
+                            let parts = (a.answer_text || '').split('|::|');
+                            let left  = parts[0] || '';
+                            let right = parts[1] || '';
+                            if (left && right) {
+                                q.matchingPairs.push({
+                                    left: left,
+                                    right: right,
+                                    selected: savedMatching[left] || ''
+                                });
+                                rights.push(right);
+                            }
+                        });
+                        q.matchingOptions = rights.sort(() => 0.5 - Math.random());
+                    }
+                });
+            },
+
+            init() {
+                // Synchronously initialize embedded questions so they render immediately
+                this.questions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData || []));
+                this.allAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData || {}));
+                this.parseMatching();
+
+                // Listen for API init completion (when saved answers are merged)
+                document.addEventListener('exam-data-loaded', () => {
+                    const data = window.__examData || {};
+                    this.questions  = data.questions  || this.questions;
+                    this.allAnswers = data.answers     || this.allAnswers;
+                    this.studentName = data.studentName || '';
+                    this.parseMatching();
+
+                    // Initialize features that depend on server session
+                    this.initSSE();
+
+                    // Countdown timer
+                    if (this.durationMinutes > 0) {
+                        const beginTimeMs = data.beginTimeMs || Date.now();
+                        const timeOffset = data.timeOffset || 0;
+                        this.endTimeMs = beginTimeMs + (this.durationMinutes * 60 * 1000);
+
+                        this.timerInterval = setInterval(() => {
+                            const now = Date.now() + timeOffset;
+                            const distance = this.endTimeMs - now;
+
+                            if (distance <= 0) {
+                                clearInterval(this.timerInterval);
+                                this.timeLeft = 0;
+                                Swal.fire('Waktu Habis!', 'Waktu Anda telah habis! Ujian akan disubmit otomatis.', 'info').then(() => {
+                                    this.submitFinish();
+                                });
+                            } else {
+                                this.timeLeft = distance;
+                                // 5-minute warning
+                                if (distance <= 300000 && !this.warningShown) {
+                                    this.warningShown = true;
+                                    Swal.fire({
+                                        title: 'Peringatan Waktu!',
+                                        text: 'Waktu ujian Anda tersisa 5 menit lagi.',
+                                        icon: 'warning',
+                                        toast: true,
+                                        position: 'top-end',
+                                        showConfirmButton: false,
+                                        timer: 5000,
+                                        timerProgressBar: true
+                                    });
+                                }
+                            }
+                        }, 1000);
+                    }
+                });
+
+                // Auto-sync every 60 seconds
+                this.syncInterval = setInterval(() => {
+                    if (!ATTEMPT_ID) return;
+                    const fd = buildFormData({ attempt_id: ATTEMPT_ID });
+                    $.ajax({
+                        url: API + '/api/exam/auto-sync',
+                        type: 'POST',
+                        data: fd,
+                        processData: false,
+                        contentType: false,
+                        dataType: 'json',
+                        success: (res) => { 
+                            updateCsrf(res); 
+                            // Fallback sync_mode detection if SSE fails
+                            if (res.exam_mode !== undefined) {
+                                if (res.exam_mode !== 'static' || !res.static_page_path) {
+                                    window.isSubmitting = true;
+                                    window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
+                                } else {
+                                    const expectedUrl = API + '/' + res.static_page_path;
+                                    const currentPath = window.location.pathname;
+                                    if (!expectedUrl.includes(currentPath)) {
+                                        window.isSubmitting = true;
+                                        window.location.href = expectedUrl;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }, 60000);
+            },
+
+            // ── SSE ──
+            initSSE() {
+                if (typeof EventSource === 'undefined' || !ATTEMPT_ID) {
+                    this.fallbackPolling();
+                    return;
+                }
+
+                const sseUrl = API + '/api/exam/stream/' + ATTEMPT_ID;
+                this.sseSource = new EventSource(sseUrl);
+                this.sseErrorCount = 0;
+
+                this.sseSource.addEventListener('ban', (e) => {
+                    const d = JSON.parse(e.data);
+                    this.sseSource.close();
+                    Swal.fire({ title:'Akun Di-Ban', text:d.message, icon:'error', allowOutsideClick:false, allowEscapeKey:false, confirmButtonText:'OK' })
+                        .then(() => { window.location.href = API + '/login'; });
+                });
+
+                this.sseSource.addEventListener('kick', (e) => {
+                    const d = JSON.parse(e.data);
+                    this.sseSource.close();
+                    Swal.fire('Sesi Dihentikan', d.message, 'error')
+                        .then(() => { window.location.href = API + '/login'; });
+                });
+
+                this.sseSource.addEventListener('finished', (e) => {
+                    const d = JSON.parse(e.data);
+                    this.sseSource.close();
+                    Swal.fire('Ujian Selesai', d.message, 'info')
+                        .then(() => { window.location.href = API + '/student/dashboard'; });
+                });
+
+                this.sseSource.addEventListener('extend_time', (e) => {
+                    const d = JSON.parse(e.data);
+                    if (d.test_id == EXAM_CONFIG.testId) {
+                        this.durationMinutes = d.duration_minutes;
+                        const data = window.__examData || {};
+                        const beginTimeMs = data.beginTimeMs || Date.now();
+                        this.endTimeMs = beginTimeMs + (this.durationMinutes * 60 * 1000);
+                        this.warningShown = false;
+                        
+                        Swal.fire({
+                            title: 'Waktu Ditambahkan!',
+                            text: 'Admin telah menambahkan waktu ujian. Silakan periksa sisa waktu Anda.',
+                            icon: 'success',
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 5000,
+                            timerProgressBar: true
+                        });
+                    }
+                });
+
+                this.sseSource.addEventListener('sync_mode', (e) => {
+                    const d = JSON.parse(e.data);
+                    // Ignore the very first sync if it matches our current state
+                    if (d.exam_mode !== 'static' || !d.static_page_path) {
+                        // Admin disabled static mode. Force redirect to dynamic take.php
+                        window.isSubmitting = true;
+                        window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
+                    } else {
+                        // Still static. Did the path change?
+                        const expectedUrl = API + '/' + d.static_page_path;
+                        const currentPath = window.location.pathname;
+                        // Since expectedUrl might have domain, we check if currentPath is in expectedUrl
+                        if (!expectedUrl.includes(currentPath)) {
+                            // Path changed! Force reload to the new static page
+                            window.isSubmitting = true;
+                            window.location.href = expectedUrl;
+                        }
+                    }
+                });
+
+                this.sseSource.addEventListener('connected', () => {
+                    this.sseErrorCount = 0;
+                });
+
+                this.sseSource.onerror = () => {
+                    this.sseErrorCount++;
+                    if (this.sseErrorCount > 10) {
+                        this.sseSource.close();
+                        this.fallbackPolling();
+                    }
+                };
+            },
+
+            fallbackPolling() {
+                console.log('SSE fallback: relying on autosave piggybacking for status detection');
+            },
+
+            // ── Computed ──
+            get currentQuestion() { return this.questions[this.currentIndex] || {}; },
+            get currentAnswers()  { return this.allAnswers[this.currentQuestion.question_id] || []; },
+
+            formatTime(ms) {
+                if (ms <= 0) return "00:00:00";
+                let h = Math.floor(ms / 3600000);
+                let m = Math.floor((ms % 3600000) / 60000);
+                let s = Math.floor((ms % 60000) / 1000);
+                return (h<10?"0"+h:h)+":"+(m<10?"0"+m:m)+":"+(s<10?"0"+s:s);
+            },
+
+            // ── Navigation ──
+            nextQuestion() {
+                if (this.currentIndex < this.questions.length - 1) this.currentIndex++;
+                else this.confirmFinish();
+                
+                this.checkExamMode();
+            },
+            prevQuestion() { 
+                if (this.currentIndex > 0) this.currentIndex--; 
+                
+                this.checkExamMode();
+            },
+            goToQuestion(idx) { 
+                this.currentIndex = idx; 
+                
+                this.checkExamMode();
+            },
+
+            checkExamMode() {
+                if (!ATTEMPT_ID) return;
+                const fd = buildFormData({ attempt_id: ATTEMPT_ID });
+                $.ajax({
+                    url: API + '/api/exam/auto-sync',
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json',
+                    success: (res) => { 
+                        updateCsrf(res); 
+                        if (res.exam_mode !== undefined) {
+                            if (res.exam_mode !== 'static' || !res.static_page_path) {
+                                window.isSubmitting = true;
+                                window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
+                            } else {
+                                const expectedUrl = API + '/' + res.static_page_path;
+                                const currentPath = window.location.pathname;
+                                if (!expectedUrl.includes(currentPath)) {
+                                    window.isSubmitting = true;
+                                    window.location.href = expectedUrl;
+                                }
+                            }
+                        }
+                    }
+                });
+            },
+
+            // ── Answer Handlers ──
+            selectRadio(answerId) {
+                // Prevent saving if the answer is already selected
+                let currentSelected = this.currentAnswers.find(a => a.is_selected == 1);
+                if (currentSelected && currentSelected.answer_id == answerId) {
+                    return; 
+                }
+                this.currentAnswers.forEach(a => { a.is_selected = (a.answer_id == answerId) ? 1 : 0; });
+                this.saveAnswer();
+            },
+            toggleCheckbox(answerId, isChecked) {
+                let ans = this.currentAnswers.find(a => a.answer_id == answerId);
+                if (ans) {
+                    // Prevent saving if state is unchanged
+                    if (ans.is_selected == (isChecked ? 1 : 0)) return;
+                    ans.is_selected = isChecked ? 1 : 0;
+                }
+                this.saveAnswer();
+            },
+            updateMatching(index, value) {
+                // Prevent saving if value is unchanged
+                if (this.questions[this.currentIndex].matchingPairs[index].selected === value) return;
+                this.questions[this.currentIndex].matchingPairs[index].selected = value;
+                this.saveAnswer();
+            },
+
+            // ── Autosave ──
+            saveAnswer() {
+                this.isSaving = true;
+                const questionId = this.currentQuestion.question_id;
+                const type  = this.currentQuestion.question_type;
+                let payload = { attempt_id: ATTEMPT_ID, question_id: questionId, question_type: type };
+
+                if (type == 3) {
+                    payload.answer_text = this.currentQuestion.answer_text || '';
+                } else if (type == 4 || type == 5) {
+                    let matches = {};
+                    this.currentQuestion.matchingPairs.forEach(p => { matches[p.left] = p.selected; });
+                    payload.matching_answers_json = JSON.stringify(matches);
+                } else {
+                    payload['selected_answers'] = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
+                }
+
+                const fd = buildFormData(payload);
+
+                $.ajax({
+                    url: API + '/api/exam/autosave',
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json'
+                })
+                .done((res) => {
+                    this.isSaving = false;
+                    updateCsrf(res);
+                    if (res.status === 'kicked') {
+                        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                        Swal.fire('Informasi', res.message, 'info').then(() => {
+                            window.location.href = API + '/login';
+                        });
+                    }
+                })
+                .fail((err) => {
+                    this.isSaving = false;
+                    console.error("Gagal menyimpan jawaban", err);
+                    if (err.status === 401 || err.status === 403) {
+                        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                        Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
+                            window.location.href = API + '/login';
+                        });
+                    }
+                });
+            },
+
+            // ── Counting ──
+            countAnswered() {
+                let count = 0;
+                this.questions.forEach(q => {
+                    if (q.question_type == 3) {
+                        if (q.answer_text && q.answer_text.trim() !== '') count++;
+                    } else if (q.question_type == 4 || q.question_type == 5) {
+                        if (q.matchingPairs && q.matchingPairs.every(p => p.selected !== '')) count++;
+                    } else {
+                        if ((this.allAnswers[q.question_id] || []).some(a => a.is_selected == 1)) count++;
+                    }
+                });
+                return count;
+            },
+            countFlagged() {
+                return this.questions.filter(q => q.is_flagged).length;
+            },
+
+            toggleFlag() {
+                this.currentQuestion.is_flagged = !this.currentQuestion.is_flagged;
+            },
+
+            getGridButtonClass(idx) {
+                const q = this.questions[idx];
+                if (!q) return 'unanswered';
+                
+                let classes = [];
+                if (q.is_flagged) {
+                    classes.push('flagged');
+                } else {
+                    let answered = false;
+                    if (q.question_type == 3) answered = (q.answer_text && q.answer_text.trim() !== '');
+                    else if (q.question_type == 4 || q.question_type == 5) answered = (q.matchingPairs && q.matchingPairs.every(p => p.selected !== ''));
+                    else answered = (this.allAnswers[q.question_id] || []).some(a => a.is_selected == 1);
+                    classes.push(answered ? 'answered' : 'unanswered');
+                }
+                
+                if (idx === this.currentIndex) classes.push('current');
+                return classes.join(' ');
+            },
+
+            // ── Finish Flow ──
+            confirmFinish() {
+                this.isSaving = true;
+                const fd = buildFormData({ attempt_id: ATTEMPT_ID });
+
+                $.ajax({
+                    url: API + '/api/exam/check-score',
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json'
+                })
+                .done((res) => {
+                    this.isSaving = false;
+                    updateCsrf(res);
+                    if (res.status === 'success' && res.score < EXAM_CONFIG.passingScore) {
+                        new bootstrap.Modal(document.getElementById('warningFinishModal')).show();
+                    } else {
+                        new bootstrap.Modal(document.getElementById('finishModal')).show();
+                    }
+                })
+                .fail(() => {
+                    this.isSaving = false;
+                    new bootstrap.Modal(document.getElementById('finishModal')).show();
+                });
+            },
+
+            async forceSubmit() {
+                const w1 = await Swal.fire({
+                    title: 'Peringatan 1',
+                    text: "Apakah Anda yakin? Nilai Anda saat ini tidak memenuhi syarat kelulusan.",
+                    icon: 'warning', showCancelButton: true, confirmButtonText: 'Yakin', cancelButtonText: 'Batal'
+                });
+                if (!w1.isConfirmed) return;
+
+                const w2 = await Swal.fire({
+                    title: 'Peringatan 2',
+                    text: "Anda masih memiliki waktu. Yakin ingin benar-benar menyerah?",
+                    icon: 'warning', showCancelButton: true, confirmButtonText: 'Yakin Menyerah', cancelButtonText: 'Batal'
+                });
+                if (!w2.isConfirmed) return;
+
+                const w3 = await Swal.fire({
+                    title: 'Peringatan Terakhir',
+                    text: "Ujian akan diakhiri secara permanen dengan status gagal. Lanjutkan?",
+                    icon: 'error', showCancelButton: true, confirmButtonText: 'Akhiri Ujian',
+                    cancelButtonText: 'Batal', confirmButtonColor: '#d33'
+                });
+                if (w3.isConfirmed) {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('warningFinishModal'));
+                    if (modal) modal.hide();
+                    this.submitFinish();
+                }
+            },
+
+            submitFinish() {
+                window.isSubmitting = true;
+                this.isSaving = true;
+
+                const fd = buildFormData({ test_id: EXAM_CONFIG.testId, attempt_id: ATTEMPT_ID });
+
+                $.ajax({
+                    url: API + '/api/exam/finish',
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json'
+                })
+                .done((res) => {
+                    updateCsrf(res);
+                    if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                    Swal.fire({
+                        title: 'Ujian Selesai!',
+                        text: res.message || 'Jawaban Anda telah disimpan.',
+                        icon: 'success',
+                        allowOutsideClick: false,
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.href = API + '/student/dashboard';
+                    });
+                })
+                .fail((err) => {
+                    this.isSaving = false;
+                    window.isSubmitting = false;
+                    const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : 'Gagal menyelesaikan ujian.';
+                    Swal.fire('Error', msg, 'error');
+                });
+            }
+        }));
+    });
+
+    // ═══════════════════════════════════════════════════════
+    //  4. ANTI-CHEAT ENGINE
+    // ═══════════════════════════════════════════════════════
+    (function() {
+        let isSuspended = false;
+        let isLocked    = false;
+
+        function reportCheat(type) {
+            const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
+            return $.ajax({
+                url: API + '/api/exam/report-cheat',
+                type: 'POST',
+                data: fd,
+                processData: false,
+                contentType: false,
+                dataType: 'json'
+            }).done((res) => { updateCsrf(res); });
+        }
+
+        // ── TAB SWITCH → INSTANT BAN ──
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
+            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) return; 
+            
+            isLocked = true;
+
+            reportCheat('tab_switch')
+                .done(function(res) {
+                    if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                    if (res.status === 'success') {
+                        Swal.fire('Peringatan', res.message || 'Anda terdeteksi membuka tab lain. Ujian dikunci.', 'warning')
+                            .then(() => { window.location.href = API + '/student/dashboard'; });
+                    } else if (res.status === 'suspended') {
+                        Swal.fire('Dihentikan', 'Sesi Anda telah dihentikan oleh Admin.', 'error')
+                            .then(() => { window.location.href = API + '/student/dashboard'; });
+                    }
+                })
+                .fail(function() {
+                    Swal.fire('Error', 'Kecurangan terdeteksi. Ujian dikunci.', 'error')
+                        .then(() => { window.location.href = API + '/student/dashboard'; });
+                });
+        });
+
+        // ── FULLSCREEN EXIT → WARNING OVERLAY ──
+        document.addEventListener('fullscreenchange', function() {
+            if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
+            
+            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) {
+                reportCheat('fullscreen_exit');
+                return;
+            }
+            
+            isSuspended = true;
+
+            document.getElementById('examContent').style.display = 'none';
+            var overlay = document.getElementById('suspendOverlay');
+            overlay.style.display = 'flex';
+
+            reportCheat('fullscreen_exit')
+                .done(function(res) {
+                    if (res.action === 'lock') {
+                        isLocked = true;
+                        Swal.fire('Informasi', res.message, 'info')
+                            .then(() => { window.location.href = API + '/login'; });
+                    } else if (res.action === 'suspend') {
+                        document.getElementById('strikeCount').innerText = res.strike;
+                        var sec = parseInt(res.timer);
+                        var timerEl = document.getElementById('suspendTimerDisplay');
+                        timerEl.innerText = sec;
+
+                        var cd = setInterval(function() {
+                            sec--;
+                            timerEl.innerText = sec;
+                            if (sec <= 0) {
+                                clearInterval(cd);
+                                document.getElementById('suspendOverlay').style.display = 'none';
+                                isSuspended = false;
+                                document.getElementById('examContent').style.display = 'block';
+                            }
+                        }, 1000);
+                    } else if (res.action === 'none') {
+                        document.getElementById('suspendOverlay').style.display = 'none';
+                        isSuspended = false;
+                        document.getElementById('examContent').style.display = 'block';
+                    }
+                })
+                .fail(function() {
+                    overlay.style.display = 'none';
+                    isSuspended = false;
+                    document.getElementById('examContent').style.display = 'block';
+                });
+        });
+    })();
+
+    // ═══════════════════════════════════════════════════════
+    //  5. BOOT — Start the init flow on page load
+    // ═══════════════════════════════════════════════════════
+    document.addEventListener('DOMContentLoaded', function() {
+        initExam();
+
+        // Image Lightbox Logic
+        const lightbox = document.getElementById('imageLightbox');
+        const lightboxImg = document.getElementById('imageLightboxImg');
+        
+        const qContainer = document.querySelector('.question-container');
+        if (qContainer) {
+            qContainer.addEventListener('click', function(e) {
+                if (e.target.tagName === 'IMG') {
+                    lightboxImg.src = e.target.src;
+                    lightbox.classList.add('active');
+                }
+            });
+        }
+        
+        lightbox.addEventListener('click', function(e) {
+            if (e.target !== lightboxImg) {
+                lightbox.classList.remove('active');
+                lightboxImg.src = '';
+            }
+        });
+    });
+    </script>
+</body>
+</html>

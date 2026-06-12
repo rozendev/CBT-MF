@@ -205,6 +205,45 @@ class UserController extends BaseController
         return redirect()->back()->with('error', 'Gagal menghapus pengguna.');
     }
 
+    public function bulkDelete()
+    {
+        $userIds = $this->request->getPost('user_ids');
+        
+        if (empty($userIds) || !is_array($userIds)) {
+            return redirect()->back()->with('error', 'Tidak ada pengguna yang dipilih untuk dihapus.');
+        }
+
+        $successCount = 0;
+        $skipCount = 0;
+
+        foreach ($userIds as $id) {
+            // Prevent deleting self or default admin
+            if ($id == 1 || $id == session('user_id')) {
+                $skipCount++;
+                continue;
+            }
+
+            $user = $this->userModel->find($id);
+            if ($user) {
+                if ($this->userModel->delete($id)) {
+                    $this->activityLog->log('delete', session('user_id'), 'user', $id, "Menghapus pengguna (bulk): {$user->username}");
+                    $successCount++;
+                }
+            }
+        }
+
+        $msg = "Berhasil menghapus $successCount pengguna.";
+        if ($skipCount > 0) {
+            $msg .= " ($skipCount pengguna dilewati demi keamanan).";
+        }
+
+        if ($successCount > 0) {
+            return redirect()->to('/admin/users')->with('success', $msg);
+        } else {
+            return redirect()->to('/admin/users')->with('error', 'Gagal menghapus pengguna. Pastikan Anda tidak memilih akun Anda sendiri.');
+        }
+    }
+
     public function unlock($id)
     {
         $user = $this->userModel->find($id);
@@ -293,14 +332,14 @@ class UserController extends BaseController
                     continue; // Skip invalid row
                 }
 
-                // Check duplicate username
-                if ($this->userModel->where('username', $username)->first()) {
+                // Check duplicate username (termasuk yang sudah di-soft delete)
+                if ($this->userModel->withDeleted()->where('username', $username)->first()) {
                     $duplicateCount++;
                     continue;
                 }
                 
-                // Check duplicate email if provided
-                if (!empty($email) && $this->userModel->where('email', $email)->first()) {
+                // Check duplicate email if provided (termasuk yang sudah di-soft delete)
+                if (!empty($email) && $this->userModel->withDeleted()->where('email', $email)->first()) {
                     $duplicateCount++;
                     continue;
                 }
@@ -315,26 +354,31 @@ class UserController extends BaseController
                     'is_active' => 1
                 ];
 
-                if ($this->userModel->skipValidation(true)->insert($userData)) {
-                    $userId = $this->userModel->getInsertID();
-                    if (!empty($groupId)) {
-                        $this->groupModel->addUserToGroup($userId, $groupId);
+                try {
+                    if ($this->userModel->skipValidation(true)->insert($userData)) {
+                        $userId = $this->userModel->getInsertID();
+                        if (!empty($groupId)) {
+                            $this->groupModel->addUserToGroup($userId, $groupId);
+                        }
+                        $successCount++;
                     }
-                    $successCount++;
+                } catch (\Exception $e) {
+                    // Ignore DB exception for this specific row (e.g. constraints) and let it continue
+                    // You could log it here if necessary
                 }
             }
 
             $db->transComplete();
 
             if ($db->transStatus() === false) {
-                return redirect()->back()->with('error', 'Gagal memproses transaksi database saat import.');
+                return redirect()->back()->with('error', 'Gagal memproses transaksi database saat import. Pastikan file sesuai format.');
             }
 
             $this->activityLog->log('import', session('user_id'), 'user', 0, "Mengimport $successCount siswa baru.");
 
             $msg = "Berhasil mengimport $successCount siswa.";
             if ($duplicateCount > 0) {
-                $msg .= " ($duplicateCount siswa dilewati karena username/email duplikat).";
+                $msg .= " ($duplicateCount siswa dilewati karena username/email sudah pernah digunakan/duplikat).";
             }
             return redirect()->back()->with('success', $msg);
 

@@ -65,15 +65,22 @@
                                     <?php if ($u->is_active): ?>
                                         <form action="<?= base_url('/admin/suspend/ban/' . $u->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi', text: 'BAN user <?= esc($u->username) ?>? User tidak akan bisa login.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Ban', cancelButtonText: 'Batal', confirmButtonColor: '#dc3545'}).then((res) => { if(res.isConfirmed) this.submit(); });">
                                             <?= csrf_field() ?>
-                                            <button type="submit" class="btn btn-sm btn-danger fw-bold">
-                                                <i class="bi bi-ban me-1"></i> Ban
+                                            <button type="submit" class="btn btn-sm btn-danger fw-bold" title="Ban Akun">
+                                                <i class="bi bi-ban"></i> Ban
+                                            </button>
+                                        </form>
+
+                                        <form action="<?= base_url('/admin/suspend/reset-login/' . $u->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi Reset Sesi', text: 'Hapus sesi login <?= esc($u->username) ?>? Jika diblokir karena multi-login, ini akan mengizinkannya login lagi.', icon: 'info', showCancelButton: true, confirmButtonText: 'Ya, Reset', cancelButtonText: 'Batal', confirmButtonColor: '#0d6efd'}).then((res) => { if(res.isConfirmed) this.submit(); });">
+                                            <?= csrf_field() ?>
+                                            <button type="submit" class="btn btn-sm btn-info text-white fw-bold" title="Reset Sesi Login (Multi-Login)">
+                                                <i class="bi bi-box-arrow-right"></i> Reset Sesi
                                             </button>
                                         </form>
                                     <?php else: ?>
                                         <form action="<?= base_url('/admin/suspend/release/' . $u->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi', text: 'RELEASE user <?= esc($u->username) ?>?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Release', cancelButtonText: 'Batal'}).then((res) => { if(res.isConfirmed) this.submit(); });">
                                             <?= csrf_field() ?>
-                                            <button type="submit" class="btn btn-sm btn-success fw-bold">
-                                                <i class="bi bi-unlock-fill me-1"></i> Release
+                                            <button type="submit" class="btn btn-sm btn-success fw-bold" title="Lepas Ban">
+                                                <i class="bi bi-unlock-fill"></i> Release
                                             </button>
                                         </form>
                                     <?php endif; ?>

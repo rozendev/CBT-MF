@@ -2,6 +2,9 @@
 $settingModel = new \App\Models\SettingModel();
 $primaryColor = $settingModel->getValue('primary_color', '#0d6efd');
 $secondaryColor = $settingModel->getValue('secondary_color', '#f4f6f9');
+$textColor = $settingModel->getValue('text_color', '#212529');
+$fontFamily = $settingModel->getValue('font_family', 'Inter');
+$borderRadius = $settingModel->getValue('border_radius', '8');
 $appLogo = $settingModel->getValue('app_logo', '');
 $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 $appDescription = $settingModel->getValue('app_description', 'Aplikasi Ujian Berbasis Komputer');
@@ -13,6 +16,8 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $this->renderSection('page_title') ?> - <?= esc($appName) ?></title>
+    <!-- Dynamic Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=<?= esc($fontFamily) ?>:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
@@ -20,32 +25,31 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     <!-- Custom CSS -->
     <style>
         :root {
-            --primary-bg: <?= $secondaryColor ?>;
-            --bs-primary: <?= $primaryColor ?>;
-            --bs-primary-rgb: <?= sscanf($primaryColor, "#%02x%02x%02x")[0] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[1] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[2] ?>;
-        }
-        .bg-primary {
-            background-color: var(--bs-primary) !important;
-        }
-        .text-primary {
-            color: var(--bs-primary) !important;
-        }
-        .btn-primary {
-            background-color: var(--bs-primary);
-            border-color: var(--bs-primary);
-        }
-        .btn-outline-primary {
-            color: var(--bs-primary);
-            border-color: var(--bs-primary);
-        }
-        .btn-outline-primary:hover {
-            background-color: var(--bs-primary);
-            color: #fff;
+            --color-background: <?= $secondaryColor ?>;
+            --color-primary: <?= $primaryColor ?>;
+            --color-primary-rgb: <?= sscanf($primaryColor, "#%02x%02x%02x")[0] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[1] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[2] ?>;
+            --color-primary-dark: color-mix(in srgb, var(--color-primary) 85%, black);
+            --color-surface: #ffffff;
+            --color-text: <?= $textColor ?>;
+            --color-text-muted: #6c757d;
+            --color-danger: #dc3545;
+            --color-warning: #ffc107;
+            --custom-radius: <?= esc($borderRadius) ?>px;
         }
         body {
-            background-color: var(--primary-bg);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--color-background);
+            color: var(--color-text);
+            font-family: '<?= esc($fontFamily) ?>', sans-serif;
+            -webkit-font-smoothing: antialiased;
         }
+        .btn, .card, .modal-content, .form-control, .form-select, .alert, .badge {
+            border-radius: var(--custom-radius);
+        }
+        .bg-primary { background-color: var(--color-primary) !important; }
+        .text-primary { color: var(--color-primary) !important; }
+        .btn-primary { background-color: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+        .btn-outline-primary { color: var(--color-primary); border-color: var(--color-primary); }
+        .btn-outline-primary:hover { background-color: var(--color-primary); color: #fff; }
         .navbar-brand {
             font-weight: 700;
             letter-spacing: 0.5px;

@@ -30,25 +30,35 @@
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-        <h6 class="m-0 fw-bold"><i class="bi bi-people me-1"></i> Daftar Pengguna</h6>
-        <div class="d-flex gap-2">
-            <a href="<?= base_url('/admin/users/create') ?>" class="btn btn-primary btn-sm rounded-pill">
-                <i class="bi bi-person-plus me-1"></i> Tambah Pengguna
-            </a>
-            <button type="button" class="btn btn-outline-success btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#importModal">
-                <i class="bi bi-file-earmark-excel me-1"></i> Import
-            </button>
+<form action="<?= base_url('/admin/users/bulk-delete') ?>" method="POST" id="bulkDeleteForm">
+    <?= csrf_field() ?>
+    <div class="card">
+        <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 fw-bold"><i class="bi bi-people me-1"></i> Daftar Pengguna</h6>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-danger d-none" id="btnBulkDelete" onclick="confirmBulkDelete()">
+                    <i class="bi bi-trash me-1"></i> Hapus Terpilih (<span id="bulkCount">0</span>)
+                </button>
+                <a href="<?= base_url('/admin/users/create') ?>" class="btn btn-primary btn-sm rounded-pill">
+                    <i class="bi bi-person-plus me-1"></i> Tambah Pengguna
+                </a>
+                <button type="button" class="btn btn-outline-success btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#importModal">
+                    <i class="bi bi-file-earmark-excel me-1"></i> Import
+                </button>
+            </div>
         </div>
-    </div>
     
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th class="ps-4">Pengguna</th>
+                        <th class="ps-3" style="width: 40px;">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="checkAll">
+                            </div>
+                        </th>
+                        <th class="ps-2">Pengguna</th>
                         <th>Role</th>
                         <th>Grup</th>
                         <th>Status</th>
@@ -66,7 +76,14 @@
                     <?php else: ?>
                         <?php foreach ($users as $user): ?>
                             <tr>
-                                <td class="ps-4">
+                                <td class="ps-3">
+                                    <?php if ($user->id != 1 && $user->id != session('user_id')): ?>
+                                        <div class="form-check">
+                                            <input class="form-check-input user-checkbox" type="checkbox" name="user_ids[]" value="<?= $user->id ?>">
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="ps-2">
                                     <div class="d-flex align-items-center gap-3">
                                         <div class="rounded-circle bg-light d-flex align-items-center justify-content-center fw-bold text-secondary" style="width: 40px; height: 40px;">
                                             <?= strtoupper(substr($user->firstname ?? $user->username, 0, 1)) ?>
@@ -155,6 +172,7 @@
     </div>
     <?php endif; ?>
 </div>
+</form>
 
 <!-- Delete Modal -->
 <div class="modal fade" id="deleteModal" tabindex="-1">
@@ -175,6 +193,26 @@
                     <input type="hidden" name="_method" value="DELETE">
                     <button type="submit" class="btn btn-danger px-4">Ya, Hapus</button>
                 </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Delete Modal -->
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Konfirmasi Bulk Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4 text-center">
+                <p class="mb-0">Apakah Anda yakin ingin menghapus <strong id="bulkDeleteCountText"></strong> pengguna sekaligus?</p>
+                <p class="text-muted small mt-2">Data nilai ujian dan log aktivitas pengguna terpilih juga akan terhapus secara permanen. Tindakan ini tidak bisa dibatalkan.</p>
+            </div>
+            <div class="modal-footer border-0 pt-0 justify-content-center">
+                <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Batal</button>
+                <button type="button" class="btn btn-danger px-4" onclick="document.getElementById('bulkDeleteForm').submit()">Ya, Hapus Semua</button>
             </div>
         </div>
     </div>
@@ -230,6 +268,47 @@
         document.getElementById('deleteUserName').textContent = username;
         document.getElementById('deleteForm').action = '<?= base_url('/admin/users/delete/') ?>' + id;
         new bootstrap.Modal(document.getElementById('deleteModal')).show();
+    }
+
+    // Bulk Delete Logic
+    const checkAll = document.getElementById('checkAll');
+    const userCheckboxes = document.querySelectorAll('.user-checkbox');
+    const btnBulkDelete = document.getElementById('btnBulkDelete');
+    const bulkCount = document.getElementById('bulkCount');
+
+    function updateBulkDeleteButton() {
+        if (!checkAll) return;
+        const checkedCount = document.querySelectorAll('.user-checkbox:checked').length;
+        bulkCount.textContent = checkedCount;
+        
+        if (checkedCount > 0) {
+            btnBulkDelete.classList.remove('d-none');
+        } else {
+            btnBulkDelete.classList.add('d-none');
+            checkAll.checked = false;
+        }
+    }
+
+    if (checkAll) {
+        checkAll.addEventListener('change', function() {
+            userCheckboxes.forEach(cb => cb.checked = this.checked);
+            updateBulkDeleteButton();
+        });
+
+        userCheckboxes.forEach(cb => {
+            cb.addEventListener('change', function() {
+                const allChecked = document.querySelectorAll('.user-checkbox:checked').length === userCheckboxes.length;
+                checkAll.checked = allChecked;
+                updateBulkDeleteButton();
+            });
+        });
+    }
+
+    function confirmBulkDelete() {
+        const count = document.querySelectorAll('.user-checkbox:checked').length;
+        if (count === 0) return;
+        document.getElementById('bulkDeleteCountText').textContent = count;
+        new bootstrap.Modal(document.getElementById('bulkDeleteModal')).show();
     }
 </script>
 <?= $this->endSection() ?>

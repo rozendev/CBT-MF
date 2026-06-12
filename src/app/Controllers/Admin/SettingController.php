@@ -57,6 +57,9 @@ class SettingController extends BaseController
                         $updateData['group'] = 'security';
                         $updateData['type'] = 'boolean';
                     }
+                    if (strpos($key, 'color') !== false) {
+                        $updateData['group'] = 'logo';
+                    }
                     
                     $this->settingModel->update($existing['id'], $updateData);
                 } else {

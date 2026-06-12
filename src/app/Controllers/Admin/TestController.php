@@ -52,9 +52,13 @@ class TestController extends BaseController
             $data[$field] = $this->request->getPost($field) ? 1 : 0;
         }
 
-        // Handle empty datetime fields
-        if (empty($data['begin_time'])) $data['begin_time'] = null;
-        if (empty($data['end_time'])) $data['end_time'] = null;
+        // Auto-calculate end_time based on begin_time and duration_minutes (Hardcap logic)
+        if (!empty($data['begin_time']) && !empty($data['duration_minutes'])) {
+            $data['end_time'] = date('Y-m-d H:i:s', strtotime($data['begin_time'] . " + {$data['duration_minutes']} minutes"));
+        } else {
+            $data['end_time'] = null;
+        }
+
         if (empty($data['password'])) $data['password'] = null;
 
         $data['user_id'] = session('user_id');
@@ -106,8 +110,13 @@ class TestController extends BaseController
             $data[$field] = $this->request->getPost($field) ? 1 : 0;
         }
 
-        if (empty($data['begin_time'])) $data['begin_time'] = null;
-        if (empty($data['end_time'])) $data['end_time'] = null;
+        // Auto-calculate end_time based on begin_time and duration_minutes (Hardcap logic)
+        if (!empty($data['begin_time']) && !empty($data['duration_minutes'])) {
+            $data['end_time'] = date('Y-m-d H:i:s', strtotime($data['begin_time'] . " + {$data['duration_minutes']} minutes"));
+        } else {
+            $data['end_time'] = null;
+        }
+
         if (empty($data['password'])) $data['password'] = null;
 
         if ($this->testModel->skipValidation(true)->update($id, $data)) {
@@ -163,6 +172,45 @@ class TestController extends BaseController
         }
 
         return redirect()->back()->with('error', 'Gagal menghapus ujian.');
+    }
+
+    public function extendTime($id)
+    {
+        $test = $this->testModel->find($id);
+        if (!$test) {
+            return redirect()->back()->with('error', 'Ujian tidak ditemukan.');
+        }
+
+        $extraMinutes = (int) $this->request->getPost('minutes');
+        if ($extraMinutes <= 0) {
+            return redirect()->back()->with('error', 'Waktu tambahan tidak valid.');
+        }
+
+        $newDuration = $test->duration_minutes + $extraMinutes;
+        $newEndTime = date('Y-m-d H:i:s', strtotime($test->begin_time . " + {$newDuration} minutes"));
+
+        if ($this->testModel->skipValidation(true)->update($id, [
+            'duration_minutes' => $newDuration,
+            'end_time' => $newEndTime
+        ])) {
+            $this->activityLog->log('update', session('user_id'), 'test', $id, "Menambahkan waktu {$extraMinutes} menit ke ujian: {$test->name}");
+
+            // Notify clients via SSE if running
+            try {
+                $redis = new \Redis();
+                if ($redis->connect('redis', 6379)) {
+                    $redis->publish('exam_events', json_encode([
+                        'event' => 'extend_time',
+                        'test_id' => $id,
+                        'duration_minutes' => $newDuration
+                    ]));
+                }
+            } catch (\Exception $e) {}
+
+            return redirect()->back()->with('success', "Berhasil menambahkan waktu {$extraMinutes} menit untuk semua peserta.");
+        }
+
+        return redirect()->back()->with('error', 'Gagal menambahkan waktu.');
     }
 
     // ─── Ujian Configuration (Peserta & Set Soal) ───────────────

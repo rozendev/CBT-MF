@@ -6,6 +6,7 @@ use CodeIgniter\Config\Filters as BaseFilters;
 use App\Filters\AuthFilter;
 use App\Filters\MultiLoginFilter;
 use App\Filters\RoleFilter;
+use App\Filters\CorsApiFilter;
 use CodeIgniter\Filters\Cors;
 use CodeIgniter\Filters\CSRF;
 use CodeIgniter\Filters\DebugToolbar;
@@ -40,6 +41,7 @@ class Filters extends BaseFilters
         'auth'          => AuthFilter::class,
         'role'          => RoleFilter::class,
         'multilogin'    => MultiLoginFilter::class,
+        'corsapi'       => CorsApiFilter::class,
     ];
 
     /**
@@ -78,7 +80,7 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
-            'multilogin' => ['except' => ['login', 'logout', 'student/exam/stream/*']],
+            'multilogin' => ['except' => ['login', 'logout', 'student/exam/stream/*', 'api/exam/stream/*']],
         ],
         'after' => [
             'secureheaders',
@@ -113,5 +115,6 @@ class Filters extends BaseFilters
         'csrf' => ['before' => [
             'login',
         ]],
+        'corsapi' => ['before' => ['api/exam/*']],
     ];
 }

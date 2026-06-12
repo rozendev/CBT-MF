@@ -28,3 +28,8 @@ docker/mariadb/data/
 /src/storage/cache/*
 /src/storage/logs/*
 /src/storage/sessions/*
+
+# Graphify Ignores
+/src/vendor/
+/src/writable/
+/src/public/static/

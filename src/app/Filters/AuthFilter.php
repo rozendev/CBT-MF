@@ -13,6 +13,10 @@ class AuthFilter implements FilterInterface
         $session = session();
 
         if (!$session->get('logged_in')) {
+            if ($request->isAJAX() || strpos($request->getPath(), 'api/') === 0) {
+                return service('response')->setStatusCode(401)->setJSON(['status' => 'error', 'message' => 'Silakan login terlebih dahulu.']);
+            }
+            
             // Store intended URL for post-login redirect
             $session->set('redirect_url', current_url());
 
@@ -23,6 +27,9 @@ class AuthFilter implements FilterInterface
         // Check if user account is still active
         if (!$session->get('is_active')) {
             $session->destroy();
+            if ($request->isAJAX() || strpos($request->getPath(), 'api/') === 0) {
+                return service('response')->setStatusCode(403)->setJSON(['status' => 'error', 'message' => 'Akun Anda telah dinonaktifkan.']);
+            }
             return redirect()->to('/login')
                 ->with('error', 'Akun Anda telah dinonaktifkan.');
         }

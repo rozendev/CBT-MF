@@ -2,6 +2,7 @@
 $settingModel = new \App\Models\SettingModel();
 $primaryColor = $settingModel->getValue('primary_color', '#0d6efd');
 $secondaryColor = $settingModel->getValue('secondary_color', '#f4f6f9');
+$textColor = $settingModel->getValue('text_color', '#212529');
 $appLogo = $settingModel->getValue('app_logo', '');
 $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 $antiCheatTitle = $settingModel->getValue('anti_cheat_title', '⚠️ Peringatan Kecurangan!');
@@ -19,79 +20,425 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
     <style>
         :root {
-            --primary-bg: <?= $secondaryColor ?>;
-            --bs-primary: <?= $primaryColor ?>;
-            --bs-primary-rgb: <?= sscanf($primaryColor, "#%02x%02x%02x")[0] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[1] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[2] ?>;
+            --color-background: <?= $secondaryColor ?>;
+            --color-primary: <?= $primaryColor ?>;
+            --color-primary-rgb: <?= sscanf($primaryColor, "#%02x%02x%02x")[0] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[1] ?>, <?= sscanf($primaryColor, "#%02x%02x%02x")[2] ?>;
+            --color-primary-dark: color-mix(in srgb, var(--color-primary) 85%, black);
+            --color-surface: #ffffff;
+            --color-text: <?= $textColor ?>;
+            --color-text-muted: #6c757d;
+            --color-danger: #dc3545;
+            --color-warning: #ffc107;
         }
-        .bg-primary { background-color: var(--bs-primary) !important; }
-        .text-primary { color: var(--bs-primary) !important; }
-        .btn-primary { background-color: var(--bs-primary); border-color: var(--bs-primary); }
-        .btn-outline-primary { color: var(--bs-primary); border-color: var(--bs-primary); }
-        .btn-outline-primary:hover { background-color: var(--bs-primary); color: #fff; }
+        body {
+            background-color: var(--color-background); 
+            color: var(--color-text);
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            padding-bottom: 80px; /* Space for bottom nav */
+        }
 
-        body { background-color: var(--primary-bg); }
-        .exam-header { background-color: #fff; border-bottom: 1px solid #dee2e6; box-shadow: 0 2px 4px rgba(0,0,0,.04); }
-        .q-grid-btn { width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; font-weight: 600; margin: 3px; border-radius: 8px; }
-        .q-grid-btn.answered { background-color: #198754; color: white; border-color: #198754; }
-        .q-grid-btn.current { border: 2px solid var(--bs-primary); background-color: #e9ecef; color: #000; }
-        .q-grid-btn.unanswered { background-color: #fff; border: 1px solid #ced4da; color: #495057; }
-        .answer-option { display: block; padding: 15px; margin-bottom: 10px; border: 1px solid #dee2e6; border-radius: 8px; cursor: pointer; transition: all 0.2s; background: #fff;}
-        .answer-option:hover { background-color: #f8f9fa; border-color: #b1b7bd; }
-        .answer-option input:checked + .answer-content { font-weight: bold; }
-        .answer-option.selected { border-color: var(--bs-primary); background-color: rgba(var(--bs-primary-rgb), 0.1); }
+        /* Sidebar Layout */
+        .exam-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+        .exam-main {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        /* Beautiful Desktop Drawer */
+        .desktop-drawer-wrapper {
+            position: fixed;
+            right: 0;
+            top: 0;
+            height: 100vh;
+            width: 40px; /* Trigger area */
+            z-index: 1040;
+        }
+        .desktop-drawer-trigger {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--color-surface);
+            border: 1px solid rgba(0,0,0,0.08);
+            border-right: none;
+            border-radius: 16px 0 0 16px;
+            padding: 20px 8px;
+            box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .desktop-drawer-wrapper:hover .desktop-drawer-trigger {
+            transform: translateY(-50%) translateX(100%);
+            opacity: 0;
+        }
+        .desktop-drawer {
+            position: absolute;
+            right: -360px; /* Hidden */
+            top: 0;
+            width: 360px;
+            height: 100vh;
+            background: var(--color-surface);
+            box-shadow: -10px 0 30px rgba(0,0,0,0.1);
+            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            flex-direction: column;
+            padding: 30px 24px;
+            overflow-y: auto;
+            border-left: 1px solid rgba(0,0,0,0.05);
+        }
+        .desktop-drawer-wrapper:hover .desktop-drawer {
+            right: 0; /* Slide in on hover */
+        }
+        .desktop-drawer-wrapper:hover {
+            width: 360px; /* Expand hover area so drawer stays open */
+        }
+        
         .noselect { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
 
-        /* Fullscreen Gate */
-        .fullscreen-gate {
-            position: fixed; inset: 0; z-index: 99999;
-            background-color: var(--primary-bg);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: #333; text-align: center;
-        }
-        .fullscreen-gate .gate-icon { font-size: 5rem; margin-bottom: 1.5rem; color: var(--bs-primary); }
-        .fullscreen-gate .gate-btn {
-            background-color: var(--bs-primary);
-            border: none; color: white; font-size: 1.2rem; font-weight: 700;
-            padding: 1rem 3rem; border-radius: 50px; cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .fullscreen-gate .gate-btn:hover { transform: scale(1.05); box-shadow: 0 8px 25px rgba(var(--bs-primary-rgb),0.4); }
-
-        /* Suspend Overlay */
+        /* Anti Cheat Overlay */
         .suspend-overlay {
             position: fixed; inset: 0; z-index: 99998;
             background: #000000;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: white;
+            color: white; text-align: center;
+        }
+
+        /* Top Navigation */
+        .exam-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 1020;
+            background: var(--color-surface);
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .exam-title-area {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-width: 60%;
+        }
+        .exam-title-text {
+            font-weight: 700;
+            font-size: 16px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--color-text);
+        }
+        .exam-student-text {
+            font-size: 12px;
+            color: var(--color-text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .exam-timer-chip {
+            background: rgba(var(--color-primary-rgb), 0.1);
+            color: var(--color-primary);
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-weight: 700;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .exam-timer-chip.danger {
+            background: rgba(220,53,69,0.1);
+            color: var(--color-danger);
+        }
+        
+        /* Progress Bar */
+        .progress-wrapper {
+            width: 100%;
+            height: 4px;
+            background: rgba(0,0,0,0.05);
+            position: sticky;
+            top: 61px; /* approximate height of topbar */
+            z-index: 1019;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--color-primary);
+            transition: width 0.3s ease;
+        }
+
+        /* Question Area */
+        .question-container {
+            padding: 24px 32px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .question-label {
+            font-size: 13px;
+            color: var(--color-text-muted);
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .question-text {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+            color: var(--color-text);
+        }
+        .question-text img {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        /* Answer Options */
+        .answer-option {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 14px;
+            margin-bottom: 8px;
+            border: 2px solid rgba(0,0,0,0.08);
+            border-radius: 10px;
+            background: var(--color-surface);
+            cursor: pointer;
+            transition: all 150ms ease;
+            min-height: 48px;
+        }
+        .answer-option:hover {
+            border-color: rgba(var(--color-primary-rgb), 0.3);
+        }
+        .answer-option.selected {
+            border-color: var(--color-primary);
+            background: rgba(var(--color-primary-rgb), 0.05);
+        }
+        .answer-option .form-check-input {
+            margin-top: 3px;
+            transform: scale(1.2);
+            cursor: pointer;
+        }
+        .answer-content {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--color-text);
+            flex-grow: 1;
+        }
+        .answer-content img {
+            max-width: 100%;
+            height: auto;
+        }
+
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--color-surface);
+            border-top: 1px solid rgba(0,0,0,0.08);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 1020;
+            box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+        }
+        .btn-nav {
+            height: 48px;
+            border-radius: 9999px;
+            font-weight: 600;
+            padding: 0 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 150ms ease;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-nav.ghost {
+            background: transparent;
+            color: var(--color-text-muted);
+        }
+        .btn-nav.ghost:active { background: rgba(0,0,0,0.05); }
+        .btn-nav.filled {
+            background: var(--color-primary);
+            color: #fff;
+        }
+        .btn-nav.filled:active { transform: scale(0.96); }
+        
+        .btn-flag {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid rgba(0,0,0,0.08);
+            background: var(--color-surface);
+            color: var(--color-text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 150ms ease;
+            cursor: pointer;
+        }
+        .btn-flag.active {
+            border-color: var(--color-warning);
+            color: var(--color-warning);
+            background: rgba(255,193,7,0.1);
+        }
+
+        /* End Exam Button */
+        .end-exam-container {
+            margin-top: 48px;
+            padding-top: 32px;
+            border-top: 1px dashed rgba(0,0,0,0.1);
             text-align: center;
         }
-        .suspend-overlay .pulse-icon { animation: pulse 2s ease-in-out infinite; }
-        @keyframes pulse {
-            0%,100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.15); opacity: 0.7; }
+        .btn-end-exam {
+            background: transparent;
+            border: 2px solid var(--color-text-muted);
+            color: var(--color-text-muted);
+            height: 48px;
+            border-radius: 9999px;
+            padding: 0 32px;
+            font-weight: 600;
+            transition: all 150ms ease;
         }
+        .btn-end-exam:hover {
+            border-color: var(--color-danger);
+            color: var(--color-danger);
+        }
+
+        /* Sidebar Offcanvas (Mobile) */
+        .offcanvas-end {
+            width: 300px;
+        }
+        .q-grid-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+        }
+        .q-grid-btn {
+            width: 100%;
+            height: 48px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            border-radius: 12px;
+            border: 2px solid transparent;
+            font-size: 14px;
+            transition: all 150ms ease;
+            cursor: pointer;
+        }
+        .q-grid-btn.answered {
+            background-color: var(--color-primary);
+            color: white;
+        }
+        .q-grid-btn.flagged {
+            background-color: var(--color-warning);
+            color: #000;
+        }
+        .q-grid-btn.unanswered {
+            background-color: rgba(0,0,0,0.04);
+            border-color: rgba(0,0,0,0.12);
+            color: var(--color-text-muted);
+        }
+        .q-grid-btn.current {
+            border-color: var(--color-text) !important;
+        }
+        /* Sidebar legend */
+        .sidebar-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 12px;
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 12px;
+        }
+        .sidebar-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--color-text-muted);
+        }
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        /* Auto-save chip */
+        .autosave-chip {
+            position: fixed;
+            bottom: 80px;
+            left: 16px;
+            background: var(--color-surface);
+            color: var(--color-text);
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            z-index: 1010;
+        }
+        /* Hide sidebar toggle on desktop */
+        @media (min-width: 992px) {
+            .btn-sidebar-toggle {
+                display: none !important;
+            }
+        }
+
+        /* Image Lightbox Overlay */
+        .image-lightbox {
+            position: fixed; inset: 0; z-index: 1050;
+            background: rgba(0,0,0,0.9);
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        .image-lightbox.active { display: flex; }
+        .image-lightbox img {
+            max-width: 90vw; max-height: 90vh;
+            border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            object-fit: contain;
+        }
+        .image-lightbox-close {
+            position: absolute; top: 20px; right: 20px;
+            color: white; font-size: 40px; line-height: 1; cursor: pointer;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .question-container img { cursor: zoom-in; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 <body class="noselect">
 
-    <!-- ▼ FULLSCREEN GATE — User MUST click to enter fullscreen (browser requirement) ▼ -->
-    <div class="fullscreen-gate" id="fullscreenGate">
-        <div class="gate-icon mb-4">
-            <?php if ($appLogo): ?>
-                <img src="<?= base_url($appLogo) ?>" alt="Logo" style="height: 100px;">
-            <?php else: ?>
-                <i class="bi bi-shield-lock"></i>
-            <?php endif; ?>
-        </div>
-        <h2 class="fw-bold mb-2">Mode Ujian Aman</h2>
-        <p class="text-secondary mb-4 px-4" style="max-width:500px;">
-            Ujian ini menggunakan mode layar penuh (<em>fullscreen</em>) untuk mencegah kecurangan.<br>
-            Klik tombol di bawah untuk memulai.
-        </p>
-        <button class="gate-btn" id="enterFullscreenBtn">
-            <i class="bi bi-arrows-fullscreen me-2"></i> Masuk Mode Ujian
-        </button>
+    <!-- Finish Form -->
+    <form id="finishForm" action="<?= base_url('/student/exam/finish/' . $test->id) ?>" method="POST" style="display: none;">
+        <?= csrf_field() ?>
+        <input type="hidden" name="attempt_id" value="<?= esc($attempt->id) ?>">
+    </form>
+
+    <!-- Image Lightbox Overlay -->
+    <div class="image-lightbox" id="imageLightbox">
+        <div class="image-lightbox-close" id="imageLightboxClose">&times;</div>
+        <img src="" id="imageLightboxImg" alt="Preview">
     </div>
 
     <!-- ▼ SUSPEND OVERLAY (Anti-Cheat) ▼ -->
@@ -111,170 +458,205 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
     </div>
 
     <!-- ▼ EXAM CONTENT ▼ -->
-    <div id="examContent" style="display:none;" x-data="examApp()">
-        <!-- Header -->
-        <div class="exam-header sticky-top py-3">
-            <div class="container-fluid px-4">
-                <div class="row align-items-center">
-                    <div class="col-md-4">
-                        <h5 class="mb-0 fw-bold text-primary text-truncate"><?= esc($test->name) ?></h5>
-                        <div class="small text-muted"><?= esc(session('firstname') . ' ' . session('lastname')) ?></div>
+    <div id="examContent" style="display:block;" x-data="examApp()">
+    <div class="exam-layout">
+    <div class="exam-main">
+        
+        <!-- Top Navigation -->
+        <div class="exam-topbar">
+            <div class="exam-title-area">
+                <div class="exam-title-text"><?= esc($test->name) ?></div>
+                <div class="exam-student-text"><?= esc(session('firstname') . ' ' . session('lastname')) ?></div>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <?php if ($test->duration_minutes > 0): ?>
+                    <div class="exam-timer-chip" :class="{'danger': timeLeft <= 300000}">
+                        <i class="bi bi-clock-history"></i> <span x-text="formatTime(timeLeft)">--:--:--</span>
                     </div>
-                    <div class="col-md-4 text-center">
-                        <?php if ($test->duration_minutes > 0): ?>
-                            <div class="d-inline-block bg-light border border-danger rounded-pill px-4 py-2">
-                                <span class="text-danger fw-bold fs-5" x-text="formatTime(timeLeft)">--:--:--</span>
+                <?php endif; ?>
+                <button type="button" class="btn text-dark border-0 p-1 btn-sidebar-toggle" data-bs-toggle="offcanvas" data-bs-target="#questionGridSheet">
+                    <i class="bi bi-grid-fill fs-3"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-wrapper">
+            <div class="progress-fill" :style="'width: ' + ((countAnswered() / questions.length) * 100) + '%'"></div>
+        </div>
+
+        <!-- Autosave Indicator -->
+        <div class="autosave-chip" x-show="showSavedToast" x-transition.opacity.duration.300ms style="display: none;">
+            <i class="bi bi-check-circle-fill" style="color: #198754;"></i> Tersimpan
+        </div>
+        <div class="autosave-chip" x-show="isSaving" x-transition.opacity.duration.150ms style="display: none;">
+            <span class="spinner-border spinner-border-sm text-primary" role="status" style="width: 1rem; height: 1rem;"></span> Menyimpan...
+        </div>
+
+        <!-- Main Content -->
+        <div class="question-container">
+            <div class="question-label">Soal No. <span x-text="currentIndex + 1"></span> dari <?= count($questions) ?></div>
+            
+            <div class="question-text" x-html="currentQuestion.question_text"></div>
+            
+            <template x-if="currentQuestion.question_type == 1">
+                <div>
+                    <template x-for="(answer, i) in currentAnswers" :key="answer.answer_id">
+                        <label class="answer-option" :class="{'selected': answer.is_selected == 1}" @click="selectRadio(answer.answer_id)">
+                            <input type="radio" :name="'q_' + currentQuestion.log_id" class="form-check-input flex-shrink-0" :checked="answer.is_selected == 1">
+                            <div class="answer-content" x-html="answer.answer_text"></div>
+                        </label>
+                    </template>
+                </div>
+            </template>
+            
+            <template x-if="currentQuestion.question_type == 2">
+                <div>
+                    <template x-for="(answer, i) in currentAnswers" :key="answer.answer_id">
+                        <label class="answer-option" :class="{'selected': answer.is_selected == 1}">
+                            <input type="checkbox" class="form-check-input flex-shrink-0" :checked="answer.is_selected == 1" @change="toggleCheckbox(answer.answer_id, $event.target.checked)">
+                            <div class="answer-content" x-html="answer.answer_text"></div>
+                        </label>
+                    </template>
+                </div>
+            </template>
+            
+            <template x-if="currentQuestion.question_type == 3">
+                <div>
+                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input.debounce.500ms="saveAnswer()" placeholder="Tulis jawaban Anda di sini..."></textarea>
+                </div>
+            </template>
+            
+            <template x-if="currentQuestion.question_type == 4">
+                <div>
+                    <div class="alert alert-info border-0 rounded-3 mb-4" style="font-size:14px;">
+                        <i class="bi bi-info-circle me-1"></i> Jodohkan Kiri (Premis) dengan Kanan (Jawaban) yang tepat.
+                    </div>
+                    <template x-for="(pair, i) in currentQuestion.matchingPairs" :key="i">
+                        <div class="row align-items-center mb-3 p-3 rounded-3" style="background: rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.05);">
+                            <div class="col-12 col-md-6 fw-bold mb-2 mb-md-0" x-html="pair.left"></div>
+                            <div class="col-12 col-md-6">
+                                <select class="form-select border-primary" style="border-radius:8px;" :value="pair.selected" @change="updateMatching(i, $event.target.value)">
+                                    <option value="" :selected="pair.selected === ''">-- Pilih Jawaban --</option>
+                                    <template x-for="opt in currentQuestion.matchingOptions" :key="opt">
+                                        <option :value="opt" x-text="opt" :selected="pair.selected === opt"></option>
+                                    </template>
+                                </select>
                             </div>
-                        <?php else: ?>
-                            <span class="badge bg-secondary rounded-pill px-3 py-2">Waktu Tidak Dibatasi</span>
-                        <?php endif; ?>
+                        </div>
+                    </template>
+                </div>
+            </template>
+            
+            <template x-if="currentQuestion.question_type == 5">
+                <div>
+                    <div class="alert alert-info border-0 rounded-3 mb-4" style="font-size:14px;">
+                        <i class="bi bi-info-circle me-1"></i> Pilih Benar atau Salah untuk setiap pernyataan di bawah ini.
                     </div>
-                    <div class="col-md-4 text-end">
-                        <form action="<?= base_url('/student/exam/finish/' . $test->id) ?>" method="POST" id="finishForm" class="d-inline">
-                            <?= csrf_field() ?>
-                            <button type="button" class="btn btn-success fw-bold" @click="confirmFinish()">
-                                <i class="bi bi-check-circle-fill me-1"></i> Selesai Ujian
-                            </button>
-                        </form>
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead class="text-center" style="font-size:14px; opacity:0.8;">
+                                <tr>
+                                    <th class="text-start border-bottom">Pernyataan</th>
+                                    <th class="border-bottom" style="width: 80px;">Benar</th>
+                                    <th class="border-bottom" style="width: 80px;">Salah</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(pair, i) in currentQuestion.matchingPairs" :key="i">
+                                    <tr>
+                                        <td x-html="pair.left" class="fs-6 py-3 border-bottom"></td>
+                                        <td class="text-center py-3 border-bottom">
+                                            <input type="radio" :name="'tf_' + currentQuestion.log_id + '_' + i" value="Benar" :checked="pair.selected === 'Benar'" class="form-check-input" style="transform: scale(1.5);" @change="updateMatching(i, 'Benar')">
+                                        </td>
+                                        <td class="text-center py-3 border-bottom">
+                                            <input type="radio" :name="'tf_' + currentQuestion.log_id + '_' + i" value="Salah" :checked="pair.selected === 'Salah'" class="form-check-input" style="transform: scale(1.5);" @change="updateMatching(i, 'Salah')">
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
                     </div>
+                </div>
+            </template>
+            
+            <div class="end-exam-container" x-show="currentIndex === questions.length - 1">
+                <button type="button" class="btn-end-exam" @click="confirmFinish()">
+                    Akhiri Ujian
+                </button>
+            </div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav">
+            <button class="btn-nav ghost" @click="prevQuestion()" :style="currentIndex === 0 ? 'visibility: hidden;' : ''">
+                <i class="bi bi-chevron-left"></i> <span class="d-none d-sm-inline">Sebelumnya</span>
+            </button>
+            <button class="btn-flag" :class="{'active': currentQuestion.is_flagged}" @click="toggleFlag()">
+                <i class="bi bi-flag-fill"></i>
+            </button>
+            <button class="btn-nav filled" @click="nextQuestion()">
+                <span class="d-none d-sm-inline" x-text="currentIndex === questions.length - 1 ? 'Selesai' : 'Selanjutnya'"></span>
+                <i class="bi bi-chevron-right" x-show="currentIndex !== questions.length - 1"></i>
+                <i class="bi bi-check-lg" x-show="currentIndex === questions.length - 1"></i>
+            </button>
+        </div>
+
+        <!-- Mobile Offcanvas Sidebar (only visible on small screens) -->
+        <div class="offcanvas offcanvas-end" tabindex="-1" id="questionGridSheet" aria-labelledby="questionGridSheetLabel">
+            <div class="offcanvas-header border-bottom">
+                <h5 class="offcanvas-title fw-bold" id="questionGridSheetLabel">Navigasi Soal</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+            </div>
+            <div class="offcanvas-body">
+                <div class="q-grid-container">
+                    <template x-for="(q, idx) in questions" :key="q.log_id">
+                        <button class="q-grid-btn" :class="getGridButtonClass(idx)" @click="goToQuestion(idx); closeMobileSidebar()" x-text="idx + 1"></button>
+                    </template>
+                </div>
+                <div class="sidebar-legend">
+                    <div class="sidebar-legend-item"><span class="legend-dot" style="background:var(--color-primary);"></span> Dijawab: <strong x-text="countAnswered()"></strong></div>
+                    <div class="sidebar-legend-item"><span class="legend-dot" style="background:var(--color-warning);"></span> Ditandai: <strong x-text="countFlagged()"></strong></div>
+                    <div class="sidebar-legend-item"><span class="legend-dot" style="background:rgba(0,0,0,0.08); border: 1px solid rgba(0,0,0,0.15);"></span> Belum: <strong x-text="questions.length - countAnswered()"></strong></div>
                 </div>
             </div>
         </div>
 
-        <!-- Main Content -->
-        <div class="container-fluid px-4 py-4">
-            <div class="row g-4">
-                <div class="col-lg-8 col-xl-9">
-                    <div class="card shadow-sm border-0 rounded-3 mb-3">
-                        <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-                            <h5 class="m-0 fw-bold">Soal No. <span x-text="currentIndex + 1"></span> <span class="text-muted fw-normal fs-6 d-none d-sm-inline">dari <?= count($questions) ?></span></h5>
-                            <div class="d-flex align-items-center">
-                                <div class="spinner-border spinner-border-sm text-primary me-3" role="status" x-show="isSaving">
-                                    <span class="visually-hidden">Menyimpan...</span>
-                                </div>
-                                <button class="btn btn-outline-primary btn-sm d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#questionGridOffcanvas" aria-controls="questionGridOffcanvas">
-                                    <i class="bi bi-grid-3x3-gap-fill me-1"></i> Daftar Soal
-                                </button>
-                            </div>
-                        </div>
-                        <div class="card-body p-3 p-md-4 fs-6 fs-md-5" style="min-height: 400px; line-height: 1.6;">
-                            <div class="mb-5 text-dark" x-html="currentQuestion.question_text"></div>
-                            <template x-if="currentQuestion.question_type == 1">
-                                <div>
-                                    <template x-for="(answer, i) in currentAnswers" :key="answer.answer_id">
-                                        <label class="answer-option" :class="{'selected': answer.is_selected == 1}" @click="selectRadio(answer.answer_id)">
-                                            <div class="d-flex align-items-start gap-3">
-                                                <input type="radio" :name="'q_' + currentQuestion.log_id" class="form-check-input mt-1" :checked="answer.is_selected == 1">
-                                                <div class="answer-content" x-html="answer.answer_text"></div>
-                                            </div>
-                                        </label>
-                                    </template>
-                                </div>
-                            </template>
-                            <template x-if="currentQuestion.question_type == 2">
-                                <div>
-                                    <template x-for="(answer, i) in currentAnswers" :key="answer.answer_id">
-                                        <label class="answer-option" :class="{'selected': answer.is_selected == 1}">
-                                            <div class="d-flex align-items-start gap-3">
-                                                <input type="checkbox" class="form-check-input mt-1" :checked="answer.is_selected == 1" @change="toggleCheckbox(answer.answer_id, $event.target.checked)">
-                                                <div class="answer-content" x-html="answer.answer_text"></div>
-                                            </div>
-                                        </label>
-                                    </template>
-                                </div>
-                            </template>
-                            <template x-if="currentQuestion.question_type == 3">
-                                <div>
-                                    <textarea class="form-control" rows="8" x-model="currentQuestion.answer_text" @input.debounce.500ms="saveAnswer()" placeholder="Tulis jawaban Anda di sini..."></textarea>
-                                </div>
-                            </template>
-                            <template x-if="currentQuestion.question_type == 4">
-                                <div>
-                                    <div class="alert alert-info border-0 rounded-0 mb-4">
-                                        <i class="bi bi-info-circle me-1"></i> Jodohkan Kiri (Premis) dengan Kanan (Jawaban) yang tepat.
-                                    </div>
-                                    <template x-for="(pair, i) in currentQuestion.matchingPairs" :key="i">
-                                        <div class="row align-items-center mb-3 p-3 bg-light rounded-3 border">
-                                            <div class="col-md-6 fw-bold" x-html="pair.left"></div>
-                                            <div class="col-md-6">
-                                                <select class="form-select border-primary" :value="pair.selected" @change="updateMatching(i, $event.target.value)">
-                                                    <option value="" :selected="pair.selected === ''">-- Pilih Jawaban --</option>
-                                                    <template x-for="opt in currentQuestion.matchingOptions" :key="opt">
-                                                        <option :value="opt" x-text="opt" :selected="pair.selected === opt"></option>
-                                                    </template>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
-                            </template>
-                            <template x-if="currentQuestion.question_type == 5">
-                                <div>
-                                    <div class="alert alert-info border-0 rounded-0 mb-4">
-                                        <i class="bi bi-info-circle me-1"></i> Pilih Benar atau Salah untuk setiap pernyataan di bawah ini.
-                                    </div>
-                                    <div class="table-responsive">
-                                        <table class="table table-bordered align-middle">
-                                            <thead class="table-light text-center">
-                                                <tr>
-                                                    <th class="text-start">Pernyataan</th>
-                                                    <th style="width: 120px;">Benar</th>
-                                                    <th style="width: 120px;">Salah</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <template x-for="(pair, i) in currentQuestion.matchingPairs" :key="i">
-                                                    <tr>
-                                                        <td x-html="pair.left" class="fs-6"></td>
-                                                        <td class="text-center">
-                                                            <input type="radio" :name="'tf_' + currentQuestion.log_id + '_' + i" value="Benar" :checked="pair.selected === 'Benar'" class="form-check-input" style="transform: scale(1.5);" @change="updateMatching(i, 'Benar')">
-                                                        </td>
-                                                        <td class="text-center">
-                                                            <input type="radio" :name="'tf_' + currentQuestion.log_id + '_' + i" value="Salah" :checked="pair.selected === 'Salah'" class="form-check-input" style="transform: scale(1.5);" @change="updateMatching(i, 'Salah')">
-                                                        </td>
-                                                    </tr>
-                                                </template>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </template>
-                        </div>
-                        <div class="card-footer bg-white py-3 d-flex justify-content-between">
-                            <button class="btn btn-outline-secondary" @click="prevQuestion()" :disabled="currentIndex === 0">
-                                <i class="bi bi-chevron-left me-1"></i> Sebelumnya
-                            </button>
-                            <button class="btn btn-primary" @click="nextQuestion()">
-                                Selanjutnya <i class="bi bi-chevron-right ms-1"></i>
-                            </button>
-                        </div>
-                    </div>
+        <!-- Desktop Sidebar (always visible on lg+, opens on hover) -->
+        </div><!-- /exam-main -->
+        <div class="desktop-drawer-wrapper d-none d-lg-block">
+            <div class="desktop-drawer-trigger">
+                <i class="bi bi-grid-3x3-gap-fill text-primary mb-2 fs-5"></i>
+                <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 13px; font-weight: 700; letter-spacing: 2px; color: var(--color-text-muted);">
+                    SOAL
                 </div>
-                <div class="col-lg-4 col-xl-3">
-                    <div class="offcanvas-lg offcanvas-end" tabindex="-1" id="questionGridOffcanvas" aria-labelledby="questionGridOffcanvasLabel">
-                        <div class="offcanvas-header border-bottom">
-                            <h5 class="offcanvas-title fw-bold" id="questionGridOffcanvasLabel">Navigasi Soal</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#questionGridOffcanvas" aria-label="Close"></button>
-                        </div>
-                        <div class="offcanvas-body p-0 d-block">
-                            <div class="card shadow-sm border-0 rounded-3 mb-3 w-100">
-                                <div class="card-header bg-white border-bottom py-3 d-none d-lg-block"><h6 class="m-0 fw-bold">Navigasi Soal</h6></div>
-                                <div class="card-body">
-                                    <div class="d-flex flex-wrap justify-content-start">
-                                        <template x-for="(q, idx) in questions" :key="q.log_id">
-                                            <button class="btn btn-sm q-grid-btn" :class="getGridButtonClass(idx)" @click="goToQuestion(idx)" x-text="idx + 1" data-bs-dismiss="offcanvas" data-bs-target="#questionGridOffcanvas"></button>
-                                        </template>
-                                    </div>
-                                    <hr>
-                                    <div class="small text-muted mb-1"><span class="d-inline-block bg-success rounded-circle me-1" style="width:10px;height:10px;"></span> Sudah Dijawab (<span x-text="countAnswered()"></span>)</div>
-                                    <div class="small text-muted"><span class="d-inline-block bg-white border rounded-circle me-1" style="width:10px;height:10px;"></span> Belum Dijawab (<span x-text="questions.length - countAnswered()"></span>)</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            </div>
+            
+            <div class="desktop-drawer">
+                <div class="drawer-header border-bottom pb-3 mb-4">
+                    <h5 class="fw-bold mb-0 text-primary"><i class="bi bi-grid-3x3-gap-fill me-2"></i>Navigasi Soal</h5>
+                </div>
+                
+                <div class="q-grid-container mb-4">
+                    <template x-for="(q, idx) in questions" :key="q.log_id">
+                        <button class="q-grid-btn shadow-sm" :class="getGridButtonClass(idx)" @click="goToQuestion(idx)" x-text="idx + 1"></button>
+                    </template>
+                </div>
+                
+                <div class="sidebar-legend mb-4">
+                    <div class="sidebar-legend-item"><span class="legend-dot shadow-sm" style="background:var(--color-primary);"></span> Dijawab: <strong x-text="countAnswered()"></strong></div>
+                    <div class="sidebar-legend-item"><span class="legend-dot shadow-sm" style="background:var(--color-warning);"></span> Ditandai: <strong x-text="countFlagged()"></strong></div>
+                    <div class="sidebar-legend-item"><span class="legend-dot shadow-sm" style="background:rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.1);"></span> Belum: <strong x-text="questions.length - countAnswered()"></strong></div>
+                </div>
+                
+                <div class="mt-auto pt-3 border-top">
+                    <button type="button" class="btn btn-danger w-100 rounded-3 fw-bold py-2 shadow-sm" style="height: 48px;" @click="confirmFinish()">
+                        <i class="bi bi-stop-circle-fill me-2"></i>Akhiri Ujian
+                    </button>
                 </div>
             </div>
         </div>
+        </div><!-- /exam-layout -->
 
         <!-- Finish Confirmation Modal -->
         <div class="modal fade" id="finishModal" tabindex="-1" data-bs-backdrop="static">
@@ -334,9 +716,12 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         const RAW_ANSWERS = <?= json_encode($answers) ?>;
         const SAVE_URL = '<?= base_url('/student/exam/save-answer') ?>';
         const REPORT_CHEAT_URL = '<?= base_url('/student/exam/report-cheat') ?>';
-        const ATTEMPT_ID = <?= $attempt->id ?>;
-        const DASHBOARD_URL = '<?= base_url('/student/dashboard') ?>';
-        const durationMin = <?= (int) $test->duration_minutes ?>;
+        const DASHBOARD_URL = "<?= base_url('/student/dashboard') ?>";
+        const ATTEMPT_ID = <?= (int) $attempt->id ?>;
+        const STUDENT_NAME = <?= json_encode(session('firstname') . ' ' . session('lastname')) ?>;
+        
+        let durationMin = <?= (int) $test->duration_minutes ?>;
+        const beginTimeMs = <?= strtotime($test->begin_time) * 1000 ?>;
         const startTime = <?= strtotime($attempt->started_at) * 1000 ?>;
 
         $.ajaxSetup({
@@ -346,31 +731,23 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         });
 
         // ═══════════════════════════════════════════════════════
-        //  1. FULLSCREEN GATE
+        //  1. AUTO FULLSCREEN ON INTERACTION
         // ═══════════════════════════════════════════════════════
-        let examStarted = false;
-
-        document.getElementById('enterFullscreenBtn').addEventListener('click', function() {
-            const el = document.documentElement;
-            const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-            if (rfs) {
-                rfs.call(el).then(function() {
-                    document.getElementById('fullscreenGate').style.display = 'none';
-                    document.getElementById('examContent').style.display = 'block';
-                    examStarted = true;
-                }).catch(function() {
-                    // If fullscreen fails (e.g. iframe restriction), still allow exam
-                    document.getElementById('fullscreenGate').style.display = 'none';
-                    document.getElementById('examContent').style.display = 'block';
-                    examStarted = true;
-                });
-            } else {
-                // Browser doesn't support fullscreen API
-                document.getElementById('fullscreenGate').style.display = 'none';
-                document.getElementById('examContent').style.display = 'block';
-                examStarted = true;
-            }
+        let examStarted = true;
+        let isSuspended = false;
+        let isLocked = false;
+        
+        <?php if ($isAntiCheatEnabled): ?>
+        ['click', 'touchstart', 'keydown'].forEach(evt => {
+            document.addEventListener(evt, function() {
+                if (!document.fullscreenElement && !isLocked && !isSuspended) {
+                    const el = document.documentElement;
+                    const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                    if (rfs) rfs.call(el).catch(()=>{});
+                }
+            });
         });
+        <?php endif; ?>
 
         // ═══════════════════════════════════════════════════════
         //  2. ALPINE.JS EXAM APP
@@ -381,6 +758,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 allAnswers: RAW_ANSWERS,
                 currentIndex: 0,
                 isSaving: false,
+                showSavedToast: false,
                 timeLeft: 0,
                 timerInterval: null,
                 warningShown: false,
@@ -388,6 +766,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 init() {
                     // Parse Matching Options for Type 4 and Type 5
                     this.questions.forEach(q => {
+                        q.is_flagged = false;
                         if (q.question_type == 4 || q.question_type == 5) {
                             q.matchingPairs = [];
                             let rights = [];
@@ -422,10 +801,10 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
                     // ═══ Countdown Timer (if timed exam) ═══
                     if (durationMin > 0) {
-                        const endTime = startTime + (durationMin * 60 * 1000);
+                        this.endTimeMs = beginTimeMs + (durationMin * 60 * 1000);
                         this.timerInterval = setInterval(() => {
                             const now = new Date().getTime();
-                            const distance = endTime - now;
+                            const distance = this.endTimeMs - now;
 
                             if (distance <= 0) {
                                 clearInterval(this.timerInterval);
@@ -505,6 +884,39 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         });
                     });
 
+                    // Extend Time event — admin added more time globally
+                    this.sseSource.addEventListener('extend_time', (e) => {
+                        const data = JSON.parse(e.data);
+                        if (data.test_id == <?= (int) $test->id ?>) {
+                            durationMin = data.duration_minutes;
+                            this.endTimeMs = beginTimeMs + (durationMin * 60 * 1000);
+                            
+                            // Reset warning state so it can warn again if needed
+                            this.warningShown = false;
+                            
+                            Swal.fire({
+                                title: 'Waktu Ditambahkan!',
+                                text: 'Admin telah menambahkan waktu ujian. Silakan periksa sisa waktu Anda.',
+                                icon: 'success',
+                                toast: true,
+                                position: 'top-end',
+                                showConfirmButton: false,
+                                timer: 5000,
+                                timerProgressBar: true
+                            });
+                        }
+                    });
+
+                    // Sync mode — handle force reload if admin switches exam mode
+                    this.sseSource.addEventListener('sync_mode', (e) => {
+                        const d = JSON.parse(e.data);
+                        if (d.exam_mode === 'static' && d.static_page_path) {
+                            // Admin enabled static mode. Force redirect to static CDN URL
+                            window.isSubmitting = true;
+                            window.location.href = '<?= base_url() ?>' + d.static_page_path;
+                        }
+                    });
+
                     // Connection established
                     this.sseSource.addEventListener('connected', (e) => {
                         this.sseErrorCount = 0;
@@ -549,17 +961,35 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
                 prevQuestion() { if (this.currentIndex > 0) this.currentIndex--; },
                 goToQuestion(idx) { this.currentIndex = idx; },
+                closeMobileSidebar() {
+                    const el = document.getElementById('questionGridSheet');
+                    if (el) {
+                        const bs = bootstrap.Offcanvas.getInstance(el);
+                        if (bs) bs.hide();
+                    }
+                },
 
                 selectRadio(answerId) {
+                    // Prevent saving if the answer is already selected
+                    let currentSelected = this.currentAnswers.find(a => a.is_selected == 1);
+                    if (currentSelected && currentSelected.answer_id == answerId) {
+                        return; 
+                    }
                     this.currentAnswers.forEach(a => { a.is_selected = (a.answer_id == answerId) ? 1 : 0; });
                     this.saveAnswer();
                 },
                 toggleCheckbox(answerId, isChecked) {
                     let ans = this.currentAnswers.find(a => a.answer_id == answerId);
-                    if (ans) ans.is_selected = isChecked ? 1 : 0;
+                    if (ans) {
+                        // Prevent saving if state is unchanged
+                        if (ans.is_selected == (isChecked ? 1 : 0)) return;
+                        ans.is_selected = isChecked ? 1 : 0;
+                    }
                     this.saveAnswer();
                 },
                 updateMatching(index, value) {
+                    // Prevent saving if value is unchanged
+                    if (this.questions[this.currentIndex].matchingPairs[index].selected === value) return;
                     this.questions[this.currentIndex].matchingPairs[index].selected = value;
                     this.saveAnswer();
                 },
@@ -585,6 +1015,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     $.post('<?= base_url('/student/exam/autosave') ?>', data)
                      .done((res) => { 
                          this.isSaving = false;
+                         this.showSavedToast = true;
+                         setTimeout(() => { this.showSavedToast = false; }, 2000);
+                         
                          if (res.status === 'kicked') {
                              if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                              Swal.fire('Informasi', res.message, 'info').then(() => {
@@ -618,14 +1051,28 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     return count;
                 },
 
+                countFlagged() {
+                    return this.questions.filter(q => q.is_flagged).length;
+                },
+
+                toggleFlag() {
+                    this.currentQuestion.is_flagged = !this.currentQuestion.is_flagged;
+                },
+
                 getGridButtonClass(idx) {
                     const q = this.questions[idx];
-                    let answered = false;
-                    if (q.question_type == 3) answered = (q.answer_text && q.answer_text.trim() !== '');
-                    else if (q.question_type == 4 || q.question_type == 5) answered = (q.matchingPairs && q.matchingPairs.every(p => p.selected !== ''));
-                    else answered = (this.allAnswers[q.log_id]||[]).some(a => a.is_selected == 1);
-                    if (idx === this.currentIndex) return 'current';
-                    return answered ? 'answered' : 'unanswered';
+                    let classes = [];
+                    if (q.is_flagged) {
+                        classes.push('flagged');
+                    } else {
+                        let answered = false;
+                        if (q.question_type == 3) answered = (q.answer_text && q.answer_text.trim() !== '');
+                        else if (q.question_type == 4 || q.question_type == 5) answered = (q.matchingPairs && q.matchingPairs.every(p => p.selected !== ''));
+                        else answered = (this.allAnswers[q.log_id]||[]).some(a => a.is_selected == 1);
+                        classes.push(answered ? 'answered' : 'unanswered');
+                    }
+                    if (idx === this.currentIndex) classes.push('current');
+                    return classes.join(' ');
                 },
 
                 confirmFinish() { 
@@ -696,18 +1143,14 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
         // ═══════════════════════════════════════════════════════
         //  3. ANTI-CHEAT ENGINE
-        //  Rules:
-        //    - Tab switch (visibilitychange) → INSTANT BAN
-        //    - Fullscreen exit → Warning overlay (suspend)
         // ═══════════════════════════════════════════════════════
         
         (function() {
-            let isSuspended = false;
-            let isLocked = false;
-
             // ── TAB SWITCH → INSTANT BAN ──
             document.addEventListener('visibilitychange', function() {
                 if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
+                <?php if (!$isAntiCheatEnabled): ?>return;<?php endif; ?>
+                
                 isLocked = true;
 
                 $.ajax({
@@ -738,6 +1181,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             // ── FULLSCREEN EXIT → WARNING OVERLAY ──
             document.addEventListener('fullscreenchange', function() {
                 if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
+                
+                <?php if (!$isAntiCheatEnabled): ?>
+                // We still report the exit asynchronously, but do not interrupt the UI
+                $.post(REPORT_CHEAT_URL, { attempt_id: ATTEMPT_ID, type: 'fullscreen_exit' });
+                return;
+                <?php endif; ?>
+
                 // User exited fullscreen
                 isSuspended = true;
 
@@ -768,25 +1218,51 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                                 timerEl.innerText = sec;
                                 if (sec <= 0) {
                                     clearInterval(cd);
-                                    overlay.style.display = 'none';
+                                    document.getElementById('suspendOverlay').style.display = 'none';
                                     isSuspended = false;
-                                    // Show gate to re-enter fullscreen
-                                    document.getElementById('fullscreenGate').style.display = 'flex';
+                                    document.getElementById('examContent').style.display = 'block';
                                 }
                             }, 1000);
                         } else if (res.action === 'none') {
-                            // Anti-cheat disabled, just show gate
+                            // Anti-cheat disabled
                             overlay.style.display = 'none';
                             isSuspended = false;
-                            document.getElementById('fullscreenGate').style.display = 'flex';
+                            document.getElementById('examContent').style.display = 'block';
                         }
                     },
                     error: function() {
                         overlay.style.display = 'none';
                         isSuspended = false;
-                        document.getElementById('fullscreenGate').style.display = 'flex';
+                        document.getElementById('examContent').style.display = 'block';
                     }
                 });
+            });
+        })();
+
+        // ═══════════════════════════════════════════════════════
+        //  4. IMAGE LIGHTBOX PREVIEW
+        // ═══════════════════════════════════════════════════════
+        (function() {
+            const lightbox = document.getElementById('imageLightbox');
+            const lightboxImg = document.getElementById('imageLightboxImg');
+
+            // Listen for clicks on images inside the question container
+            const qContainer = document.querySelector('.question-container');
+            if (qContainer) {
+                qContainer.addEventListener('click', function(e) {
+                    if (e.target.tagName === 'IMG') {
+                        lightboxImg.src = e.target.src;
+                        lightbox.classList.add('active');
+                    }
+                });
+            }
+
+            // Close lightbox when clicking the close button or outside the image
+            lightbox.addEventListener('click', function(e) {
+                if (e.target !== lightboxImg) {
+                    lightbox.classList.remove('active');
+                    lightboxImg.src = '';
+                }
             });
         })();
     </script>

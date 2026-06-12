@@ -7,13 +7,13 @@ class Home extends BaseController
     public function index()
     {
         if (session()->get('logged_in')) {
-            $role = session()->get('role');
-            return match ($role) {
-                'admin', 'guru' => redirect()->to('/admin/dashboard'),
-                default         => redirect()->to('/exam'),
-            };
+            if (session()->get('role') === 'admin') {
+                return redirect()->to(base_url('/admin'));
+            } else {
+                return redirect()->to(base_url('/student'));
+            }
         }
-
-        return redirect()->to('/login');
+        
+        return redirect()->to(base_url('login'));
     }
 }

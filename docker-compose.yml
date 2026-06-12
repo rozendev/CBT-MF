@@ -1,17 +1,29 @@
 services:
-  # ─── PHP 8.5 + Apache ───────────────────────────────────────
-  php:
-    build:
-      context: ./docker/php
-      dockerfile: Dockerfile
-    container_name: ujian_php
+  # ─── Nginx ──────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: ujian_nginx
     restart: unless-stopped
     ports:
       - "8080:80"
     volumes:
       - ./src:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - php
+    networks:
+      - ujian_network
+
+  # ─── PHP 8.5-FPM ────────────────────────────────────────────
+  php:
+    build:
+      context: ./docker/php-fpm
+      dockerfile: Dockerfile
+    container_name: ujian_php
+    restart: unless-stopped
+    volumes:
+      - ./src:/var/www/html
       - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
-      - ./docker/php/apache-vhost.conf:/etc/apache2/sites-available/000-default.conf
     depends_on:
       mariadb:
         condition: service_healthy
@@ -28,13 +40,27 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
 
+  # ─── Cloudflare Tunnel ──────────────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ujian_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    depends_on:
+      - nginx
+    networks:
+      - ujian_network
+
   # ─── MariaDB ────────────────────────────────────────────────
   mariadb:
     image: mariadb:latest
     container_name: ujian_mariadb
     restart: unless-stopped
+    command: --max_connections=500
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"    # bind ke localhost aja, bukan 0.0.0.0
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./docker/mariadb/init:/docker-entrypoint-initdb.d
@@ -58,7 +84,7 @@ services:
     container_name: ujian_phpmyadmin
     restart: unless-stopped
     ports:
-      - "8081:80"
+      - "127.0.0.1:8081:80"      # localhost only, JANGAN lewat tunnel
     environment:
       PMA_HOST: mariadb
       PMA_PORT: 3306
@@ -77,7 +103,7 @@ services:
     container_name: ujian_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"    # localhost only
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes

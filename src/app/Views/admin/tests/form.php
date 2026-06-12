@@ -39,31 +39,26 @@
 
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Waktu Mulai (Opsional)</label>
+                            <label class="form-label fw-semibold">Waktu Mulai (Hardcap) <span class="text-danger">*</span></label>
                             <input type="datetime-local" class="form-control" name="begin_time" 
-                                   value="<?= old('begin_time', $test->begin_time ?? '') ?>">
+                                   value="<?= old('begin_time', $test->begin_time ?? '') ?>" required>
+                            <div class="form-text">Waktu ini menjadi patokan awal hitung mundur ujian bagi seluruh siswa.</div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Waktu Selesai (Opsional)</label>
-                            <input type="datetime-local" class="form-control" name="end_time" 
-                                   value="<?= old('end_time', $test->end_time ?? '') ?>">
+                            <label class="form-label fw-semibold">Durasi (Menit) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" name="duration_minutes" min="1" 
+                                   value="<?= old('duration_minutes', $test->duration_minutes ?? 90) ?>" required>
+                            <div class="form-text">Waktu selesai otomatis: <strong class="text-danger">Waktu Mulai + Durasi</strong>.</div>
                         </div>
                     </div>
-                    <div class="form-text mb-3">Kosongkan jadwal jika ujian bisa diakses kapan saja.</div>
 
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Durasi (Menit) <span class="text-danger">*</span></label>
-                            <input type="number" class="form-control" name="duration_minutes" min="0" 
-                                   value="<?= old('duration_minutes', $test->duration_minutes ?? 0) ?>" required>
-                            <div class="form-text">0 = Tanpa batas waktu</div>
-                        </div>
-                        <div class="col-md-4">
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">Password (Opsional)</label>
                             <input type="text" class="form-control" name="password" 
                                    value="<?= old('password', $test->password ?? '') ?>" placeholder="Kosongkan jika bebas">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">IP Range</label>
                             <input type="text" class="form-control" name="ip_range" 
                                    value="<?= old('ip_range', $test->ip_range ?? '*') ?>">

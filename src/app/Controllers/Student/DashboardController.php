@@ -25,12 +25,10 @@ class DashboardController extends BaseController
             WHERE ug.user_id = ?
               AND t.is_enabled = 1
               AND t.deleted_at IS NULL
-              AND (t.begin_time IS NULL OR t.begin_time <= ?)
-              AND (t.end_time IS NULL OR t.end_time >= ?)
             ORDER BY t.created_at DESC
         ";
         
-        $query = $db->query($sql, [$userId, $userId, $now, $now]);
+        $query = $db->query($sql, [$userId, $userId]);
         $availableTests = $query->getResult();
 
         return view('student/dashboard', [

@@ -106,6 +106,10 @@
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-end pe-4">
+                                    <button type="button" class="btn btn-sm btn-outline-info" title="Preview" 
+                                            onclick="previewQuestion(<?= $q->id ?>)">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
                                     <a href="<?= base_url('/admin/questions/edit/' . $q->id) ?>" class="btn btn-sm btn-outline-primary" title="Edit">
                                         <i class="bi bi-pencil"></i>
                                     </a>
@@ -170,10 +174,50 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold text-dark"><i class="bi bi-eye text-primary me-2"></i>Preview Soal</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body py-4 px-4" id="previewModalBody">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0 justify-content-end">
+                <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>
 <script>
+    function previewQuestion(id) {
+        const modalBody = document.getElementById('previewModalBody');
+        modalBody.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+        
+        // Prevent creating multiple backdrops by using getOrCreateInstance
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('previewModal'));
+        modal.show();
+
+        fetch('<?= base_url('/admin/questions/preview/') ?>' + id)
+            .then(response => response.text())
+            .then(html => {
+                modalBody.innerHTML = html;
+            })
+            .catch(error => {
+                console.error(error);
+                modalBody.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Terjadi kesalahan saat memuat preview soal.</div>';
+            });
+    }
+
     function confirmDelete(id) {
         document.getElementById('deleteForm').action = '<?= base_url('/admin/questions/delete/') ?>' + id;
         new bootstrap.Modal(document.getElementById('deleteModal')).show();

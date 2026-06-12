@@ -11,8 +11,8 @@ class InitialSeeder extends Seeder
         // 1. Default admin user
         $this->db->table('users')->insert([
             'username'   => 'admin',
-            'email'      => 'admin@localhost',
-            'password'   => password_hash('admin123', PASSWORD_ARGON2ID),
+            'email'      => 'admin@sekolah.sch.id',
+            'password'   => password_hash('admin123', PASSWORD_BCRYPT, ['cost' => 8]),
             'role'       => 'admin',
             'firstname'  => 'Administrator',
             'lastname'   => 'Sistem',

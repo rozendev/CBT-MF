@@ -54,7 +54,7 @@ class UserModel extends Model
             $password = $data['data']['password'];
             // Don't re-hash if already hashed
             if (!str_starts_with($password, '$argon2id$') && !str_starts_with($password, '$2y$')) {
-                $data['data']['password'] = password_hash($password, PASSWORD_ARGON2ID);
+                $data['data']['password'] = password_hash($password, PASSWORD_BCRYPT, ['cost' => 8]);
             }
         }
         return $data;

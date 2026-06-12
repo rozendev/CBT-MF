@@ -111,6 +111,30 @@ class SuspendController extends BaseController
     }
 
     /**
+     * Clear user's Redis login session manually so they can login again on a new device
+     */
+    public function resetLogin($userId)
+    {
+        $user = $this->userModel->find($userId);
+        if (!$user) {
+            return redirect()->to('/admin/suspend')->with('error', 'User tidak ditemukan.');
+        }
+
+        try {
+            $redis = new \Redis();
+            if ($redis->connect('redis', 6379)) {
+                $redis->del("user_login_token:{$userId}");
+                $redis->zRem('active_sessions', $userId);
+                $redis->zRem('login_queue', $userId);
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error on reset login: ' . $e->getMessage());
+        }
+
+        return redirect()->to('/admin/suspend')->with('success', "Sesi login {$user->username} berhasil di-reset. Siswa kini bisa login kembali.");
+    }
+
+    /**
      * Reset all exam attempts for a user (delete everything)
      */
     public function reset($userId)

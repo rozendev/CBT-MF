@@ -13,6 +13,15 @@ $routes->post('queue/ping', 'Auth\QueueController::ping');
 
 $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     $routes->post('keep-alive', 'Api\SyncController::keepAlive');
+    
+    // Static Exam API
+    $routes->post('exam/init', 'Api\ExamApiController::init');
+    $routes->post('exam/autosave', 'Api\ExamApiController::autosave');
+    $routes->post('exam/auto-sync', 'Api\ExamApiController::autoSync');
+    $routes->post('exam/finish', 'Api\ExamApiController::finish');
+    $routes->post('exam/check-score', 'Api\ExamApiController::checkScore');
+    $routes->post('exam/report-cheat', 'Api\ExamApiController::reportCheat');
+    $routes->get('exam/stream/(:num)', 'Api\ExamApiController::stream/$1');
 });
 
 // ── Admin Routes (role-protected) ───────────────────
@@ -29,6 +38,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->get('users/edit/(:num)', 'Admin\UserController::edit/$1');
         $routes->post('users/update/(:num)', 'Admin\UserController::update/$1');
         $routes->delete('users/delete/(:num)', 'Admin\UserController::delete/$1');
+        $routes->post('users/bulk-delete', 'Admin\UserController::bulkDelete');
         $routes->post('users/unlock/(:num)', 'Admin\UserController::unlock/$1');
         $routes->get('users/template', 'Admin\UserController::template');
         $routes->post('users/import', 'Admin\UserController::import');
@@ -38,6 +48,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->post('suspend/release/(:num)', 'Admin\SuspendController::release/$1');
         $routes->post('suspend/ban/(:num)', 'Admin\SuspendController::ban/$1');
         $routes->post('suspend/reset/(:num)', 'Admin\SuspendController::reset/$1');
+        $routes->post('suspend/reset-login/(:num)', 'Admin\SuspendController::resetLogin/$1');
         $routes->get('suspend/user-attempts/(:num)', 'Admin\SuspendController::getUserAttempts/$1');
         $routes->post('suspend/reset-attempt/(:num)', 'Admin\SuspendController::resetAttempt/$1');
 
@@ -52,6 +63,10 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         // Settings
         $routes->get('settings', 'Admin\SettingController::index');
         $routes->post('settings/update', 'Admin\SettingController::update');
+
+        // Analytics
+        $routes->get('analytics', 'Admin\AnalyticsController::index');
+        $routes->get('analytics/data', 'Admin\AnalyticsController::getData');
     });
 
     // Modules
@@ -80,6 +95,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->get('questions/word-import', 'Admin\WordImportController::index');
     $routes->get('questions/word-import/template', 'Admin\WordImportController::downloadTemplate');
     $routes->post('questions/word-import/process', 'Admin\WordImportController::process');
+    $routes->get('questions/preview/(:num)', 'Admin\QuestionController::preview/$1');
     $routes->post('questions/bulk-delete', 'Admin\QuestionController::bulkDelete');
 
     $routes->get('tests', 'Admin\TestController::index');
@@ -87,6 +103,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->post('tests/store', 'Admin\TestController::store');
     $routes->get('tests/edit/(:num)', 'Admin\TestController::edit/$1');
     $routes->post('tests/update/(:num)', 'Admin\TestController::update/$1');
+    $routes->post('tests/extend-time/(:num)', 'Admin\TestController::extendTime/$1');
     $routes->delete('tests/delete/(:num)', 'Admin\TestController::delete/$1');
     
     // Test Configurations (Peserta & Set Soal)
@@ -94,6 +111,14 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->post('tests/config/(:num)/groups', 'Admin\TestController::updateGroups/$1');
     $routes->post('tests/config/(:num)/subjects', 'Admin\TestController::addSubjectSet/$1');
     $routes->delete('tests/config/subjects/(:num)', 'Admin\TestController::deleteSubjectSet/$1');
+
+    // Static Exam Generation
+    $routes->post('tests/static/generate/(:num)', 'Admin\StaticExamController::generate/$1');
+    $routes->post('tests/static/delete/(:num)', 'Admin\StaticExamController::delete/$1');
+
+    // Export Reports
+    $routes->get('reports', 'Admin\ReportController::index');
+    $routes->post('reports/export', 'Admin\ReportController::export');
 
     // Results / Laporan Ujian
     $routes->get('results', 'Admin\ResultController::index');

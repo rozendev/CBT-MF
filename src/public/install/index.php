@@ -146,14 +146,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     </div>
                     <div class="step <?= $step >= 2 ? ($step > 2 ? 'completed' : 'active') : '' ?>">
                         <div class="circle"><i class="bi <?= $step > 2 ? 'bi-check' : 'bi-2-circle' ?>"></i></div>
-                        <small>Database & Redis</small>
+                        <small>Web Server</small>
                     </div>
                     <div class="step <?= $step >= 3 ? ($step > 3 ? 'completed' : 'active') : '' ?>">
                         <div class="circle"><i class="bi <?= $step > 3 ? 'bi-check' : 'bi-3-circle' ?>"></i></div>
-                        <small>Cloudflare</small>
+                        <small>Database</small>
                     </div>
                     <div class="step <?= $step >= 4 ? ($step > 4 ? 'completed' : 'active') : '' ?>">
                         <div class="circle"><i class="bi <?= $step > 4 ? 'bi-check' : 'bi-4-circle' ?>"></i></div>
+                        <small>Cloudflare</small>
+                    </div>
+                    <div class="step <?= $step >= 5 ? ($step > 5 ? 'completed' : 'active') : '' ?>">
+                        <div class="circle"><i class="bi <?= $step > 5 ? 'bi-check' : 'bi-5-circle' ?>"></i></div>
                         <small>Selesai</small>
                     </div>
                 </div>
@@ -167,6 +171,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <?php require __DIR__ . '/steps/step3.php'; ?>
                 <?php elseif ($step === 4): ?>
                     <?php require __DIR__ . '/steps/step4.php'; ?>
+                <?php elseif ($step === 5): ?>
+                    <?php require __DIR__ . '/steps/step5.php'; ?>
                 <?php endif; ?>
             </div>
         </div>

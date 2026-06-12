@@ -1,13 +1,16 @@
 <?php
 $settingModel = new \App\Models\SettingModel();
 $primaryColor = $settingModel->getValue('primary_color', '#4f46e5');
-$navbarColor = $settingModel->getValue('navbar_color', 'rgba(0,0,0,0.3)');
-$textColor = $settingModel->getValue('text_color', '#212529');
-$appLogo = $settingModel->getValue('app_logo', '');
-$appName = $settingModel->getValue('app_name', 'Sistem Ujian');
-$appDesc = $settingModel->getValue('app_description', 'Aplikasi Ujian Berbasis Komputer (CBT)');
-$siteAuthor = $settingModel->getValue('site_author', 'Sekolah/Lembaga');
-$bgImage = $settingModel->getValue('login_background', '');
+$navbarColor  = $settingModel->getValue('navbar_color', 'rgba(0,0,0,0.3)');
+$textColor    = $settingModel->getValue('text_color', '#212529');
+$appLogo      = $settingModel->getValue('app_logo', '');
+$appName      = $settingModel->getValue('app_name', 'Sistem Ujian');
+$appDesc      = $settingModel->getValue('app_description', 'Aplikasi Ujian Berbasis Komputer (CBT)');
+$siteAuthor   = $settingModel->getValue('site_author', 'Sekolah/Lembaga');
+$bgImage      = $settingModel->getValue('login_background', '');
+
+// Only load SweetAlert2 when there is a flash notification to show
+$hasToast = session()->getFlashdata('error') || session()->getFlashdata('success');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -15,10 +18,32 @@ $bgImage = $settingModel->getValue('login_background', '');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Halaman login <?= esc($appName) ?> — <?= esc($appDesc) ?>">
     <title>Login — <?= esc($appName) ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
+    <!-- Preconnect: hint browser to open connections early -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Preload critical images to avoid LCP penalty -->
+    <?php if ($appLogo): ?>
+    <link rel="preload" as="image" href="<?= base_url($appLogo) ?>">
+    <?php endif; ?>
+    <?php if ($bgImage): ?>
+    <link rel="preload" as="image" href="<?= base_url($bgImage) ?>">
+    <?php endif; ?>
+
+    <!-- Google Fonts with display=swap to prevent FOIT (Flash of Invisible Text) -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Bootstrap CSS (render-critical, stays synchronous) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Bootstrap Icons: load non-blocking via media trick -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"></noscript>
+
     <style>
         :root {
             --primary: <?= esc($primaryColor) ?>;
@@ -38,7 +63,7 @@ $bgImage = $settingModel->getValue('login_background', '');
             background: #e2e8f0;
             <?php endif; ?>
         }
-        
+
         /* Navbar */
         .login-navbar {
             background-color: var(--navbar-bg);
@@ -47,7 +72,7 @@ $bgImage = $settingModel->getValue('login_background', '');
             align-items: center;
         }
         .login-navbar .brand {
-            color: #ffffff; /* Usually white looks better on navbar */
+            color: #ffffff;
             font-weight: 600;
             font-size: 1.1rem;
             display: flex;
@@ -56,7 +81,7 @@ $bgImage = $settingModel->getValue('login_background', '');
         }
         .login-navbar .brand i { font-size: 1.4rem; margin-right: 10px; }
         .login-navbar .brand img { height: 20px; margin-right: 10px; }
-        
+
         /* Container */
         .login-wrapper {
             flex-grow: 1;
@@ -74,13 +99,13 @@ $bgImage = $settingModel->getValue('login_background', '');
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
             text-align: center;
         }
-        
+
         /* Logo & Titles */
-        .login-logo {
-            margin-bottom: 1.5rem;
-        }
+        .login-logo { margin-bottom: 1.5rem; }
         .login-logo img {
             max-height: 80px;
+            width: auto;
+            height: auto;
             margin-bottom: 1rem;
         }
         .login-logo h2 {
@@ -95,19 +120,11 @@ $bgImage = $settingModel->getValue('login_background', '');
             color: var(--text-color);
             margin-bottom: 1.5rem;
         }
-        
+
         /* Alerts */
         .alert-info-custom {
             background-color: #e0e7ff;
             color: #3730a3;
-            border-radius: 6px;
-            padding: 0.6rem;
-            font-size: 0.9rem;
-            margin-bottom: 1.5rem;
-        }
-        .alert-error {
-            background-color: #fee2e2;
-            color: #b91c1c;
             border-radius: 6px;
             padding: 0.6rem;
             font-size: 0.9rem;
@@ -121,7 +138,7 @@ $bgImage = $settingModel->getValue('login_background', '');
             font-size: 0.9rem;
             margin-top: 1.5rem;
         }
-        
+
         /* Inputs */
         .input-group-custom {
             position: relative;
@@ -149,7 +166,7 @@ $bgImage = $settingModel->getValue('login_background', '');
             cursor: pointer;
             color: #64748b;
         }
-        
+
         /* Button */
         .btn-login {
             background-color: var(--primary);
@@ -162,10 +179,8 @@ $bgImage = $settingModel->getValue('login_background', '');
             margin-top: 1rem;
             transition: background 0.3s;
         }
-        .btn-login:hover {
-            opacity: 0.9;
-        }
-        
+        .btn-login:hover { opacity: 0.9; }
+
         /* Footer */
         .login-footer {
             background: rgba(255, 255, 255, 0.6);
@@ -184,7 +199,7 @@ $bgImage = $settingModel->getValue('login_background', '');
         <a href="#" class="brand">
             <i class="bi bi-list"></i>
             <?php if($appLogo): ?>
-                <img src="<?= base_url($appLogo) ?>" alt="Logo">
+                <img src="<?= base_url($appLogo) ?>" alt="Logo <?= esc($appName) ?>" width="20" height="20">
             <?php else: ?>
                 <span class="fw-bold fs-5 me-2">CBT</span>
             <?php endif; ?>
@@ -197,34 +212,28 @@ $bgImage = $settingModel->getValue('login_background', '');
         <div class="login-card">
             <div class="login-logo">
                 <?php if($appLogo): ?>
-                    <img src="<?= base_url($appLogo) ?>" alt="Logo Institusi">
+                    <img src="<?= base_url($appLogo) ?>" alt="Logo <?= esc($appName) ?>" width="80" height="80" style="object-fit: contain;">
                 <?php endif; ?>
                 <h2><?= esc($appDesc) ?></h2>
                 <h3><?= esc($siteAuthor) ?></h3>
             </div>
-            
-            <?php if (session()->getFlashdata('error')): ?>
-                <div class="alert-error">
-                    <i class="bi bi-exclamation-circle-fill me-1"></i> <?= esc(session()->getFlashdata('error')) ?>
-                </div>
-            <?php endif; ?>
-            
+
             <div class="alert-info-custom">
                 Gunakan akun Anda untuk login
             </div>
-            
+
             <form action="<?= base_url('login') ?>" method="POST" id="loginForm">
                 <?= csrf_field() ?>
-                
+
                 <div class="input-group-custom">
                     <input type="text" name="username" placeholder="Username" value="<?= old('username') ?>" required autocomplete="username" autofocus>
                 </div>
-                
+
                 <div class="input-group-custom">
                     <input type="password" name="password" id="passwordField" placeholder="Password" required autocomplete="current-password">
                     <i class="bi bi-eye toggle-password" id="togglePassword"></i>
                 </div>
-                
+
                 <button type="submit" class="btn-login" id="btnLogin">
                     <span class="btn-text">LOGIN</span>
                     <span class="btn-loading d-none">
@@ -232,7 +241,7 @@ $bgImage = $settingModel->getValue('login_background', '');
                     </span>
                 </button>
             </form>
-            
+
             <div class="alert-help">
                 Hubungi panitia ujian jika terjadi kendala
             </div>
@@ -244,25 +253,56 @@ $bgImage = $settingModel->getValue('login_background', '');
         Sistem Ujian CBT - Copyright &copy; <?= date('Y') ?> - this site is authored by <?= esc($siteAuthor) ?>
     </div>
 
+    <!-- SweetAlert2 dimuat HANYA jika ada notifikasi yang perlu ditampilkan -->
+    <?php if ($hasToast): ?>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
+    <?php endif; ?>
+
     <script>
         // Toggle password visibility
         const togglePassword = document.querySelector('#togglePassword');
         const password = document.querySelector('#passwordField');
 
-        togglePassword.addEventListener('click', function (e) {
+        togglePassword.addEventListener('click', function () {
             const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
             password.setAttribute('type', type);
             this.classList.toggle('bi-eye');
             this.classList.toggle('bi-eye-slash');
         });
 
-        // Loading state
+        // Loading state on submit
         document.getElementById('loginForm').addEventListener('submit', function() {
             const btn = document.getElementById('btnLogin');
             btn.disabled = true;
             btn.querySelector('.btn-text').classList.add('d-none');
             btn.querySelector('.btn-loading').classList.remove('d-none');
         });
+
+        <?php if ($hasToast): ?>
+        // Notifications — run after SweetAlert2 (defer) has loaded
+        window.addEventListener('load', function() {
+            if (typeof Swal === 'undefined') return;
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 4000,
+                timerProgressBar: true,
+                didOpen: (toast) => {
+                    toast.addEventListener('mouseenter', Swal.stopTimer);
+                    toast.addEventListener('mouseleave', Swal.resumeTimer);
+                }
+            });
+
+            <?php if (session()->getFlashdata('error')): ?>
+            Toast.fire({ icon: 'error', title: '<?= addslashes(session()->getFlashdata('error')) ?>' });
+            <?php endif; ?>
+
+            <?php if (session()->getFlashdata('success')): ?>
+            Toast.fire({ icon: 'success', title: '<?= addslashes(session()->getFlashdata('success')) ?>' });
+            <?php endif; ?>
+        });
+        <?php endif; ?>
     </script>
 </body>
 </html>
