@@ -102,9 +102,9 @@ database.default.DBDriver = MySQLi
 database.default.DBPrefix =
 database.default.port = {$dbData['db_port']}
 
-session.driver = 'CodeIgniter\Session\Handlers\DatabaseHandler'
+session.driver = 'CodeIgniter\Session\Handlers\RedisHandler'
 session.cookieName = 'ci_session'
-session.savePath = 'ci_sessions'
+session.savePath = 'tcp://{$dbData['redis_host']}:{$dbData['redis_port']}'
 session.matchIP = false
 
 redis.host = '{$dbData['redis_host']}'
