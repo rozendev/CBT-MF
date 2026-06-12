@@ -17,11 +17,11 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $this->renderSection('page_title') ?> - <?= esc($appName) ?></title>
     <!-- Dynamic Google Font -->
-    <link href="<?= base_url('assets/css/inter.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('assets/css/inter.css?v=1.1') ?>" rel="stylesheet">
     <!-- Bootstrap 5 CSS -->
-    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css?v=1.1') ?>" rel="stylesheet">
     <!-- Load icons synchronously for student dashboard -->
-    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css?v=1.1') ?>" rel="stylesheet">
     <!-- Custom CSS -->
     <style>
         :root {
@@ -65,7 +65,7 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
             margin-top: auto;
         }
     </style>
-    <script src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js') ?>"></script>
+    <script src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js?v=1.1') ?>"></script>
     <?= $this->renderSection('styles') ?>
 </head>
 <body class="d-flex flex-column min-vh-100">
@@ -117,7 +117,7 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     </footer>
 
     <!-- Bootstrap 5 JS Bundle with Popper -->
-    <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js') ?>"></script>
+    <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js?v=1.1') ?>"></script>
     
     <!-- Keep-Alive & Online Sync -->
     <script>

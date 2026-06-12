@@ -22,7 +22,7 @@ $hasToast = session()->getFlashdata('error') || session()->getFlashdata('success
     <title>Login — <?= esc($appName) ?></title>
 
     <!-- Preconnect: hint browser to open connections early -->
-    <link rel="stylesheet" href="<?= base_url('assets/css/inter.css') ?>">
+    <link rel="stylesheet" href="<?= base_url('assets/css/inter.css?v=1.1') ?>">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <!-- Preload critical images to avoid LCP penalty -->
@@ -37,8 +37,8 @@ $hasToast = session()->getFlashdata('error') || session()->getFlashdata('success
 
 
     <!-- Bootstrap CSS (render-critical, stays synchronous) -->
-    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet">
-    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css?v=1.1') ?>" rel="stylesheet">
 
     <style>
         :root {
@@ -251,7 +251,7 @@ $hasToast = session()->getFlashdata('error') || session()->getFlashdata('success
 
     <!-- SweetAlert2 dimuat HANYA jika ada notifikasi yang perlu ditampilkan -->
     <?php if ($hasToast): ?>
-    <script src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js') ?>" defer></script>
+    <script src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js?v=1.1') ?>" defer></script>
     <?php endif; ?>
 
     <script>

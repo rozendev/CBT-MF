@@ -14,9 +14,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title><?= $this->renderSection('page_title') ?> — <?= esc($appName) ?></title>
-    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet">
-    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css') ?>" rel="stylesheet">
-    <link href="<?= base_url('assets/css/inter.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('assets/css/inter.css?v=1.1') ?>" rel="stylesheet">
     <style>
         :root {
             --color-background: <?= $secondaryColor ?>;
@@ -109,7 +109,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         <?= $this->renderSection('content') ?>
     </div>
 
-    <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js') ?>"></script>
+    <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js?v=1.1') ?>"></script>
     <?= $this->renderSection('scripts') ?>
 </body>
 </html>
