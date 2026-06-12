@@ -87,17 +87,17 @@ if ($action === 'install') {
     $serverData = $_SESSION['server_setup'] ?? [];
     $appUrl = $serverData['app_url'] ?? $baseInstallerUrl . '../';
     
-    // We will generate a fresh .env
+    // We will generate a fresh .env, initially setting it to development to bypass the interactive prompt for migrations
     $newEnv = <<<ENV
-CI_ENVIRONMENT = production
+CI_ENVIRONMENT = development
 app.baseURL = '{$appUrl}'
 app.indexPage = ''
 app.forceGlobalSecureRequests = false
 
-database.default.hostname = {$dbData['db_host']}
-database.default.database = {$dbData['db_name']}
-database.default.username = {$dbData['db_user']}
-database.default.password = {$dbData['db_pass']}
+database.default.hostname = '{$dbData['db_host']}'
+database.default.database = '{$dbData['db_name']}'
+database.default.username = '{$dbData['db_user']}'
+database.default.password = '{$dbData['db_pass']}'
 database.default.DBDriver = MySQLi
 database.default.DBPrefix =
 database.default.port = {$dbData['db_port']}
@@ -107,7 +107,7 @@ session.cookieName = 'ci_session'
 session.savePath = 'ci_sessions'
 session.matchIP = false
 
-redis.host = {$dbData['redis_host']}
+redis.host = '{$dbData['redis_host']}'
 redis.port = {$dbData['redis_port']}
 
 INSTALLER_LOCKED = true
@@ -128,9 +128,6 @@ ENV;
     
     $output = [];
     $returnVar = 0;
-    // We use standard PHP to run the spark CLI script. Since PHP might be the CLI binary itself or running via webserver, 
-    // it's safer to just run the command using shell_exec if available, or just bootstrap CI4 in process.
-    // In many hosted environments shell_exec is disabled. We will bootstrap CI4 directly.
     
     try {
         // Prepare DB connection directly using PDO to insert admin and run migrations via CLI if possible
@@ -154,11 +151,13 @@ ENV;
         $tableExists = $pdo->query("SHOW TABLES LIKE 'users'")->rowCount() > 0;
         
         if (!$tableExists) {
-            // Fallback: We can't easily run CI4 migrations directly from web context without complicated bootstrapping.
-            // But if `spark migrate` failed (e.g., due to exec() being disabled), we have to inform the user.
             echo json_encode(['status' => 'error', 'message' => "Gagal menjalankan migrasi (exec failed). Output: " . implode("\n", $output)]);
             exit;
         }
+
+        // Switch back to production
+        $finalEnv = str_replace("CI_ENVIRONMENT = development", "CI_ENVIRONMENT = production", file_get_contents($envPath));
+        file_put_contents($envPath, $finalEnv);
 
         // Insert or update admin user
         $hashPass = password_hash($adminPass, PASSWORD_BCRYPT);
