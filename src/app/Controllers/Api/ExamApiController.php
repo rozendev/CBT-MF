@@ -87,8 +87,8 @@ class ExamApiController extends BaseController
 
         // Merge Redis cached answers
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 $redisKey = "exam_answers:{$attempt->id}";
                 $redisAnswers = $redis->hGetAll($redisKey);
                 if (!empty($redisAnswers)) {
@@ -111,7 +111,9 @@ class ExamApiController extends BaseController
                     }
                 }
             }
-        } catch (\Exception $e) {}
+        } catch (\Exception $e) {
+            log_message('error', 'Redis integration error in ExamApiController::take: ' . $e->getMessage());
+        }
 
         // Build response
         $questionsData = [];
@@ -194,106 +196,7 @@ class ExamApiController extends BaseController
         ]);
     }
 
-    /**
-     * Generate exam attempt (reused from ExamController::start logic)
-     */
-    private function generateExam($test, $userId)
-    {
-        $db = \Config\Database::connect();
-        $db->transStart();
 
-        $this->attemptModel->insert([
-            'test_id' => $test->id,
-            'user_id' => $userId,
-            'status' => 1,
-            'started_at' => date('Y-m-d H:i:s'),
-        ]);
-        $attemptId = $this->attemptModel->getInsertID();
-
-        $sets = $db->table('test_subject_sets')->where('test_id', $test->id)->get()->getResult();
-        $answerModel = new AnswerModel();
-        $testLogModel = new TestLogModel();
-        $testLogAnswerModel = new TestLogAnswerModel();
-        $displayOrder = 1;
-
-        foreach ($sets as $set) {
-            $subjects = $db->table('test_subjects')->where('test_subject_set_id', $set->id)->get()->getResultArray();
-            $subjectIds = array_column($subjects, 'subject_id');
-            if (empty($subjectIds)) continue;
-
-            $qBuilder = $db->table('questions')->whereIn('subject_id', $subjectIds)->where('is_enabled', 1);
-            if ($set->question_type != 0) $qBuilder->where('type', $set->question_type);
-            if ($set->difficulty != 0) $qBuilder->where('difficulty', $set->difficulty);
-
-            if ($test->exam_mode === 'static') {
-                $questions = $qBuilder->orderBy("RAND({$test->id})")->limit($set->quantity)->get()->getResult();
-            } else {
-                $questions = $qBuilder->orderBy('RAND()')->limit($set->quantity)->get()->getResult();
-            }
-
-            foreach ($questions as $q) {
-                $testLogModel->insert([
-                    'test_attempt_id' => $attemptId,
-                    'question_id' => $q->id,
-                    'question_text' => $q->description,
-                    'question_type' => $q->type,
-                    'question_difficulty' => $q->difficulty,
-                    'display_order' => $displayOrder,
-                    'num_answers' => $set->num_answers ?: 0,
-                    'user_ip' => $this->request->getIPAddress(),
-                ]);
-                $testLogId = $testLogModel->getInsertID();
-
-                $answers = $answerModel->getAnswersByQuestion($q->id);
-                if ($test->random_answers && in_array($q->type, [1, 2])) {
-                    if ($test->exam_mode === 'static') {
-                        mt_srand($test->id + $q->id);
-                        shuffle($answers);
-                        mt_srand();
-                    } else {
-                        shuffle($answers);
-                    }
-                }
-
-                $ansOrder = 1;
-                foreach ($answers as $ans) {
-                    $testLogAnswerModel->insert([
-                        'test_log_id' => $testLogId,
-                        'answer_id' => $ans->id,
-                        'answer_text' => $ans->description,
-                        'is_correct' => $ans->is_correct,
-                        'display_order' => $ansOrder,
-                        'position' => $ans->position,
-                        'is_selected' => 0,
-                    ]);
-                    $ansOrder++;
-                }
-                $displayOrder++;
-            }
-        }
-
-        if ($test->random_questions) {
-            $logs = $testLogModel->where('test_attempt_id', $attemptId)->findAll();
-            if ($test->exam_mode === 'static') {
-                mt_srand($test->id);
-                shuffle($logs);
-                mt_srand();
-            } else {
-                shuffle($logs);
-            }
-            $newOrder = 1;
-            foreach ($logs as $l) {
-                $testLogModel->update($l->id, ['display_order' => $newOrder]);
-                $newOrder++;
-            }
-        }
-
-        $db->transComplete();
-        if ($db->transStatus() === false) return null;
-
-        $this->activityLog->log('start_test', $userId, 'test', $test->id, "Memulai ujian (static): {$test->name}");
-        return $this->attemptModel->find($attemptId);
-    }
 
     /**
      * Save answer via AJAX (same as ExamController::saveAnswer but JSON-only)
@@ -342,7 +245,9 @@ class ExamApiController extends BaseController
 
         $payload = [];
         if ($questionType == 3) {
-            $payload['answer_text'] = $this->request->getPost('answer_text');
+            $answerText = $this->request->getPost('answer_text') ?? '';
+            $sanitized = strip_tags($answerText);
+            $payload['answer_text'] = mb_substr($sanitized, 0, 5000);
         } elseif ($questionType == 4 || $questionType == 5) {
             $payload['matching_answers'] = json_decode($this->request->getPost('matching_answers_json') ?? '{}', true) ?: [];
         } else {
@@ -355,8 +260,8 @@ class ExamApiController extends BaseController
         $redisKey = "exam_answers:{$attemptId}";
 
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 $redis->hSet($redisKey, $logId, json_encode($payload));
                 $redis->expire($redisKey, 86400);
             }
@@ -421,7 +326,11 @@ class ExamApiController extends BaseController
             $this->activityLog->log('finish_test', $userId, 'test', $testId, 'Menyelesaikan ujian (static)');
         }
 
-        return $this->response->setJSON(['status' => 'success', 'message' => 'Ujian berhasil diselesaikan!']);
+        return $this->response->setJSON([
+            'status' => 'success',
+            'message' => 'Ujian berhasil diselesaikan!',
+            'redirect' => $testId ? (string)site_url('/student/results/view/' . $testId) : null
+        ]);
     }
 
     /**
@@ -464,123 +373,24 @@ class ExamApiController extends BaseController
         $attemptId = $this->request->getPost('attempt_id');
         $cheatType = $this->request->getPost('type') ?? 'unknown';
 
-        $attempt = $this->attemptModel->where('id', $attemptId)->where('user_id', $userId)->whereIn('status', [0, 1, 2])->first();
-        if (!$attempt) {
-            return $this->response->setJSON(['status' => 'error', 'action' => 'kick', 'message' => 'Sesi ujian tidak valid.']);
-        }
+        $examService = new \App\Libraries\ExamService();
+        $result = $examService->handleCheat((int)$attemptId, (int)$userId, $cheatType);
 
-        $settingModel = new \App\Models\SettingModel();
-        $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
-        if (!$isAntiCheatEnabled) {
-            return $this->response->setJSON(['status' => 'success', 'action' => 'none']);
-        }
-
-        $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
-        $suspendTimer = (int) $settingModel->getValue('suspend_timer_seconds', 30);
-        $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
-        $currentStrikes = (int) $attempt->cheat_strikes + 1;
-
-        if ($cheatType === 'tab_switch' || $currentStrikes >= $maxStrikes || $forceLogout) {
-            $this->attemptModel->update($attemptId, ['cheat_strikes' => $currentStrikes, 'status' => 2]);
-            $userModel = new \App\Models\UserModel();
-            $userModel->update($userId, ['is_active' => 0]);
-
-            try {
-                $redis = new \Redis();
-                if ($redis->connect('redis', 6379)) {
-                    $redis->del("user_session:{$userId}");
-                    $redis->setex("ban_signal:{$userId}", 120, '1');
-                }
-            } catch (\Exception $e) {}
+        if (isset($result['action']) && $result['action'] === 'lock') {
             session()->destroy();
-
-            $reason = $forceLogout ? 'melakukan pelanggaran saat ujian (Auto-Lock)' :
-                      ($cheatType === 'tab_switch' ? 'mengganti tab' : 'melewati batas peringatan');
-
-            $this->activityLog->log('exam_locked', $userId, 'test', $attempt->test_id,
-                "INSTANT BAN (static): Siswa $reason (Strike: $currentStrikes)");
-
-            return $this->response->setJSON([
-                'status' => 'success', 'action' => 'lock',
-                'message' => "Ujian dikunci karena Anda terdeteksi $reason."
-            ]);
-        } else {
-            $this->attemptModel->update($attemptId, ['cheat_strikes' => $currentStrikes]);
-            $this->activityLog->log('exam_suspended', $userId, 'test', $attempt->test_id,
-                "WARNING (static): Siswa keluar fullscreen (Strike: $currentStrikes)");
-
-            return $this->response->setJSON([
-                'status' => 'success', 'action' => 'suspend',
-                'timer' => $suspendTimer, 'strike' => $currentStrikes
-            ]);
         }
+
+        return $this->response->setJSON($result);
     }
 
-    /**
-     * SSE Stream (proxy to existing SseController logic)
-     * GET /api/exam/stream/{attemptId}
-     */
-    public function stream($attemptId)
-    {
-        $userId = session('user_id');
-        if (!$userId) {
-            header('HTTP/1.1 401 Unauthorized');
-            exit;
-        }
 
-        $attempt = $this->attemptModel->find($attemptId);
-        if (!$attempt || (string)$attempt->user_id !== (string)$userId) {
-            header('HTTP/1.1 403 Forbidden');
-            exit;
-        }
-
-        // Redirect to existing SSE controller
-        // The SSE endpoint is the same, just needs to handle CORS
-        header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Credentials: true');
-
-        // Delegate to existing SseController
-        $sseController = new \App\Controllers\Student\SseController();
-        return $sseController->stream($attemptId);
-    }
 
     /**
      * Flush Redis answers to DB (same as ExamController)
      */
     private function flushRedisAnswersToDb($attemptId)
     {
-        try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
-                $redisKey = "exam_answers:{$attemptId}";
-                $answers = $redis->hGetAll($redisKey);
-                if (empty($answers)) return;
-
-                $db = \Config\Database::connect();
-                $db->transStart();
-
-                foreach ($answers as $logId => $payloadJson) {
-                    $payload = json_decode($payloadJson, true);
-                    if (isset($payload['answer_text'])) {
-                        $db->table('test_logs')->where('id', $logId)->update(['answer_text' => $payload['answer_text']]);
-                    } elseif (isset($payload['matching_answers'])) {
-                        $db->table('test_logs')->where('id', $logId)->update(['answer_text' => json_encode($payload['matching_answers'])]);
-                    } elseif (isset($payload['selected_answers'])) {
-                        $selectedIds = $payload['selected_answers'];
-                        $db->table('test_log_answers')->where('test_log_id', $logId)->update(['is_selected' => 0]);
-                        if (!empty($selectedIds)) {
-                            $db->table('test_log_answers')->where('test_log_id', $logId)->whereIn('answer_id', $selectedIds)->update(['is_selected' => 1]);
-                        }
-                    }
-                }
-
-                $db->transComplete();
-                if ($db->transStatus() !== false) {
-                    $redis->del($redisKey);
-                }
-            }
-        } catch (\Exception $e) {
-            log_message('error', 'Redis flush failed (API): ' . $e->getMessage());
-        }
+        $examService = new \App\Libraries\ExamService();
+        $examService->flushRedisAnswersToDb((int)$attemptId);
     }
 }

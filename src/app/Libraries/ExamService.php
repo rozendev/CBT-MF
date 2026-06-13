@@ -1,0 +1,389 @@
+<?php
+
+namespace App\Libraries;
+
+use App\Models\TestModel;
+use App\Models\TestAttemptModel;
+use App\Models\QuestionModel;
+use App\Models\AnswerModel;
+use App\Models\TestLogModel;
+use App\Models\TestLogAnswerModel;
+use App\Models\ActivityLogModel;
+use Config\Database;
+
+class ExamService
+{
+    protected TestModel $testModel;
+    protected TestAttemptModel $attemptModel;
+    protected QuestionModel $questionModel;
+    protected AnswerModel $answerModel;
+    protected TestLogModel $testLogModel;
+    protected TestLogAnswerModel $testLogAnswerModel;
+    protected ActivityLogModel $activityLog;
+
+    public function __construct()
+    {
+        $this->testModel = new TestModel();
+        $this->attemptModel = new TestAttemptModel();
+        $this->questionModel = new QuestionModel();
+        $this->answerModel = new AnswerModel();
+        $this->testLogModel = new TestLogModel();
+        $this->testLogAnswerModel = new TestLogAnswerModel();
+        $this->activityLog = new ActivityLogModel();
+    }
+
+    /**
+     * Generate Exam Attempt for a user.
+     * Pessimistic locks prevent race conditions, and questions are shuffled in PHP.
+     */
+    public function generateAttempt(int $testId, int $userId, string $ipAddress): ?object
+    {
+        $db = Database::connect();
+        $db->transStart();
+
+        // Pessimistic lock: SELECT ... FOR UPDATE prevents concurrent inserts
+        $existing = $db->query(
+            "SELECT id FROM test_attempts WHERE user_id = ? AND test_id = ? AND status IN (0, 1, 2) LIMIT 1 FOR UPDATE",
+            [$userId, $testId]
+        )->getRow();
+
+        if ($existing) {
+            $db->transRollback();
+            return $this->attemptModel->find($existing->id);
+        }
+
+        // Fetch test details
+        $test = $this->testModel->find($testId);
+        if (!$test) {
+            $db->transRollback();
+            return null;
+        }
+
+        // 1. Create Test Attempt
+        $attemptData = [
+            'test_id'    => $testId,
+            'user_id'    => $userId,
+            'status'     => 1, // active
+            'started_at' => date('Y-m-d H:i:s'),
+        ];
+        $this->attemptModel->insert($attemptData);
+        $attemptId = $this->attemptModel->getInsertID();
+
+        // 2. Generate Questions from Subject Sets
+        $sets = $db->table('test_subject_sets')->where('test_id', $testId)->get()->getResult();
+
+        $displayOrder = 1;
+
+        foreach ($sets as $set) {
+            $subjects = $db->table('test_subjects')->where('test_subject_set_id', $set->id)->get()->getResultArray();
+            $subjectIds = array_column($subjects, 'subject_id');
+
+            if (empty($subjectIds)) {
+                continue;
+            }
+
+            // Fetch eligible question IDs to shuffle in PHP (eliminates ORDER BY RAND())
+            $qBuilder = $db->table('questions')
+                           ->select('id')
+                           ->whereIn('subject_id', $subjectIds)
+                           ->where('is_enabled', 1);
+
+            if ($set->question_type != 0) {
+                $qBuilder->where('type', $set->question_type);
+            }
+            if ($set->difficulty != 0) {
+                $qBuilder->where('difficulty', $set->difficulty);
+            }
+
+            $questionRows = $qBuilder->get()->getResult();
+            $questionIds = array_column($questionRows, 'id');
+
+            if (empty($questionIds)) {
+                continue;
+            }
+
+            // PHP shuffle (seeded for static, random for dynamic)
+            if ($test->exam_mode === 'static') {
+                mt_srand($test->id + $set->id);
+                shuffle($questionIds);
+                mt_srand(); // reset seed
+            } else {
+                shuffle($questionIds);
+            }
+
+            // Slice to get the required quantity
+            $selectedIds = array_slice($questionIds, 0, $set->quantity);
+            if (empty($selectedIds)) {
+                continue;
+            }
+
+            // Fetch full rows for the selected IDs
+            $questions = $db->table('questions')
+                            ->whereIn('id', $selectedIds)
+                            ->get()
+                            ->getResult();
+
+            // To preserve the shuffled order, sort the fetched questions based on the position in $selectedIds
+            $idToIndex = array_flip($selectedIds);
+            usort($questions, function ($a, $b) use ($idToIndex) {
+                return $idToIndex[$a->id] <=> $idToIndex[$b->id];
+            });
+
+            foreach ($questions as $q) {
+                // Insert into test_logs
+                $this->testLogModel->insert([
+                    'test_attempt_id'     => $attemptId,
+                    'question_id'         => $q->id,
+                    'question_text'       => $q->description,
+                    'question_type'       => $q->type,
+                    'question_difficulty' => $q->difficulty,
+                    'display_order'       => $displayOrder,
+                    'num_answers'         => $set->num_answers ?: 0,
+                    'user_ip'             => $ipAddress,
+                ]);
+                
+                $testLogId = $this->testLogModel->getInsertID();
+
+                // Fetch answers
+                $answers = $this->answerModel->getAnswersByQuestion($q->id);
+                
+                // Shuffle answers if test configured to randomize answers
+                if ($test->random_answers && in_array($q->type, [1, 2])) {
+                    if ($test->exam_mode === 'static') {
+                        mt_srand($test->id + $q->id);
+                        $keys = array_keys($answers);
+                        shuffle($keys);
+                        $shuffledAnswers = [];
+                        foreach ($keys as $key) {
+                            $shuffledAnswers[] = $answers[$key];
+                        }
+                        $answers = $shuffledAnswers;
+                        mt_srand(); // reset seed
+                    } else {
+                        shuffle($answers);
+                    }
+                }
+
+                $ansOrder = 1;
+                foreach ($answers as $ans) {
+                    $this->testLogAnswerModel->insert([
+                        'test_log_id'   => $testLogId,
+                        'answer_id'     => $ans->id,
+                        'answer_text'   => $ans->description,
+                        'is_correct'    => $ans->is_correct,
+                        'display_order' => $ansOrder,
+                        'position'      => $ans->position,
+                        'is_selected'   => 0
+                    ]);
+                    $ansOrder++;
+                }
+
+                $displayOrder++;
+            }
+        }
+
+        // If random questions is globally true, we shuffle the display_order of the generated test_logs
+        if ($test->random_questions) {
+            $logs = $this->testLogModel->where('test_attempt_id', $attemptId)->findAll();
+            if ($test->exam_mode === 'static') {
+                mt_srand($test->id);
+                shuffle($logs);
+                mt_srand();
+            } else {
+                shuffle($logs);
+            }
+            $newOrder = 1;
+            foreach ($logs as $l) {
+                $this->testLogModel->update($l->id, ['display_order' => $newOrder]);
+                $newOrder++;
+            }
+        }
+
+        $db->transComplete();
+
+        if ($db->transStatus() === false) {
+            return null;
+        }
+
+        $this->activityLog->log('start_test', $userId, 'test', $testId, "Memulai ujian: {$test->name}");
+        return $this->attemptModel->find($attemptId);
+    }
+
+    /**
+     * Groups all updates to test_logs into a single updateBatch() call.
+     * Updates multiple choice answers in batches, only deleting the Redis key if the transaction status is successful.
+     */
+    public function flushRedisAnswersToDb(int $attemptId): bool
+    {
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if (!$redis) {
+                return false;
+            }
+
+            $redisKey = "exam_answers:{$attemptId}";
+            $answers = $redis->hGetAll($redisKey);
+            if (empty($answers)) {
+                return true;
+            }
+
+            $db = Database::connect();
+            $db->transStart();
+
+            $logsBatch = [];
+            $mcLogIds = [];
+            $allSelectedAnswerIds = [];
+
+            foreach ($answers as $logId => $payloadJson) {
+                $payload = json_decode($payloadJson, true);
+                if (!$payload) {
+                    continue;
+                }
+
+                if (isset($payload['answer_text'])) {
+                    // Essay
+                    $logsBatch[] = [
+                        'id'          => $logId,
+                        'answer_text' => $payload['answer_text']
+                    ];
+                } elseif (isset($payload['matching_answers'])) {
+                    // Matching
+                    $logsBatch[] = [
+                        'id'          => $logId,
+                        'answer_text' => json_encode($payload['matching_answers'])
+                    ];
+                } elseif (isset($payload['selected_answers'])) {
+                    // Multiple choice
+                    $mcLogIds[] = $logId;
+                    $selectedIds = $payload['selected_answers'];
+                    if (!empty($selectedIds)) {
+                        foreach ($selectedIds as $sId) {
+                            $allSelectedAnswerIds[] = $sId;
+                        }
+                    }
+                }
+            }
+
+            // Perform batch update for test_logs (essays & matching)
+            if (!empty($logsBatch)) {
+                $db->table('test_logs')->updateBatch($logsBatch, 'id');
+            }
+
+            // Perform optimized updates for test_log_answers (multiple choice)
+            if (!empty($mcLogIds)) {
+                // Reset all options to 0 in one query
+                $db->table('test_log_answers')
+                   ->whereIn('test_log_id', $mcLogIds)
+                   ->update(['is_selected' => 0]);
+
+                // Set selected to 1 in one query
+                if (!empty($allSelectedAnswerIds)) {
+                    $db->table('test_log_answers')
+                       ->whereIn('test_log_id', $mcLogIds)
+                       ->whereIn('answer_id', $allSelectedAnswerIds)
+                       ->update(['is_selected' => 1]);
+                }
+            }
+
+            $db->transComplete();
+
+            if ($db->transStatus() !== false) {
+                $redis->del($redisKey);
+                return true;
+            }
+            return false;
+        } catch (\Exception $e) {
+            log_message('error', 'Redis flush failed for attempt ' . $attemptId . ': ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+            return false;
+        }
+    }
+
+    /**
+     * Unified anti-cheat warnings, strikes logging, deactivations, and Redis ban signaling.
+     */
+    public function handleCheat(int $attemptId, int $userId, string $cheatType): array
+    {
+        $attempt = $this->attemptModel
+            ->where('id', $attemptId)
+            ->where('user_id', $userId)
+            ->whereIn('status', [0, 1, 2])
+            ->first();
+
+        if (!$attempt) {
+            return ['status' => 'error', 'action' => 'kick', 'message' => 'Sesi ujian tidak valid.'];
+        }
+
+        // Load Settings
+        $settingModel = new \App\Models\SettingModel();
+        $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
+        if (!$isAntiCheatEnabled) {
+            return ['status' => 'success', 'action' => 'none'];
+        }
+
+        $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
+        $suspendTimer = (int) $settingModel->getValue('suspend_timer_seconds', 30);
+        $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
+        $currentStrikes = (int) $attempt->cheat_strikes + 1;
+
+        if ($cheatType === 'tab_switch' || $currentStrikes >= $maxStrikes || $forceLogout) {
+            // INSTANT BAN
+            $this->attemptModel->update($attemptId, [
+                'cheat_strikes' => $currentStrikes,
+                'status' => 2 // Paused instead of locked, so progress is saved
+            ]);
+            // Also deactivate user account
+            $userModel = new \App\Models\UserModel();
+            $userModel->update($userId, ['is_active' => 0]);
+
+            // Delete session from Redis to kick immediately and set ban signal
+            try {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
+                    $redis->del("user_session:{$userId}");
+                    $redis->setex("ban_signal:{$userId}", 120, '1');
+                    
+                    $reason = $forceLogout ? 'melakukan pelanggaran saat ujian (Auto-Lock)' : 
+                              ($cheatType === 'tab_switch' ? 'mengganti tab' : 'melewati batas maksimal peringatan keluar layar penuh');
+                    
+                    $redis->publish('exam_events', json_encode([
+                        'event' => 'kick',
+                        'user_id' => $userId,
+                        'message' => "Ujian dikunci karena Anda terdeteksi $reason. Akun Anda dikunci."
+                    ]));
+                }
+            } catch (\Exception $e) {
+                log_message('error', 'Redis error in handleCheat: ' . $e->getMessage());
+            }
+
+            $reason = '';
+            if ($forceLogout) {
+                $reason = 'melakukan pelanggaran saat ujian (Auto-Lock)';
+            } else {
+                $reason = $cheatType === 'tab_switch' ? 'mengganti tab' : 'melewati batas maksimal peringatan keluar layar penuh';
+            }
+            
+            $this->activityLog->log('exam_locked', $userId, 'test', $attempt->test_id, 
+                "INSTANT BAN: Siswa $reason saat ujian (Strike: $currentStrikes)");
+            
+            return [
+                'status' => 'success',
+                'action' => 'lock',
+                'message' => "Ujian dikunci karena Anda terdeteksi $reason. Akun Anda dikunci."
+            ];
+        } else {
+            // FULLSCREEN EXIT = WARNING (suspend sementara)
+            $this->attemptModel->update($attemptId, [
+                'cheat_strikes' => $currentStrikes
+            ]);
+            $this->activityLog->log('exam_suspended', $userId, 'test', $attempt->test_id, 
+                "WARNING: Siswa keluar dari fullscreen (Strike: $currentStrikes)");
+
+            return [
+                'status' => 'success',
+                'action' => 'suspend',
+                'timer' => $suspendTimer,
+                'strike' => $currentStrikes
+            ];
+        }
+    }
+}

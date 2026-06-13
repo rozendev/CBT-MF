@@ -90,7 +90,7 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
                         <span class="nav-link text-white-50"><i class="bi bi-person-circle me-1"></i> <?= esc(session('firstname') . ' ' . session('lastname')) ?></span>
                     </li>
                     <li class="nav-item">
-                        <a href="<?= base_url('/logout') ?>" class="btn btn-outline-light btn-sm rounded-pill px-3">
+                        <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();" class="btn btn-outline-light btn-sm rounded-pill px-3">
                             Logout <i class="bi bi-box-arrow-right ms-1"></i>
                         </a>
                     </li>
@@ -135,5 +135,8 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     </script>
     
     <?= $this->renderSection('scripts') ?>
+    <form id="logout-form" action="<?= base_url('logout') ?>" method="POST" style="display: none;">
+        <?= csrf_field() ?>
+    </form>
 </body>
 </html>

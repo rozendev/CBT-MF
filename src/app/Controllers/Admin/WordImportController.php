@@ -281,7 +281,7 @@ class WordImportController extends BaseController
                         $filename = uniqid('img_') . '.' . $ext;
                         $uploadPath = FCPATH . 'uploads/questions/';
                         if (!is_dir($uploadPath)) {
-                            @mkdir($uploadPath, 0777, true);
+                            @mkdir($uploadPath, 0755, true);
                         }
                         @file_put_contents($uploadPath . $filename, $raw);
                         $paragraphText .= "<br><img src=\"/uploads/questions/" . $filename . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\"><br>";
@@ -318,7 +318,7 @@ class WordImportController extends BaseController
                 $filename = uniqid('img_') . '.' . $ext;
                 $uploadPath = FCPATH . 'uploads/questions/';
                 if (!is_dir($uploadPath)) {
-                    @mkdir($uploadPath, 0777, true);
+                    @mkdir($uploadPath, 0755, true);
                 }
                 @file_put_contents($uploadPath . $filename, $raw);
                 $blocks[] = "<img src=\"/uploads/questions/" . $filename . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\">";

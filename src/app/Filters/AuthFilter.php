@@ -38,8 +38,8 @@ class AuthFilter implements FilterInterface
         $userId = $session->get('user_id');
         if ($userId) {
             try {
-                $redis = new \Redis();
-                if ($redis->connect('redis', 6379)) {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
                     // Update this user's last activity timestamp
                     $redis->zAdd('active_sessions', time(), $userId);
                     

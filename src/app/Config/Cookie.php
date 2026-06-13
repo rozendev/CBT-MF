@@ -47,14 +47,16 @@ class Cookie extends BaseConfig
      */
     public string $domain = '';
 
-    /**
-     * --------------------------------------------------------------------------
-     * Cookie Secure
-     * --------------------------------------------------------------------------
-     *
-     * Cookie will only be set if a secure HTTPS connection exists.
-     */
-    public bool $secure = false;
+    public bool $secure = true;
+
+    public function __construct()
+    {
+        parent::__construct();
+        
+        // Dynamically set cookie secure flag based on base_url scheme.
+        // If baseURL is http, secure cookies must be disabled to prevent session and CSRF loss.
+        $this->secure = (strpos(base_url(), 'https://') === 0);
+    }
 
     /**
      * --------------------------------------------------------------------------

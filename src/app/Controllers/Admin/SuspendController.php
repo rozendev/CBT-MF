@@ -62,18 +62,38 @@ class SuspendController extends BaseController
 
         // Invalidate session in Redis to kick immediately via MultiLoginFilter + SSE
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 // Signal for MultiLoginFilter (existing)
                 $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
                 // Signal for SSE stream (new) — detected within 3 seconds
                 $redis->setex("ban_signal:{$userId}", 120, '1');
+                $redis->publish('exam_events', json_encode([
+                    'event' => 'ban',
+                    'user_id' => $userId,
+                    'message' => 'Akun Anda telah ditangguhkan/diblokir oleh Admin. Hubungi pengawas ujian.'
+                ]));
+                
+                // Scan Redis for active PHP session keys (ci_session:*) and destroy them (HIGH-06)
+                $iterator = null;
+                do {
+                    $keys = $redis->scan($iterator, 'ci_session:*', 100);
+                    if ($keys) {
+                        foreach ($keys as $key) {
+                            $data = $redis->get($key);
+                            if ($data && (strpos($data, "user_id|i:{$userId};") !== false || 
+                                          strpos($data, "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";") !== false)) {
+                                $redis->del($key);
+                            }
+                        }
+                    }
+                } while ($iterator > 0);
             }
         } catch (\Exception $e) {
             log_message('error', 'Redis error on ban: ' . $e->getMessage());
         }
 
-        // Delete CI sessions from database to fully invalidate server-side
+        // Delete CI sessions from database to support DatabaseHandler session configurations
         $db->table('ci_sessions')
            ->groupStart()
                ->like('data', "user_id|i:{$userId};")
@@ -98,8 +118,8 @@ class SuspendController extends BaseController
 
         // Clean up Redis ban keys so they don't interfere with next login
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 $redis->del("user_login_token:{$userId}");
                 $redis->del("ban_signal:{$userId}");
             }
@@ -121,11 +141,18 @@ class SuspendController extends BaseController
         }
 
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 $redis->del("user_login_token:{$userId}");
                 $redis->zRem('active_sessions', $userId);
                 $redis->zRem('login_queue', $userId);
+
+                // Clear IP-level rate limit from Redis if a failed IP was logged
+                $failedIp = $redis->get("last_failed_login_ip:{$userId}");
+                if ($failedIp) {
+                    $redis->del("login_attempts_ip:{$failedIp}");
+                    $redis->del("last_failed_login_ip:{$userId}");
+                }
             }
         } catch (\Exception $e) {
             log_message('error', 'Redis error on reset login: ' . $e->getMessage());
@@ -168,11 +195,18 @@ class SuspendController extends BaseController
 
             // Clear Redis
             try {
-                $redis = new \Redis();
-                if ($redis->connect('redis', 6379)) {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
                     $redis->del("exam_answers:{$attempt->id}");
+                    $redis->publish('exam_events', json_encode([
+                        'event' => 'kick',
+                        'attempt_id' => $attempt->id,
+                        'message' => 'Sesi ujian Anda telah dihapus oleh Admin.'
+                    ]));
                 }
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+                log_message('error', 'Redis error in SuspendController::reset: ' . $e->getMessage());
+            }
         }
 
         // Delete all attempts
@@ -226,9 +260,14 @@ class SuspendController extends BaseController
 
         // Clear Redis cache for this attempt
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 $redis->del("exam_answers:{$attemptId}");
+                $redis->publish('exam_events', json_encode([
+                    'event' => 'kick',
+                    'attempt_id' => $attemptId,
+                    'message' => 'Sesi ujian Anda telah dihapus oleh Admin.'
+                ]));
             }
         } catch (\Exception $e) {
             log_message('error', 'Redis error on reset attempt: ' . $e->getMessage());

@@ -30,6 +30,14 @@ class AuthController extends BaseController
         return view('auth/login');
     }
 
+    public function maintenance()
+    {
+        $settingModel = new \App\Models\SettingModel();
+        $message = $settingModel->getValue('maintenance_message', 'Sistem sedang dalam pemeliharaan. Silakan coba lagi beberapa saat lagi.');
+
+        return view('auth/maintenance', ['message' => $message]);
+    }
+
     /**
      * Handle login attempt
      */
@@ -78,6 +86,16 @@ class AuthController extends BaseController
         if (!$this->userModel->verifyPassword($password, $user->password)) {
             $this->userModel->incrementLoginAttempts($user->id);
 
+            // Record last failed login IP in Redis to allow admin to reset the IP rate limit when unlocking
+            try {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
+                    $redis->setex("last_failed_login_ip:{$user->id}", 86400, $this->request->getIPAddress());
+                }
+            } catch (\Exception $e) {
+                // Ignore Redis write failure for failed IP log
+            }
+
             // Check if we should lock the account
             $maxAttempts = $this->getSettingValue('max_login_attempts', 5);
             $updatedUser = $this->userModel->find($user->id);
@@ -99,21 +117,52 @@ class AuthController extends BaseController
                 ->with('error', 'Username atau password salah.');
         }
 
+        // Try to connect to Redis
+        $redis = \App\Libraries\RedisClient::getInstance();
+        if (!$redis) {
+            log_message('error', 'Redis connection failed during login process.');
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Layanan database sesi tidak tersedia. Coba lagi beberapa saat.');
+        }
+
+        $loginToken = bin2hex(random_bytes(16));
+        $tokenKey = "user_login_token:{$user->id}";
+
         // Block second login for students if prevent_multi_login is enabled
-        if ($user->role === 'siswa' && $this->getSettingValue('prevent_multi_login', 1) == 1) {
+        $preventMultiLogin = ($user->role === 'siswa' && $this->getSettingValue('prevent_multi_login', 1) == 1);
+        if ($preventMultiLogin) {
             try {
-                $redis = new \Redis();
-                if ($redis->connect('redis', 6379)) {
-                    $existingToken = $redis->get("user_login_token:{$user->id}");
-                    // If a token exists and isn't a BANNED marker, they are already logged in elsewhere
-                    if ($existingToken && $existingToken !== 'BANNED') {
+                $existingToken = $redis->get($tokenKey);
+                // If a token exists and isn't a BANNED marker, they are already logged in elsewhere
+                if ($existingToken && $existingToken !== 'BANNED') {
+                    return redirect()->back()
+                        ->withInput()
+                        ->with('error', 'Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
+                }
+                
+                // Set the token atomically to prevent concurrent login bypass
+                if ($existingToken === 'BANNED') {
+                    $redis->setex($tokenKey, 7200, $loginToken);
+                } else {
+                    $set = $redis->set($tokenKey, $loginToken, ['nx', 'ex' => 7200]);
+                    if (!$set) {
                         return redirect()->back()
                             ->withInput()
                             ->with('error', 'Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
                     }
                 }
             } catch (\Exception $e) {
-                log_message('error', 'Redis multi-login block error: ' . $e->getMessage());
+                log_message('error', 'Redis multi-login block/reserve error: ' . $e->getMessage());
+                return redirect()->back()->with('error', 'Layanan sedang tidak tersedia. Coba lagi.');
+            }
+        } else {
+            // Write it anyway (overwriting)
+            try {
+                $redis->setex($tokenKey, 7200, $loginToken);
+            } catch (\Exception $e) {
+                log_message('error', 'Redis session store error: ' . $e->getMessage());
+                return redirect()->back()->with('error', 'Layanan sedang tidak tersedia. Coba lagi.');
             }
         }
 
@@ -125,51 +174,52 @@ class AuthController extends BaseController
         $isQueued = false;
         
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
-                $redis->zRemRangeByScore('active_sessions', 0, time() - 300); // Clean dead sessions
-                $activeCount = $redis->zCard('active_sessions');
-                
-                // If this user is already in active_sessions, let them re-login without queuing
-                $score = $redis->zScore('active_sessions', $user->id);
-                
-                if ($score === false && $activeCount >= $maxConnections) {
-                    $isQueued = true;
-                    $redis->zAdd('login_queue', time(), $user->id);
-                } else {
-                    $redis->zAdd('active_sessions', time(), $user->id);
-                }
+            $redis->zRemRangeByScore('active_sessions', 0, time() - 300); // Clean dead sessions
+            $activeCount = $redis->zCard('active_sessions');
+            
+            // If this user is already in active_sessions, let them re-login without queuing
+            $score = $redis->zScore('active_sessions', $user->id);
+            
+            if ($score === false && $activeCount >= $maxConnections) {
+                $isQueued = true;
+                // EDGE-05: Use microtime(true) as score for login_queue
+                $redis->zAdd('login_queue', microtime(true), $user->id);
+            } else {
+                $redis->zAdd('active_sessions', time(), $user->id);
             }
         } catch (\Exception $e) {
-            log_message('error', 'Redis error in AuthController: ' . $e->getMessage());
+            log_message('error', 'Redis error in AuthController during queue management: ' . $e->getMessage());
         }
 
-        // Generate unique login token for multi-login prevention (immune to session regeneration)
-        $loginToken = bin2hex(random_bytes(16));
-
-        // Login successful — set session
-        $this->userModel->recordLogin($user->id, $this->request->getIPAddress());
-
-        session()->set([
-            'user_id'     => $user->id,
-            'username'    => $user->username,
-            'role'        => $user->role,
-            'firstname'   => $user->firstname ?? $user->username,
-            'lastname'    => $user->lastname ?? '',
-            'email'       => $user->email,
-            'is_active'   => $user->is_active,
-            'logged_in'   => !$isQueued,
-            'is_queued'   => $isQueued,
-            'login_token' => $loginToken,
-        ]);
-
-        // Store login token in Redis for multi-login detection (overwrites any old login token)
         try {
-            if (isset($redis) && $redis->isConnected()) {
-                $redis->setex("user_login_token:{$user->id}", 7200, $loginToken);
-            }
+            // Login successful — set session
+            $this->userModel->recordLogin($user->id, $this->request->getIPAddress());
+
+            session()->set([
+                'user_id'     => $user->id,
+                'username'    => $user->username,
+                'role'        => $user->role,
+                'firstname'   => $user->firstname ?? $user->username,
+                'lastname'    => $user->lastname ?? '',
+                'email'       => $user->email,
+                'is_active'   => $user->is_active,
+                'logged_in'   => !$isQueued,
+                'is_queued'   => $isQueued,
+                'login_token' => $loginToken,
+            ]);
         } catch (\Exception $e) {
-            log_message('error', 'Redis session store error: ' . $e->getMessage());
+            log_message('error', 'Login database/session record failed: ' . $e->getMessage());
+            // Clean up the Redis token/activity to avoid blocking future logins
+            try {
+                $redis->del($tokenKey);
+                $redis->zRem('active_sessions', $user->id);
+                $redis->zRem('login_queue', $user->id);
+            } catch (\Exception $re) {
+                log_message('error', 'Redis cleanup failed during login failure: ' . $re->getMessage());
+            }
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Gagal memproses login. Coba lagi.');
         }
 
         // Redirect to queue if limited
@@ -185,7 +235,20 @@ class AuthController extends BaseController
         $redirectUrl = session()->get('redirect_url');
         if ($redirectUrl) {
             session()->remove('redirect_url');
-            return redirect()->to($redirectUrl);
+            
+            $parsedBase = parse_url(base_url());
+            $parsedRedirect = parse_url($redirectUrl);
+            
+            $redirectHost = $parsedRedirect['host'] ?? '';
+            $baseHost = $parsedBase['host'] ?? '';
+            $scheme = $parsedRedirect['scheme'] ?? '';
+            
+            $isSameHost = ($redirectHost !== '' && strcasecmp($redirectHost, $baseHost) === 0);
+            $isRelative = ($redirectHost === '' && $scheme === '' && !str_starts_with($redirectUrl, '//'));
+            
+            if ($isSameHost || $isRelative) {
+                return redirect()->to($redirectUrl);
+            }
         }
 
         return $this->redirectByRole();
@@ -201,8 +264,8 @@ class AuthController extends BaseController
         if ($userId) {
             // Remove Redis session tracking and active status
             try {
-                $redis = new \Redis();
-                if ($redis->connect('redis', 6379)) {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
                     $redis->del("user_login_token:{$userId}");
                     $redis->zRem('active_sessions', $userId);
                     $redis->zRem('login_queue', $userId);
@@ -238,18 +301,7 @@ class AuthController extends BaseController
      */
     private function getSettingValue(string $key, mixed $default = null): mixed
     {
-        $db = \Config\Database::connect();
-        $setting = $db->table('settings')->where('key', $key)->get()->getRow();
-
-        if (!$setting) {
-            return $default;
-        }
-
-        return match ($setting->type) {
-            'integer' => (int) $setting->value,
-            'boolean' => (bool) $setting->value,
-            'json'    => json_decode($setting->value, true),
-            default   => $setting->value,
-        };
+        $settingModel = new \App\Models\SettingModel();
+        return $settingModel->getValue($key, $default);
     }
 }

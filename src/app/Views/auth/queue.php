@@ -177,7 +177,7 @@ $bgImage = $settingModel->getValue('login_background', '');
             
             <p class="small text-muted mb-4"><i class="bi bi-info-circle me-1"></i>Halaman ini akan otomatis dialihkan ketika antrean Anda sudah masuk.</p>
             
-            <a href="<?= base_url('/logout') ?>" class="btn-refresh">Batalkan & Keluar</a>
+            <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();" class="btn-refresh">Batalkan & Keluar</a>
         </div>
     </div>
 
@@ -212,5 +212,8 @@ $bgImage = $settingModel->getValue('login_background', '');
             }, 5000);
         });
     </script>
+    <form id="logout-form" action="<?= base_url('logout') ?>" method="POST" style="display: none;">
+        <?= csrf_field() ?>
+    </form>
 </body>
 </html>

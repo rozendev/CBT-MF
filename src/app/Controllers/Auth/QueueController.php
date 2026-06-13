@@ -51,8 +51,8 @@ class QueueController extends BaseController
         $maxConnections = (int) $settingModel->getValue('max_concurrent_connections', 90);
 
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 // Update queue member heartbeat so we know they are still waiting
                 // Wait, if we update their score in ZSET, they lose their FIFO position!
                 // Instead of updating the main login_queue score, we can use a separate hash for queue heartbeats if we want to clean up dead queue members. 

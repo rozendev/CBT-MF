@@ -143,6 +143,19 @@ class StaticExamController extends BaseController
             'static_generated_at' => date('Y-m-d H:i:s'),
         ]);
 
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $redis->publish('exam_events', json_encode([
+                    'event' => 'sync_mode',
+                    'exam_mode' => 'static',
+                    'static_page_path' => $relativePath
+                ]));
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error publishing sync_mode: ' . $e->getMessage());
+        }
+
         return redirect()->back()->with('success', "Halaman statis berhasil di-generate: /{$relativePath}");
     }
 
@@ -157,13 +170,27 @@ class StaticExamController extends BaseController
             return redirect()->back()->with('error', 'Ujian tidak ditemukan.');
         }
 
-        if ($test->static_page_path && file_exists(FCPATH . $test->static_page_path)) {
-            unlink(FCPATH . $test->static_page_path);
-            
-            // Try to remove empty directory
-            $dir = dirname(FCPATH . $test->static_page_path);
-            if (is_dir($dir) && count(scandir($dir)) <= 2) {
-                rmdir($dir);
+        if ($test->static_page_path) {
+            // Canonicalize and verify directory boundary
+            if (!is_dir(FCPATH . 'static')) {
+                mkdir(FCPATH . 'static', 0755, true);
+            }
+            $allowedBase = realpath(FCPATH . 'static');
+            $fullPath = FCPATH . $test->static_page_path;
+            $safePath = realpath($fullPath);
+
+            if ($safePath && $allowedBase && str_starts_with($safePath, $allowedBase)) {
+                if (file_exists($safePath)) {
+                    unlink($safePath);
+                    
+                    // Try to remove empty directory
+                    $dir = dirname($safePath);
+                    if (is_dir($dir) && count(scandir($dir)) <= 2) {
+                        rmdir($dir);
+                    }
+                }
+            } else {
+                log_message('error', 'Suspicious static_page_path traversal attempt: ' . $test->static_page_path);
             }
         }
 
@@ -172,6 +199,19 @@ class StaticExamController extends BaseController
             'static_page_path' => null,
             'static_generated_at' => null,
         ]);
+
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $redis->publish('exam_events', json_encode([
+                    'event' => 'sync_mode',
+                    'exam_mode' => 'normal',
+                    'static_page_path' => null
+                ]));
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error publishing sync_mode: ' . $e->getMessage());
+        }
 
         return redirect()->back()->with('success', 'Halaman statis berhasil dihapus. Mode dikembalikan ke Normal.');
     }

@@ -79,7 +79,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 <i class="bi bi-person-circle me-1"></i>
                 <?= esc(session()->get('firstname') ?? 'User') ?>
             </span>
-            <a href="<?= base_url('logout') ?>" class="btn btn-sm btn-outline-secondary rounded-pill">
+            <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();" class="btn btn-sm btn-outline-secondary rounded-pill">
                 <i class="bi bi-box-arrow-right me-1"></i>Logout
             </a>
         </div>
@@ -111,5 +111,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
     <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js?v=1.1') ?>"></script>
     <?= $this->renderSection('scripts') ?>
+    <form id="logout-form" action="<?= base_url('logout') ?>" method="POST" style="display: none;">
+        <?= csrf_field() ?>
+    </form>
 </body>
 </html>

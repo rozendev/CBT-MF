@@ -77,27 +77,15 @@
                                         <a href="<?= base_url('/admin/tests/config/' . $t->id) ?>" class="btn btn-sm btn-outline-info" title="Konfigurasi Soal & Peserta">
                                             <i class="bi bi-gear"></i> Konfig
                                         </a>
-                                        <button type="button" class="btn btn-sm <?= $t->exam_mode == 'static' ? 'btn-primary' : 'btn-outline-primary' ?>" title="Pengaturan Ujian Statis" onclick="openStaticMenu(<?= $t->id ?>, <?= $t->exam_mode == 'static' ? 'true' : 'false' ?>, '<?= $t->exam_mode == 'static' ? base_url($t->static_page_path) : '' ?>')">
-                                            <i class="bi bi-lightning-charge"></i> Static
+                                        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle-split"
+                                            data-bs-toggle="offcanvas" data-bs-target="#actionSheet"
+                                            data-id="<?= $t->id ?>"
+                                            data-name="<?= esc($t->name) ?>"
+                                            data-mode="<?= $t->exam_mode ?>"
+                                            data-static-url="<?= $t->exam_mode == 'static' ? base_url($t->static_page_path) : '' ?>"
+                                            title="Aksi Lainnya">
+                                            <i class="bi bi-three-dots-vertical"></i>
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false">
-                                            <span class="visually-hidden">Toggle Dropdown</span>
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size: 14px;">
-                                            <li><a class="dropdown-item py-2" href="<?= base_url('/admin/tests/edit/' . $t->id) ?>"><i class="bi bi-pencil me-2 text-primary"></i> Edit Pengaturan Dasar</a></li>
-                                            <li><hr class="dropdown-divider"></li>
-                                            <li>
-                                                <button type="button" class="dropdown-item py-2 text-success" onclick="extendTime(<?= $t->id ?>, '<?= esc(addslashes($t->name)) ?>')">
-                                                    <i class="bi bi-clock-history me-2"></i> Tambah Waktu
-                                                </button>
-                                            </li>
-                                            <li><hr class="dropdown-divider"></li>
-                                            <li>
-                                                <button type="button" class="dropdown-item py-2 text-danger" onclick="confirmDelete(<?= $t->id ?>, '<?= esc(addslashes($t->name)) ?>')">
-                                                    <i class="bi bi-trash me-2"></i> Hapus Ujian
-                                                </button>
-                                            </li>
-                                        </ul>
                                     </div>
                                 </td>
                             </tr>
@@ -112,6 +100,97 @@
         <?= $pager->links('default', 'bootstrap_pagination') ?>
     </div>
     <?php endif; ?>
+</div>
+
+<!-- Offcanvas Action Sheet (outside card to avoid overflow clipping) -->
+<div class="offcanvas offcanvas-bottom" tabindex="-1" id="actionSheet" style="height: auto; max-height: 75vh; border-top-left-radius: 20px; border-top-right-radius: 20px;">
+    <div class="mx-auto mt-2 mb-1" style="width:40px;height:4px;background:#dee2e6;border-radius:4px;"></div>
+    <div class="offcanvas-header border-bottom pb-2">
+        <div>
+            <div class="small text-muted">Aksi untuk ujian</div>
+            <h5 class="offcanvas-title fw-bold mb-0" id="actionSheetTitle">—</h5>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body p-3">
+        <div class="row g-2" style="max-width: 600px; margin: 0 auto;">
+            <!-- Edit -->
+            <div class="col-12">
+                <a id="actionEdit" href="#" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3">
+                    <span class="d-flex align-items-center justify-content-center rounded-3 bg-primary bg-opacity-10 text-primary" style="width:44px;height:44px;flex-shrink:0;">
+                        <i class="bi bi-pencil-square fs-5"></i>
+                    </span>
+                    <div class="text-start">
+                        <div class="fw-semibold">Edit Pengaturan Dasar</div>
+                        <small class="text-muted">Ubah nama, waktu, password, dll</small>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Static Section -->
+            <div class="col-12 mt-2"><small class="text-muted fw-semibold text-uppercase" style="letter-spacing:0.5px;">Mode Statis</small></div>
+
+            <div class="col-6" id="actionStaticOpen">
+                <a href="#" target="_blank" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3 h-100">
+                    <span class="d-flex align-items-center justify-content-center rounded-3 bg-info bg-opacity-10 text-info" style="width:44px;height:44px;flex-shrink:0;">
+                        <i class="bi bi-box-arrow-up-right fs-5"></i>
+                    </span>
+                    <div class="text-start">
+                        <div class="fw-semibold">Buka Halaman</div>
+                        <small class="text-muted">Tab baru</small>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6" id="actionStaticGenerate">
+                <button type="button" onclick="doStaticAction('generate')" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3 h-100">
+                    <span class="d-flex align-items-center justify-content-center rounded-3 bg-success bg-opacity-10 text-success" style="width:44px;height:44px;flex-shrink:0;">
+                        <i class="bi bi-lightning-charge-fill fs-5" id="staticGenerateIcon"></i>
+                    </span>
+                    <div class="text-start">
+                        <div class="fw-semibold" id="staticGenerateLabel">Generate</div>
+                        <small class="text-muted" id="staticGenerateDesc">Buat HTML statis</small>
+                    </div>
+                </button>
+            </div>
+            <div class="col-12" id="actionStaticDelete">
+                <button type="button" onclick="doStaticAction('delete')" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3">
+                    <span class="d-flex align-items-center justify-content-center rounded-3 bg-warning bg-opacity-10 text-warning" style="width:44px;height:44px;flex-shrink:0;">
+                        <i class="bi bi-x-circle fs-5"></i>
+                    </span>
+                    <div class="text-start">
+                        <div class="fw-semibold">Matikan Mode Statis</div>
+                        <small class="text-muted">Hapus file HTML, kembali ke Normal</small>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Other Actions -->
+            <div class="col-12 mt-2"><small class="text-muted fw-semibold text-uppercase" style="letter-spacing:0.5px;">Lainnya</small></div>
+
+            <div class="col-6">
+                <button type="button" onclick="doExtendTime()" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3 h-100">
+                    <span class="d-flex align-items-center justify-content-center rounded-3 bg-success bg-opacity-10 text-success" style="width:44px;height:44px;flex-shrink:0;">
+                        <i class="bi bi-clock-history fs-5"></i>
+                    </span>
+                    <div class="text-start">
+                        <div class="fw-semibold">Tambah Waktu</div>
+                        <small class="text-muted">Perpanjang durasi</small>
+                    </div>
+                </button>
+            </div>
+            <div class="col-6">
+                <button type="button" onclick="doDelete()" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3 h-100">
+                    <span class="d-flex align-items-center justify-content-center rounded-3 bg-danger bg-opacity-10 text-danger" style="width:44px;height:44px;flex-shrink:0;">
+                        <i class="bi bi-trash fs-5"></i>
+                    </span>
+                    <div class="text-start">
+                        <div class="fw-semibold">Hapus Ujian</div>
+                        <small class="text-muted">Hapus permanen</small>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="modal fade" id="deleteModal" tabindex="-1">
@@ -151,9 +230,68 @@
 
 <?= $this->section('scripts') ?>
 <script>
+    let ctx = { id: null, name: '', mode: 'normal', staticUrl: '' };
+
+    const actionSheet = document.getElementById('actionSheet');
+    actionSheet.addEventListener('show.bs.offcanvas', function (e) {
+        const btn = e.relatedTarget;
+        ctx.id = btn.dataset.id;
+        ctx.name = btn.dataset.name;
+        ctx.mode = btn.dataset.mode;
+        ctx.staticUrl = btn.dataset.staticUrl;
+
+        document.getElementById('actionSheetTitle').textContent = ctx.name;
+        document.getElementById('actionEdit').href = '<?= base_url('/admin/tests/edit/') ?>/' + ctx.id;
+
+        const isStatic = ctx.mode === 'static';
+        document.getElementById('actionStaticOpen').style.display = isStatic ? '' : 'none';
+        document.getElementById('actionStaticDelete').style.display = isStatic ? '' : 'none';
+        if (isStatic) {
+            document.getElementById('actionStaticOpen').querySelector('a').href = ctx.staticUrl;
+        }
+
+        const genIcon = document.getElementById('staticGenerateIcon');
+        const genLabel = document.getElementById('staticGenerateLabel');
+        const genDesc = document.getElementById('staticGenerateDesc');
+        if (isStatic) {
+            genIcon.className = 'bi bi-arrow-repeat fs-5';
+            genLabel.textContent = 'Update HTML';
+            genDesc.textContent = 'Generate ulang';
+        } else {
+            genIcon.className = 'bi bi-lightning-charge-fill fs-5';
+            genLabel.textContent = 'Generate Statis';
+            genDesc.textContent = 'Buat HTML statis';
+        }
+    });
+
+    function closeSheet() {
+        bootstrap.Offcanvas.getInstance(actionSheet)?.hide();
+    }
+
+    function doStaticAction(action) {
+        closeSheet();
+        const url = action === 'generate'
+            ? '<?= base_url('/admin/tests/static/generate/') ?>/' + ctx.id
+            : '<?= base_url('/admin/tests/static/delete/') ?>/' + ctx.id;
+        Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        const formId = action === 'generate' ? 'generateStaticForm' : 'deleteStaticForm';
+        document.getElementById(formId).action = url;
+        document.getElementById(formId).submit();
+    }
+
+    function doExtendTime() {
+        closeSheet();
+        extendTime(ctx.id, ctx.name);
+    }
+
+    function doDelete() {
+        closeSheet();
+        confirmDelete(ctx.id, ctx.name);
+    }
+
     function extendTime(id, name) {
         Swal.fire({
-            title: `Tambah Waktu Ujian`,
+            title: 'Tambah Waktu Ujian',
             html: `Tambahkan waktu ekstra untuk ujian <b>${name}</b>.<br><br>Pilih jumlah tambahan waktu:
                    <select id="swalExtendTime" class="form-select mt-3">
                        <option value="5">+5 Menit</option>
@@ -168,10 +306,9 @@
             cancelButtonText: 'Batal',
         }).then((result) => {
             if (result.isConfirmed) {
-                const minutes = document.getElementById('swalExtendTime').value;
-                document.getElementById('extendTimeMinutes').value = minutes;
+                document.getElementById('extendTimeMinutes').value = document.getElementById('swalExtendTime').value;
                 const form = document.getElementById('extendTimeForm');
-                form.action = '<?= base_url('/admin/tests/extend-time/') ?>' + id;
+                form.action = '<?= base_url('/admin/tests/extend-time/') ?>/' + id;
                 form.submit();
             }
         });
@@ -179,56 +316,15 @@
 
     function confirmDelete(id, name) {
         document.getElementById('deleteTestName').textContent = name;
-        document.getElementById('deleteForm').action = '<?= base_url('/admin/tests/delete/') ?>' + id;
+        document.getElementById('deleteForm').action = '<?= base_url('/admin/tests/delete/') ?>/' + id;
         new bootstrap.Modal(document.getElementById('deleteModal')).show();
-    }
-
-    function openStaticMenu(id, isStatic, staticUrl) {
-        if (isStatic) {
-            Swal.fire({
-                title: 'Menu Ujian Statis',
-                html: `
-                    <div class="d-grid gap-3 mt-4">
-                        <button class="btn btn-outline-info p-3 d-flex align-items-center text-start w-100" onclick="window.open('${staticUrl}', '_blank'); Swal.close();">
-                            <i class="bi bi-box-arrow-up-right me-3 fs-3"></i>
-                            <div><strong class="d-block mb-1">Buka Halaman Statis</strong><small class="text-muted">Akses tautan ujian di CDN</small></div>
-                        </button>
-                        <button class="btn btn-outline-success p-3 d-flex align-items-center text-start w-100" onclick="submitStaticAction('<?= base_url('/admin/tests/static/generate/') ?>${id}', 'generate')">
-                            <i class="bi bi-arrow-repeat me-3 fs-3"></i>
-                            <div><strong class="d-block mb-1">Update Halaman HTML</strong><small class="text-muted">Generate ulang jika ada soal yang berubah</small></div>
-                        </button>
-                        <button class="btn btn-outline-danger p-3 d-flex align-items-center text-start w-100" onclick="submitStaticAction('<?= base_url('/admin/tests/static/delete/') ?>${id}', 'delete')">
-                            <i class="bi bi-x-circle me-3 fs-3"></i>
-                            <div><strong class="d-block mb-1">Matikan Mode Statis</strong><small class="text-muted">Hapus file dan kembali ke mode normal</small></div>
-                        </button>
-                    </div>
-                `,
-                showConfirmButton: false,
-                showCloseButton: true,
-            });
-        } else {
-            Swal.fire({
-                title: 'Aktifkan Mode Statis?',
-                text: 'Mode ini akan men-generate halaman HTML ujian secara statis untuk performa maksimal di Cloudflare / CDN.',
-                icon: 'info',
-                showCancelButton: true,
-                confirmButtonText: '<i class="bi bi-lightning-charge-fill me-1"></i> Ya, Generate!',
-                cancelButtonText: 'Batal',
-                confirmButtonColor: '#0d6efd'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    submitStaticAction('<?= base_url('/admin/tests/static/generate/') ?>' + id, 'generate');
-                }
-            });
-        }
     }
 
     function submitStaticAction(url, action) {
         Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         const formId = action === 'generate' ? 'generateStaticForm' : 'deleteStaticForm';
-        const form = document.getElementById(formId);
-        form.action = url;
-        form.submit();
+        document.getElementById(formId).action = url;
+        document.getElementById(formId).submit();
     }
 </script>
 <?= $this->endSection() ?>

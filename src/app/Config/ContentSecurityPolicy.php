@@ -59,14 +59,14 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var list<string>|string
      */
-    public $scriptSrc = 'self';
+    public $scriptSrc = ['self', 'https://code.jquery.com', 'https://cdn.jsdelivr.net', "'unsafe-inline'", "'unsafe-eval'"];
 
     /**
      * Specifies valid sources for JavaScript <script> elements.
      *
      * @var list<string>|string
      */
-    public array|string $scriptSrcElem = 'self';
+    public array|string $scriptSrcElem = ['self', 'https://code.jquery.com', 'https://cdn.jsdelivr.net', "'unsafe-inline'", "'unsafe-eval'"];
 
     /**
      * Specifies valid sources for JavaScript inline event
@@ -74,21 +74,21 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var list<string>|string
      */
-    public array|string $scriptSrcAttr = 'self';
+    public array|string $scriptSrcAttr = ['self', 'https://code.jquery.com', 'https://cdn.jsdelivr.net', "'unsafe-inline'", "'unsafe-eval'"];
 
     /**
      * Lists allowed stylesheets' URLs.
      *
      * @var list<string>|string
      */
-    public $styleSrc = 'self';
+    public $styleSrc = ['self', 'https://fonts.googleapis.com', 'https://cdn.jsdelivr.net', "'unsafe-inline'"];
 
     /**
      * Specifies valid sources for stylesheets <link> elements.
      *
      * @var list<string>|string
      */
-    public array|string $styleSrcElem = 'self';
+    public array|string $styleSrcElem = ['self', 'https://fonts.googleapis.com', 'https://cdn.jsdelivr.net', "'unsafe-inline'"];
 
     /**
      * Specifies valid sources for stylesheets inline
@@ -96,14 +96,14 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var list<string>|string
      */
-    public array|string $styleSrcAttr = 'self';
+    public array|string $styleSrcAttr = ['self', 'https://fonts.googleapis.com', 'https://cdn.jsdelivr.net', "'unsafe-inline'"];
 
     /**
      * Defines the origins from which images can be loaded.
      *
      * @var list<string>|string
      */
-    public $imageSrc = 'self';
+    public $imageSrc = ['self', 'data:', '*'];
 
     /**
      * Restricts the URLs that can appear in a page's `<base>` element.
@@ -127,14 +127,14 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var list<string>|string
      */
-    public $connectSrc = 'self';
+    public $connectSrc = ['self', '*'];
 
     /**
      * Specifies the origins that can serve web fonts.
      *
      * @var list<string>|string
      */
-    public $fontSrc;
+    public $fontSrc = ['self', 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'];
 
     /**
      * Lists valid endpoints for submission from `<form>` tags.
@@ -212,5 +212,5 @@ class ContentSecurityPolicy extends BaseConfig
     /**
      * Replace nonce tag automatically?
      */
-    public bool $autoNonce = true;
+    public bool $autoNonce = false;
 }

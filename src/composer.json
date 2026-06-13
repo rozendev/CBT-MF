@@ -11,6 +11,8 @@
     },
     "require": {
         "php": "^8.2",
+        "cboden/ratchet": "^0.4.4",
+        "clue/redis-react": "^2.8",
         "codeigniter4/framework": "^4.7",
         "phpoffice/phpspreadsheet": "^5.7",
         "phpoffice/phpword": "^1.4"

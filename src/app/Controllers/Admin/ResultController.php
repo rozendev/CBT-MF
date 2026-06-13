@@ -193,8 +193,8 @@ class ResultController extends BaseController
 
         // Clear Redis cache for this attempt
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 $redis->del("exam_answers:{$attemptId}");
             }
         } catch (\Exception $e) {

@@ -429,12 +429,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 </head>
 <body class="noselect">
 
-    <!-- Finish Form -->
-    <form id="finishForm" action="<?= base_url('/student/exam/finish/' . $test->id) ?>" method="POST" style="display: none;">
-        <?= csrf_field() ?>
-        <input type="hidden" name="attempt_id" value="<?= esc($attempt->id) ?>">
-    </form>
-
     <!-- Image Lightbox Overlay -->
     <div class="image-lightbox" id="imageLightbox">
         <div class="image-lightbox-close" id="imageLightboxClose">&times;</div>
@@ -707,6 +701,29 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 </div>
             </div>
         </div>
+
+        <!-- Unanswered Required Modal (allow_noanswer = 0) -->
+        <div class="modal fade" id="unansweredRequiredModal" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content rounded-3 border-0 shadow">
+                    <div class="modal-header bg-warning border-bottom-0 pb-3">
+                        <h5 class="modal-title fw-bold text-dark"><i class="bi bi-exclamation-circle-fill me-2"></i>Soal Belum Lengkap</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body py-4 text-center">
+                        <i class="bi bi-clipboard-x text-warning" style="font-size: 4rem;"></i>
+                        <h4 class="fw-bold mt-3">Jawab Semua Soal!</h4>
+                        <p class="mb-0 fs-5">Anda masih memiliki <strong><span x-text="questions.length - countAnswered()"></span> soal</strong> yang belum dijawab.</p>
+                        <p class="text-muted mt-2">Ujian ini mewajibkan semua soal dijawab sebelum dapat diselesaikan.</p>
+                    </div>
+                    <div class="modal-footer border-top-0 pt-0">
+                        <button type="button" class="btn btn-primary w-100 py-2 fw-bold" data-bs-dismiss="modal">
+                            <i class="bi bi-pencil-square me-2"></i>Kembali Mengerjakan
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div><!-- /examContent -->
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -717,8 +734,10 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         const SAVE_URL = '<?= base_url('/student/exam/save-answer') ?>';
         const REPORT_CHEAT_URL = '<?= base_url('/student/exam/report-cheat') ?>';
         const DASHBOARD_URL = "<?= base_url('/student/dashboard') ?>";
+        const FINISH_URL = '<?= base_url('/student/exam/finish/' . $test->id) ?>';
         const ATTEMPT_ID = <?= (int) $attempt->id ?>;
         const STUDENT_NAME = <?= json_encode(session('firstname') . ' ' . session('lastname')) ?>;
+        const ALLOW_NOANSWER = <?= (int) $test->allow_noanswer ?>;
         
         let durationMin = <?= (int) $test->duration_minutes ?>;
         const beginTimeMs = <?= strtotime($test->begin_time) * 1000 ?>;
@@ -727,6 +746,18 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         $.ajaxSetup({
             headers: {
                 'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
+            }
+        });
+
+        // Automatically update CSRF token on every AJAX response
+        $(document).ajaxComplete(function(event, xhr, settings) {
+            const csrfHeader = xhr.getResponseHeader('X-CSRF-TOKEN');
+            if (csrfHeader) {
+                $.ajaxSetup({
+                    headers: {
+                        'X-CSRF-TOKEN': csrfHeader
+                    }
+                });
             }
         });
 
@@ -797,7 +828,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     }, 60000);
 
                     // ═══ SSE: Real-time Ban/Kick Detection ═══
-                    this.initSSE();
+                    this.initWebSocket();
 
                     // ═══ Countdown Timer (if timed exam) ═══
                     if (durationMin > 0) {
@@ -835,113 +866,108 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
 
                 /**
-                 * Initialize SSE connection for real-time ban/kick detection.
-                 * EventSource automatically reconnects on connection loss.
+                 * Initialize WebSocket connection for real-time ban/kick detection.
+                 * Automatically reconnects on connection loss.
                  */
-                initSSE() {
-                    if (typeof EventSource === 'undefined') {
-                        // Fallback: browser doesn't support SSE (very rare)
-                        console.warn('SSE not supported, falling back to polling');
-                        this.fallbackPolling();
-                        return;
-                    }
+                initWebSocket() {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsHost = window.location.host;
+                    const wsUrl = `${protocol}//${wsHost}/ws/?user_id=<?= session('user_id') ?>&attempt_id=${ATTEMPT_ID}`;
+                    
+                    this.connectWebSocket(wsUrl);
+                },
 
-                    const sseUrl = '<?= base_url('/student/exam/stream/') ?>' + ATTEMPT_ID;
-                    this.sseSource = new EventSource(sseUrl);
-                    this.sseErrorCount = 0;
+                connectWebSocket(wsUrl) {
+                    this.ws = new WebSocket(wsUrl);
 
-                    // Ban event — admin banned the student
-                    this.sseSource.addEventListener('ban', (e) => {
-                        const data = JSON.parse(e.data);
-                        this.sseSource.close();
-                        Swal.fire({
-                            title: 'Akun Di-Ban',
-                            text: data.message,
-                            icon: 'error',
-                            allowOutsideClick: false,
-                            allowEscapeKey: false,
-                            confirmButtonText: 'OK'
-                        }).then(() => {
-                            window.location.href = '<?= base_url('/login') ?>';
-                        });
-                    });
+                    this.ws.onopen = () => {
+                        this.wsErrorCount = 0;
+                        console.log('WebSocket connected');
+                    };
 
-                    // Kick event — exam locked due to cheating or admin action
-                    this.sseSource.addEventListener('kick', (e) => {
-                        const data = JSON.parse(e.data);
-                        this.sseSource.close();
-                        Swal.fire('Sesi Dihentikan', data.message, 'error').then(() => {
-                            window.location.href = '<?= base_url('/login') ?>';
-                        });
-                    });
+                    this.ws.onmessage = (e) => {
+                        const payload = JSON.parse(e.data);
+                        const eventName = payload.event;
+                        const data = payload.data || {};
 
-                    // Finished event — exam was auto-completed
-                    this.sseSource.addEventListener('finished', (e) => {
-                        const data = JSON.parse(e.data);
-                        this.sseSource.close();
-                        Swal.fire('Ujian Selesai', data.message, 'info').then(() => {
-                            window.location.href = DASHBOARD_URL;
-                        });
-                    });
-
-                    // Extend Time event — admin added more time globally
-                    this.sseSource.addEventListener('extend_time', (e) => {
-                        const data = JSON.parse(e.data);
-                        if (data.test_id == <?= (int) $test->id ?>) {
-                            durationMin = data.duration_minutes;
-                            this.endTimeMs = beginTimeMs + (durationMin * 60 * 1000);
-                            
-                            // Reset warning state so it can warn again if needed
-                            this.warningShown = false;
-                            
+                        if (eventName === 'ban') {
+                            this.ws.close();
                             Swal.fire({
-                                title: 'Waktu Ditambahkan!',
-                                text: 'Admin telah menambahkan waktu ujian. Silakan periksa sisa waktu Anda.',
-                                icon: 'success',
-                                toast: true,
-                                position: 'top-end',
-                                showConfirmButton: false,
-                                timer: 5000,
-                                timerProgressBar: true
+                                title: 'Akun Di-Ban',
+                                text: data.message,
+                                icon: 'error',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                confirmButtonText: 'OK'
+                            }).then(() => {
+                                window.location.href = '<?= base_url('/login') ?>';
+                            });
+                        } 
+                        else if (eventName === 'kick') {
+                            this.ws.close();
+                            Swal.fire('Sesi Dihentikan', data.message, 'error').then(() => {
+                                window.location.href = '<?= base_url('/login') ?>';
                             });
                         }
-                    });
-
-                    // Sync mode — handle force reload if admin switches exam mode
-                    this.sseSource.addEventListener('sync_mode', (e) => {
-                        const d = JSON.parse(e.data);
-                        if (d.exam_mode === 'static' && d.static_page_path) {
-                            // Admin enabled static mode. Force redirect to static CDN URL
-                            window.isSubmitting = true;
-                            window.location.href = '<?= base_url() ?>' + d.static_page_path;
+                        else if (eventName === 'finished') {
+                            this.ws.close();
+                            Swal.fire('Ujian Selesai', data.message, 'info').then(() => {
+                                window.location.href = DASHBOARD_URL;
+                            });
                         }
-                    });
-
-                    // Connection established
-                    this.sseSource.addEventListener('connected', (e) => {
-                        this.sseErrorCount = 0;
-                        console.log('SSE connected');
-                    });
-
-                    // Error handling — EventSource auto-reconnects, but if too many errors, fallback
-                    this.sseSource.onerror = () => {
-                        this.sseErrorCount++;
-                        if (this.sseErrorCount > 10) {
-                            console.warn('SSE too many errors, closing and falling back to polling');
-                            this.sseSource.close();
-                            this.fallbackPolling();
+                        else if (eventName === 'extend_time') {
+                            if (data.test_id == <?= (int) $test->id ?>) {
+                                durationMin = data.duration_minutes;
+                                this.endTimeMs = beginTimeMs + (durationMin * 60 * 1000);
+                                this.warningShown = false;
+                                
+                                Swal.fire({
+                                    title: 'Waktu Ditambahkan!',
+                                    text: 'Admin telah menambahkan waktu ujian. Silakan periksa sisa waktu Anda.',
+                                    icon: 'success',
+                                    toast: true,
+                                    position: 'top-end',
+                                    showConfirmButton: false,
+                                    timer: 5000,
+                                    timerProgressBar: true
+                                });
+                            }
                         }
+                        else if (eventName === 'sync_mode') {
+                            if (data.exam_mode === 'static' && data.static_page_path) {
+                                window.isSubmitting = true;
+                                window.location.href = '<?= base_url() ?>' + data.static_page_path;
+                            }
+                        }
+                        // heartbeat event is ignored on client, but keeps connection alive
+                    };
+
+                    this.ws.onclose = (e) => {
+                        console.warn('WebSocket closed', e);
+                        this.reconnectWebSocket(wsUrl);
+                    };
+
+                    this.ws.onerror = (err) => {
+                        console.error('WebSocket error', err);
+                        this.ws.close(); // Triggers onclose which handles reconnect
                     };
                 },
 
-                /**
-                 * Fallback polling if SSE is not available or fails repeatedly.
-                 * Checks attempt status via saveAnswer endpoint piggybacking.
-                 */
-                fallbackPolling() {
-                    // No-op: rely on MultiLoginFilter + saveAnswer piggybacking
-                    // The MultiLoginFilter already checks ban status on every request
-                    console.log('SSE fallback: relying on MultiLoginFilter for ban detection');
+                reconnectWebSocket(wsUrl) {
+                    if (!this.wsErrorCount) this.wsErrorCount = 0;
+                    this.wsErrorCount++;
+                    
+                    if (this.wsErrorCount > 10) {
+                        console.warn('WebSocket reconnect limit reached, relying on fallback');
+                        return;
+                    }
+                    
+                    const delay = Math.min(1000 * Math.pow(2, this.wsErrorCount), 30000);
+                    console.log(`Reconnecting WebSocket in ${delay}ms...`);
+                    
+                    setTimeout(() => {
+                        this.connectWebSocket(wsUrl);
+                    }, delay);
                 },
 
                 get currentQuestion() { return this.questions[this.currentIndex]; },
@@ -1075,17 +1101,20 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     return classes.join(' ');
                 },
 
-                confirmFinish() { 
+                confirmFinish() {
+                    if (ALLOW_NOANSWER === 0 && this.countAnswered() < this.questions.length) {
+                        new bootstrap.Modal(document.getElementById('unansweredRequiredModal')).show();
+                        return;
+                    }
+
                     this.isSaving = true;
                     $.post('<?= base_url('/student/exam/check-score') ?>', { attempt_id: ATTEMPT_ID })
                      .done((res) => {
                          this.isSaving = false;
                          if (res.status === 'success') {
                              if (res.score < <?= $test->passing_score ?>) {
-                                 // Show Warning Modal
                                  new bootstrap.Modal(document.getElementById('warningFinishModal')).show();
                              } else {
-                                 // Passed
                                  new bootstrap.Modal(document.getElementById('finishModal')).show();
                              }
                          } else {
@@ -1101,7 +1130,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 async forceSubmit() {
                     const w1 = await Swal.fire({
                         title: 'Peringatan 1',
-                        text: "Apakah Anda yakin? Nilai Anda saat ini tidak memenuhi syarat kelulusan.",
+                        text: "Apakah Anda yakin ingin mengakhiri ujian?",
                         icon: 'warning',
                         showCancelButton: true,
                         confirmButtonText: 'Yakin',
@@ -1121,7 +1150,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     
                     const w3 = await Swal.fire({
                         title: 'Peringatan Terakhir',
-                        text: "Ujian akan diakhiri secara permanen dengan status gagal. Lanjutkan?",
+                        text: "Ujian akan diakhiri secara permanen. Lanjutkan?",
                         icon: 'error',
                         showCancelButton: true,
                         confirmButtonText: 'Akhiri Ujian',
@@ -1129,14 +1158,29 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         confirmButtonColor: '#d33'
                     });
                     if (w3.isConfirmed) {
-                        $('#warningFinishModal').modal('hide');
+                        document.querySelectorAll('.modal.show').forEach(m => {
+                            bootstrap.Modal.getInstance(m)?.hide();
+                        });
                         this.submitFinish();
                     }
                 },
 
                 submitFinish() {
-                    window.isSubmitting = true; // Prevent anti-cheat from triggering
-                    document.getElementById('finishForm').submit();
+                    window.isSubmitting = true;
+                    if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+
+                    $.post(FINISH_URL, { attempt_id: ATTEMPT_ID })
+                     .done((res) => {
+                         if (res.redirect) {
+                             window.location.href = res.redirect;
+                         } else {
+                             window.location.href = "<?= base_url('/student/results/view/' . $test->id) ?>";
+                         }
+                     })
+                     .fail(() => {
+                         window.isSubmitting = false;
+                         Swal.fire('Error', 'Gagal menyelesaikan ujian. Silakan coba lagi.', 'error');
+                     });
                 }
             }));
         });

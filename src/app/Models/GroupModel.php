@@ -36,6 +36,21 @@ class GroupModel extends Model
     }
 
     /**
+     * Get groups for multiple users in a single query (resolves N+1 query issue)
+     */
+    public function getUsersGroups(array $userIds): array
+    {
+        if (empty($userIds)) {
+            return [];
+        }
+
+        return $this->select('groups.*, user_groups.user_id')
+                    ->join('user_groups', 'user_groups.group_id = groups.id')
+                    ->whereIn('user_groups.user_id', $userIds)
+                    ->findAll();
+    }
+
+    /**
      * Add user to group
      */
     public function addUserToGroup(int $userId, int $groupId): bool

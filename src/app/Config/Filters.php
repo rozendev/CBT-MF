@@ -42,6 +42,8 @@ class Filters extends BaseFilters
         'role'          => RoleFilter::class,
         'multilogin'    => MultiLoginFilter::class,
         'corsapi'       => CorsApiFilter::class,
+        'csrfheader'    => \App\Filters\CsrfHeaderFilter::class,
+        'loginratelimit'=> \App\Filters\LoginRateLimitFilter::class,
     ];
 
     /**
@@ -80,10 +82,18 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
-            'multilogin' => ['except' => ['login', 'logout', 'student/exam/stream/*', 'api/exam/stream/*']],
+            'csrf' => ['except' => [
+                'student/exam/stream/*',
+                'api/exam/stream/*',
+                'api/exam/*',
+                'api/keep-alive',
+                'queue/ping',
+            ]],
+            'multilogin' => ['except' => ['login', 'logout', 'maintenance', 'student/exam/stream/*', 'api/exam/stream/*']],
         ],
         'after' => [
             'secureheaders',
+            'csrfheader',
         ],
     ];
 
@@ -112,9 +122,7 @@ class Filters extends BaseFilters
      * @var array<string, array<string, list<string>>>
      */
     public array $filters = [
-        'csrf' => ['before' => [
-            'login',
-        ]],
-        'corsapi' => ['before' => ['api/exam/*']],
+        'corsapi'        => ['before' => ['api/exam/*']],
+        'loginratelimit' => ['before' => ['login']],
     ];
 }

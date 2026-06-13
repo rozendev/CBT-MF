@@ -52,9 +52,14 @@ class UserModel extends Model
     {
         if (isset($data['data']['password'])) {
             $password = $data['data']['password'];
-            // Don't re-hash if already hashed
-            if (!str_starts_with($password, '$argon2id$') && !str_starts_with($password, '$2y$')) {
-                $data['data']['password'] = password_hash($password, PASSWORD_BCRYPT, ['cost' => 8]);
+            // Use password_get_info to robustly check if string is already a valid hash
+            $info = password_get_info($password);
+            if ($info['algo'] === 0 || $info['algoName'] === 'unknown') {
+                $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
+                $options = $algo === PASSWORD_ARGON2ID 
+                    ? ['memory_cost' => 65536, 'time_cost' => 4, 'threads' => 2]
+                    : ['cost' => 12];
+                $data['data']['password'] = password_hash($password, $algo, $options);
             }
         }
         return $data;

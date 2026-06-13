@@ -43,9 +43,22 @@ class UserController extends BaseController
         $users = $query->orderBy('id', 'DESC')->paginate(15);
         $pager = $this->userModel->pager;
 
-        // Fetch groups for each user
+        // Fetch groups for all users in a single query to avoid N+1 queries
+        $userIds = array_column($users, 'id');
+        $userGroupsMap = [];
+        if (!empty($userIds)) {
+            $rawGroups = $this->groupModel->getUsersGroups($userIds);
+            foreach ($rawGroups as $group) {
+                $userId = (int) $group->user_id;
+                if (!isset($userGroupsMap[$userId])) {
+                    $userGroupsMap[$userId] = [];
+                }
+                $userGroupsMap[$userId][] = $group;
+            }
+        }
+
         foreach ($users as $user) {
-            $user->groups = $this->groupModel->getUserGroups($user->id);
+            $user->groups = $userGroupsMap[$user->id] ?? [];
             $user->is_locked = $this->userModel->isLocked($user);
         }
 
@@ -187,14 +200,14 @@ class UserController extends BaseController
 
     public function delete($id)
     {
-        // Prevent deleting self or default admin
-        if ($id == 1 || $id == session('user_id')) {
-            return redirect()->back()->with('error', 'Anda tidak dapat menghapus akun ini.');
-        }
-
         $user = $this->userModel->find($id);
         if (!$user) {
             return redirect()->back()->with('error', 'Pengguna tidak ditemukan.');
+        }
+
+        // Prevent deleting self or other admins (role-independent protection)
+        if ($id == session('user_id') || $user->role === 'admin') {
+            return redirect()->back()->with('error', 'Anda tidak dapat menghapus akun ini.');
         }
 
         if ($this->userModel->delete($id)) {
@@ -217,18 +230,20 @@ class UserController extends BaseController
         $skipCount = 0;
 
         foreach ($userIds as $id) {
-            // Prevent deleting self or default admin
-            if ($id == 1 || $id == session('user_id')) {
+            $user = $this->userModel->find($id);
+            if (!$user) {
+                continue;
+            }
+
+            // Prevent deleting self or other admins (role-independent protection)
+            if ($id == session('user_id') || $user->role === 'admin') {
                 $skipCount++;
                 continue;
             }
 
-            $user = $this->userModel->find($id);
-            if ($user) {
-                if ($this->userModel->delete($id)) {
-                    $this->activityLog->log('delete', session('user_id'), 'user', $id, "Menghapus pengguna (bulk): {$user->username}");
-                    $successCount++;
-                }
+            if ($this->userModel->delete($id)) {
+                $this->activityLog->log('delete', session('user_id'), 'user', $id, "Menghapus pengguna (bulk): {$user->username}");
+                $successCount++;
             }
         }
 
@@ -243,7 +258,6 @@ class UserController extends BaseController
             return redirect()->to('/admin/users')->with('error', 'Gagal menghapus pengguna. Pastikan Anda tidak memilih akun Anda sendiri.');
         }
     }
-
     public function unlock($id)
     {
         $user = $this->userModel->find($id);
@@ -252,6 +266,21 @@ class UserController extends BaseController
         }
 
         $this->userModel->resetLoginAttempts($id);
+
+        // Clear IP-level rate limit from Redis if a failed IP was logged
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $failedIp = $redis->get("last_failed_login_ip:{$id}");
+                if ($failedIp) {
+                    $redis->del("login_attempts_ip:{$failedIp}");
+                    $redis->del("last_failed_login_ip:{$id}");
+                }
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Failed to clear IP rate limit for user ' . $user->username . ': ' . $e->getMessage());
+        }
+
         $this->activityLog->log('unlock', session('user_id'), 'user', $id, "Membuka kunci akun: {$user->username}");
         
         return redirect()->back()->with('success', 'Akun berhasil dibuka kuncinya.');
@@ -302,8 +331,17 @@ class UserController extends BaseController
             return redirect()->back()->with('error', 'File tidak valid atau gagal diunggah.');
         }
 
-        $ext = $file->getClientExtension();
-        if (!in_array(strtolower($ext), ['xls', 'xlsx'])) {
+        $fileMime = $file->getMimeType();
+        $allowedMimes = [
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/wps-office.xls',
+            'application/wps-office.xlsx'
+        ];
+        
+        $ext = strtolower($file->getClientExtension());
+        if (!in_array($ext, ['xls', 'xlsx']) || !in_array($fileMime, $allowedMimes)) {
+            log_message('warning', "Import file validation failed. Extension: {$ext}, Mime: {$fileMime}");
             return redirect()->back()->with('error', 'Format file harus .xls atau .xlsx');
         }
 

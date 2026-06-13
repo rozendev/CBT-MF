@@ -160,10 +160,54 @@
                     <div class="mb-4">
                         <label class="form-label fw-bold">Status Ujian</label>
                         <div class="form-check form-switch">
-                            <input class="form-check-input fs-4" type="checkbox" name="is_enabled" value="1" 
+                            <input class="form-check-input fs-4" type="checkbox" name="is_enabled" value="1"
                                    <?= old('is_enabled', $test->is_enabled ?? '0') == '1' ? 'checked' : '' ?>>
                             <label class="form-check-label mt-1 ms-2">Aktif (Dapat Dikerjakan)</label>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- After-Exam Settings (Per-Exam Override) -->
+            <div class="card shadow-sm mt-3">
+                <div class="card-header bg-white border-bottom py-3">
+                    <h6 class="m-0 fw-bold text-info"><i class="bi bi-clipboard2-check me-2"></i>Setelah Ujian Selesai</h6>
+                </div>
+                <div class="card-body p-4">
+                    <p class="text-muted small mb-3">Override pengaturan global dari halaman Pengaturan. Pilih "Default" untuk menggunakan nilai dari Pengaturan Sistem.</p>
+
+                    <?php
+                        $settingModel = new \App\Models\SettingModel();
+                        $globalShowScore = $settingModel->getValue('show_score_after_exam', false) ? 'Ya' : 'Tidak';
+                        $globalShowCorrect = $settingModel->getValue('show_correct_answers', false) ? 'Ya' : 'Tidak';
+                        $globalAllowReview = $settingModel->getValue('allow_review', false) ? 'Ya' : 'Tidak';
+                    ?>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Tampilkan Skor</label>
+                        <select class="form-select form-select-sm" name="show_score_after_exam">
+                            <option value="default" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalShowScore ?>)</option>
+                            <option value="1" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
+                            <option value="0" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Tampilkan Kunci Jawaban</label>
+                        <select class="form-select form-select-sm" name="show_correct_answers">
+                            <option value="default" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalShowCorrect ?>)</option>
+                            <option value="1" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
+                            <option value="0" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Izinkan Review Soal</label>
+                        <select class="form-select form-select-sm" name="allow_review">
+                            <option value="default" <?= old('allow_review', $test->allow_review ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalAllowReview ?>)</option>
+                            <option value="1" <?= old('allow_review', $test->allow_review ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
+                            <option value="0" <?= old('allow_review', $test->allow_review ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
+                        </select>
                     </div>
 
                     <div class="d-grid gap-2">

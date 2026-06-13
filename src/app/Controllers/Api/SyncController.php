@@ -16,8 +16,8 @@ class SyncController extends BaseController
         $userId = $session->get('user_id');
 
         try {
-            $redis = new \Redis();
-            if ($redis->connect('redis', 6379)) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
                 // The RoleFilter already updated active_sessions for this user.
                 
                 // Check if we need to sync Redis to MySQL (Write-Behind, max once every 30 seconds)

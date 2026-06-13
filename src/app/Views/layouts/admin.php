@@ -386,7 +386,7 @@ else $greeting = 'Malam';
                     <li><a class="dropdown-item py-2" href="<?= base_url('/admin/results') ?>" style="color: var(--text-primary);"><i class="bi bi-bar-chart-fill me-2 text-muted"></i> Laporan Ujian</a></li>
                     <li><a class="dropdown-item py-2" href="<?= base_url('/admin/reports') ?>" style="color: var(--text-primary);"><i class="bi bi-file-earmark-spreadsheet-fill me-2 text-success"></i> Export Laporan</a></li>
                     <li><hr class="dropdown-divider" style="border-color: var(--border-color);"></li>
-                    <li><a class="dropdown-item py-2 text-danger fw-semibold" href="<?= base_url('logout') ?>"><i class="bi bi-box-arrow-right me-2"></i> Logout</a></li>
+                    <li><a class="dropdown-item py-2 text-danger fw-semibold" href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();"><i class="bi bi-box-arrow-right me-2"></i> Logout</a></li>
                 </ul>
             </div>
         </div>
@@ -473,5 +473,8 @@ else $greeting = 'Malam';
         }, 30000);
     </script>
     <?= $this->renderSection('scripts') ?>
+    <form id="logout-form" action="<?= base_url('logout') ?>" method="POST" style="display: none;">
+        <?= csrf_field() ?>
+    </form>
 </body>
 </html>

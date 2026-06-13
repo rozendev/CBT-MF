@@ -34,9 +34,38 @@ services:
     environment:
       - DB_HOST=mariadb
       - DB_PORT=3306
-      - DB_DATABASE=sistem_ujian
-      - DB_USERNAME=ujian_user
-      - DB_PASSWORD=ujian_secret
+      - DB_DATABASE=cbt-mf
+      - DB_USERNAME=sayasukakamu
+      - DB_PASSWORD=sayasukakamu
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+  # ─── WebSocket Daemon ───────────────────────────────────────
+  websocket:
+    build:
+      context: ./docker/php-fpm
+      dockerfile: Dockerfile
+    container_name: ujian_websocket
+    restart: unless-stopped
+    command: php spark websocket:serve
+    ports:
+      - "127.0.0.1:8060:8060"
+    volumes:
+      - ./src:/var/www/html
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ujian_network
+    environment:
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_DATABASE=cbt-mf
+      - DB_USERNAME=sayasukakamu
+      - DB_PASSWORD=sayasukakamu
       - REDIS_HOST=redis
       - REDIS_PORT=6379
 
@@ -66,9 +95,9 @@ services:
       - ./docker/mariadb/init:/docker-entrypoint-initdb.d
     environment:
       MYSQL_ROOT_PASSWORD: root_secret
-      MYSQL_DATABASE: sistem_ujian
-      MYSQL_USER: ujian_user
-      MYSQL_PASSWORD: ujian_secret
+      MYSQL_DATABASE: cbt-mf
+      MYSQL_USER: sayasukakamu
+      MYSQL_PASSWORD: sayasukakamu
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -88,8 +117,8 @@ services:
     environment:
       PMA_HOST: mariadb
       PMA_PORT: 3306
-      PMA_USER: ujian_user
-      PMA_PASSWORD: ujian_secret
+      PMA_USER: sayasukakamu
+      PMA_PASSWORD: sayasukakamu
       UPLOAD_LIMIT: 64M
     depends_on:
       mariadb:

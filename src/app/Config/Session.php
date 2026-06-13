@@ -33,7 +33,7 @@ class Session extends BaseConfig
     /**
      * Whether to match the user's IP address when reading the session data.
      */
-    public bool $matchIP = false;
+    public bool $matchIP = true;
 
     /**
      * How many seconds between CI regenerating the session ID.

@@ -7,9 +7,10 @@ use CodeIgniter\Router\RouteCollection;
 // ── Auth Routes (public) ────────────────────────────
 $routes->get('login', 'Auth\AuthController::login');
 $routes->post('login', 'Auth\AuthController::attemptLogin');
-$routes->get('logout', 'Auth\AuthController::logout');
+$routes->post('logout', 'Auth\AuthController::logout');
 $routes->get('queue', 'Auth\QueueController::index');
 $routes->post('queue/ping', 'Auth\QueueController::ping');
+$routes->get('maintenance', 'Auth\AuthController::maintenance');
 
 $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     $routes->post('keep-alive', 'Api\SyncController::keepAlive');
@@ -63,6 +64,9 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         // Settings
         $routes->get('settings', 'Admin\SettingController::index');
         $routes->post('settings/update', 'Admin\SettingController::update');
+        $routes->get('settings/system-info', 'Admin\SettingController::getSystemInfo');
+        $routes->post('settings/clear-cache', 'Admin\SettingController::clearCache');
+        $routes->post('settings/reset', 'Admin\SettingController::resetSettings');
 
         // Analytics
         $routes->get('analytics', 'Admin\AnalyticsController::index');
@@ -149,6 +153,7 @@ $routes->group('student', ['filter' => 'role:siswa'], static function ($routes) 
     
     // Results / Feedback
     $routes->get('results/view/(:num)', 'Student\ResultController::view/$1');
+    $routes->get('results/review/(:num)', 'Student\ResultController::review/$1');
 });
 
 // ── Default Route ───────────────────────────────────

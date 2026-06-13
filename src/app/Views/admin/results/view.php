@@ -20,7 +20,24 @@
 <div class="card shadow-sm">
     <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
         <h6 class="m-0 fw-bold text-primary"><i class="bi bi-people-fill me-2"></i>Daftar Nilai Siswa</h6>
-        <!-- Export buttons can be added here in the future -->
+        <div class="d-flex gap-2">
+            <form action="<?= base_url('/admin/reports/export') ?>" method="POST" class="d-inline">
+                <?= csrf_field() ?>
+                <input type="hidden" name="report_type" value="test">
+                <input type="hidden" name="test_id" value="<?= $test->id ?>">
+                <button type="submit" class="btn btn-sm btn-success rounded-3">
+                    <i class="bi bi-file-earmark-spreadsheet-fill me-1"></i>Export Nilai
+                </button>
+            </form>
+            <form action="<?= base_url('/admin/reports/export') ?>" method="POST" class="d-inline">
+                <?= csrf_field() ?>
+                <input type="hidden" name="report_type" value="test_detail">
+                <input type="hidden" name="test_id" value="<?= $test->id ?>">
+                <button type="submit" class="btn btn-sm btn-outline-danger rounded-3">
+                    <i class="bi bi-list-check me-1"></i>Export Detail Soal
+                </button>
+            </form>
+        </div>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">

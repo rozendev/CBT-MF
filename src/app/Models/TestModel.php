@@ -17,11 +17,12 @@ class TestModel extends Model
     protected $deletedField     = 'deleted_at';
 
     protected $allowedFields = [
-        'name', 'description', 'begin_time', 'end_time', 'duration_minutes', 
-        'ip_range', 'password', 'results_visible', 'report_visible', 
-        'score_right', 'score_wrong', 'score_unanswered', 'max_score', 
-        'passing_score', 'random_questions', 'random_answers', 'show_menu', 
-        'allow_noanswer', 'mcma_partial_score', 'is_repeatable', 
+        'name', 'description', 'begin_time', 'end_time', 'duration_minutes',
+        'ip_range', 'password', 'results_visible', 'report_visible',
+        'show_score_after_exam', 'show_correct_answers', 'allow_review',
+        'score_right', 'score_wrong', 'score_unanswered', 'max_score',
+        'passing_score', 'random_questions', 'random_answers', 'show_menu',
+        'allow_noanswer', 'mcma_partial_score', 'is_repeatable',
         'auto_logout_on_timeout', 'is_enabled', 'user_id',
         'exam_mode', 'static_page_path', 'static_generated_at'
     ];

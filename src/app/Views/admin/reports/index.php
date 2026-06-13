@@ -109,6 +109,88 @@ Export Laporan
         </div>
     </div>
 </div>
+
+<!-- Row 2: Per-Ujian Reports -->
+<div class="row">
+    <!-- Laporan Per Ujian -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-transparent border-bottom-0 pt-4 pb-0 px-4">
+                <h5 class="fw-bold mb-0 text-warning"><i class="bi bi-clipboard2-data-fill me-2"></i>Laporan Per Ujian</h5>
+                <p class="text-muted small mt-1">Export semua nilai siswa untuk satu ujian tertentu, lengkap dengan statistik.</p>
+            </div>
+            <div class="card-body p-4">
+                <form action="<?= base_url('/admin/reports/export') ?>" method="POST">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="report_type" value="test">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Pilih Ujian <span class="text-danger">*</span></label>
+                        <select name="test_id" class="form-select select2" required data-placeholder="Cari ujian...">
+                            <option value=""></option>
+                            <?php foreach ($tests as $t): ?>
+                                <option value="<?= $t->id ?>"><?= esc($t->name) ?> (<?= $t->attempt_count ?> peserta)</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Filter Grup <span class="text-muted small">(opsional)</span></label>
+                        <select name="group_id" class="form-select select2" data-placeholder="Semua grup...">
+                            <option value="">Semua Grup</option>
+                            <?php foreach ($groups as $group): ?>
+                                <option value="<?= $group->id ?>"><?= esc($group->name) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="alert alert-warning border-0 rounded-3 mb-4">
+                        <i class="bi bi-bar-chart-fill me-2"></i> Termasuk sheet statistik: rata-rata, median, distribusi nilai, dan pass rate.
+                    </div>
+
+                    <button type="submit" class="btn btn-warning text-dark w-100 py-2 fw-semibold rounded-3">
+                        <i class="bi bi-download me-2"></i>Download Laporan Ujian
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail Jawaban Per Soal -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-transparent border-bottom-0 pt-4 pb-0 px-4">
+                <h5 class="fw-bold mb-0 text-danger"><i class="bi bi-list-check me-2"></i>Detail Jawaban Per Soal</h5>
+                <p class="text-muted small mt-1">Export matrix jawaban siswa per butir soal dengan analisis ketuntasan.</p>
+            </div>
+            <div class="card-body p-4">
+                <form action="<?= base_url('/admin/reports/export') ?>" method="POST">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="report_type" value="test_detail">
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Pilih Ujian <span class="text-danger">*</span></label>
+                        <select name="test_id" class="form-select select2" required data-placeholder="Cari ujian...">
+                            <option value=""></option>
+                            <?php foreach ($tests as $t): ?>
+                                <option value="<?= $t->id ?>"><?= esc($t->name) ?> (<?= $t->attempt_count ?> peserta)</option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div class="alert alert-danger border-0 rounded-3 mb-4">
+                        <i class="bi bi-card-checklist me-2"></i> Sheet 1: matrix poin per soal (hijau = benar, kuning = parsial, merah = salah).<br>
+                        <i class="bi bi-graph-up me-2"></i> Sheet 2: analisis butir soal (ketuntasan per soal).
+                    </div>
+
+                    <button type="submit" class="btn btn-danger w-100 py-2 fw-semibold rounded-3">
+                        <i class="bi bi-download me-2"></i>Download Detail Jawaban
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>

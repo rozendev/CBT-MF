@@ -11,26 +11,41 @@ class SettingModel extends Model
     protected $allowedFields = ['key', 'value', 'type', 'group', 'description'];
     protected $useTimestamps = true;
 
+    private static array $cache = [];
+
     /**
      * Get a setting value by key
      */
     public function getValue(string $key, $default = null)
     {
+        if (array_key_exists($key, self::$cache)) {
+            return self::$cache[$key];
+        }
+
         $setting = $this->where('key', $key)->first();
         if (!$setting) {
+            self::$cache[$key] = $default;
             return $default;
         }
 
+        $value = null;
         switch ($setting['type']) {
             case 'integer':
-                return (int) $setting['value'];
+                $value = (int) $setting['value'];
+                break;
             case 'boolean':
-                return filter_var($setting['value'], FILTER_VALIDATE_BOOLEAN);
+                $value = filter_var($setting['value'], FILTER_VALIDATE_BOOLEAN);
+                break;
             case 'json':
-                return json_decode($setting['value'], true);
+                $value = json_decode($setting['value'], true);
+                break;
             default:
-                return $setting['value'];
+                $value = $setting['value'];
+                break;
         }
+
+        self::$cache[$key] = $value;
+        return $value;
     }
 
     /**
@@ -38,6 +53,15 @@ class SettingModel extends Model
      */
     public function setValue(string $key, $value, string $type = 'string', string $group = 'general')
     {
+        if (array_key_exists($key, self::$cache)) {
+            unset(self::$cache[$key]);
+        }
+        try {
+            service('cache')->delete("setting_{$key}");
+        } catch (\Exception $e) {
+            // Ignore cache delete failures if cache driver is down
+        }
+
         if (is_array($value) || is_object($value)) {
             $value = json_encode($value);
             $type = 'json';

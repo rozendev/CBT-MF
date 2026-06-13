@@ -43,17 +43,17 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             color: var(--color-text);
             font-family: 'Inter', sans-serif;
             -webkit-font-smoothing: antialiased;
-            padding-bottom: 80px; /* Space for bottom nav */
+            padding-bottom: 80px;
         }
-        
-        .noselect { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
 
-        /* Fullscreen Gate & Anti Cheat Overlay */
-        .fullscreen-gate {
-            position: fixed; inset: 0; z-index: 99999;
-            background-color: var(--color-background);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: var(--color-text); text-align: center;
+        /* Sidebar Layout */
+        .exam-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+        .exam-main {
+            flex: 1;
+            min-width: 0;
         }
         
         /* Beautiful Desktop Drawer */
@@ -62,7 +62,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             right: 0;
             top: 0;
             height: 100vh;
-            width: 40px; /* Trigger area */
+            width: 40px;
             z-index: 1040;
         }
         .desktop-drawer-trigger {
@@ -89,7 +89,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
         .desktop-drawer {
             position: absolute;
-            right: -360px; /* Hidden */
+            right: -360px;
             top: 0;
             width: 360px;
             height: 100vh;
@@ -103,23 +103,19 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             border-left: 1px solid rgba(0,0,0,0.05);
         }
         .desktop-drawer-wrapper:hover .desktop-drawer {
-            right: 0; /* Slide in on hover */
+            right: 0;
         }
         .desktop-drawer-wrapper:hover {
-            width: 360px; /* Expand hover area so drawer stays open */
+            width: 360px;
         }
-        .fullscreen-gate .gate-icon { font-size: 5rem; margin-bottom: 1.5rem; color: var(--color-primary); }
-        .fullscreen-gate .gate-btn {
-            background-color: var(--color-primary);
-            border: none; color: white; font-size: 1.2rem; font-weight: 700;
-            padding: 1rem 3rem; border-radius: 9999px; cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .login-gate {
-            position:fixed; inset:0; z-index:100000;
-            background-color:var(--color-background);
-            display:flex; flex-direction:column; align-items:center; justify-content:center;
-            color:var(--color-text); text-align:center;
+        
+        .noselect { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
+
+        /* Loading & Anti Cheat */
+        .loading-screen {
+            position:fixed; inset:0; z-index:100001;
+            background:var(--color-background); display:flex; flex-direction:column; align-items:center; justify-content:center;
+            color: var(--color-text);
         }
         .suspend-overlay {
             position: fixed; inset: 0; z-index: 99998;
@@ -183,7 +179,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             height: 4px;
             background: rgba(0,0,0,0.05);
             position: sticky;
-            top: 61px; /* approximate height of topbar */
+            top: 61px;
             z-index: 1019;
         }
         .progress-fill {
@@ -194,8 +190,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
         /* Question Area */
         .question-container {
-            padding: 24px 16px;
-            max-width: 800px;
+            padding: 24px 32px;
+            max-width: 900px;
             margin: 0 auto;
         }
         .question-label {
@@ -209,7 +205,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         .question-text {
             font-size: 16px;
             line-height: 1.6;
-            margin-bottom: 32px;
+            margin-bottom: 16px;
             color: var(--color-text);
         }
         .question-text img {
@@ -222,14 +218,14 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             display: flex;
             align-items: flex-start;
             gap: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
+            padding: 12px 14px;
+            margin-bottom: 8px;
             border: 2px solid rgba(0,0,0,0.08);
-            border-radius: 12px;
+            border-radius: 10px;
             background: var(--color-surface);
             cursor: pointer;
             transition: all 150ms ease;
-            min-height: 56px;
+            min-height: 48px;
         }
         .answer-option:hover {
             border-color: rgba(var(--color-primary-rgb), 0.3);
@@ -335,27 +331,14 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             color: var(--color-danger);
         }
 
-        /* Bottom Sheet Modal */
-        .offcanvas-bottom {
-            height: auto;
-            max-height: 70vh;
-            border-top-left-radius: 20px;
-            border-top-right-radius: 20px;
-        }
-        .sheet-drag-handle {
-            width: 40px;
-            height: 4px;
-            background: #dee2e6;
-            border-radius: 4px;
-            margin: 12px auto;
+        /* Sidebar Offcanvas (Mobile) */
+        .offcanvas-end {
+            width: 300px;
         }
         .q-grid-container {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 10px;
-            padding: 16px;
-            max-height: calc(70vh - 150px);
-            overflow-y: auto;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
         }
         .q-grid-btn {
             width: 100%;
@@ -380,12 +363,34 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             color: #000;
         }
         .q-grid-btn.unanswered {
-            background-color: var(--color-surface);
-            border-color: rgba(0,0,0,0.15);
+            background-color: rgba(0,0,0,0.04);
+            border-color: rgba(0,0,0,0.12);
             color: var(--color-text-muted);
         }
         .q-grid-btn.current {
             border-color: var(--color-text) !important;
+        }
+        .sidebar-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 12px;
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(0,0,0,0.03);
+            border-radius: 12px;
+        }
+        .sidebar-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--color-text-muted);
+        }
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 4px;
+            flex-shrink: 0;
         }
 
         /* Auto-save chip */
@@ -405,12 +410,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             gap: 6px;
             z-index: 1010;
         }
-
-        /* Loading Spinner */
-        .loading-screen {
-            position:fixed; inset:0; z-index:100001;
-            background:var(--color-background); display:flex; flex-direction:column; align-items:center; justify-content:center;
-            color: var(--color-text);
+        /* Hide sidebar toggle on desktop */
+        @media (min-width: 992px) {
+            .btn-sidebar-toggle {
+                display: none !important;
+            }
         }
 
         /* Image Lightbox Overlay */
@@ -436,9 +440,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 </head>
 <body class="noselect">
     <script>
-        // ═══════════════════════════════════════════════════════
-        //  EXAM CONFIGURATION (embedded at generation time)
-        // ═══════════════════════════════════════════════════════
         const EXAM_CONFIG = {
             testId: <?= $test->id ?>,
             testName: <?= json_encode($test->name) ?>,
@@ -457,9 +458,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             randomAnswers: <?= $test->random_answers ? 'true' : 'false' ?>,
         };
 
-        // ═══════════════════════════════════════════════════════
-        //  CLIENT-SIDE SHUFFLING (Randomized per page load)
-        // ═══════════════════════════════════════════════════════
         if (EXAM_CONFIG.randomQuestions) {
             EXAM_CONFIG.questionsData.sort(() => Math.random() - 0.5);
         }
@@ -470,7 +468,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
     </script>
 
-    <!-- ▼ LOADING SCREEN ▼ -->
+    <!-- Loading Screen -->
     <div class="loading-screen" id="loadingScreen">
         <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;" role="status">
             <span class="visually-hidden">Memuat...</span>
@@ -484,7 +482,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         <img src="" id="imageLightboxImg" alt="Preview">
     </div>
 
-    <!-- ▼ SUSPEND OVERLAY (Anti-Cheat) ▼ -->
+    <!-- Suspend Overlay (Anti-Cheat) -->
     <div class="suspend-overlay" id="suspendOverlay" style="display:none;">
         <?php if (!empty($antiCheat['logo'])): ?>
             <img src="<?= base_url($antiCheat['logo']) ?>" alt="Warning Logo" class="mb-4" id="antiCheatLogoImg" style="max-height: 120px;">
@@ -502,8 +500,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         <p class="mb-2 text-warning">Pelanggaran: <span id="strikeCount" class="fw-bold fs-5">1</span> / <span id="maxStrikes" class="fw-bold fs-5"><?= $antiCheat['max_strikes'] ?></span></p>
     </div>
 
-    <!-- ▼ EXAM CONTENT ▼ -->
+    <!-- EXAM CONTENT -->
     <div id="examContent" style="display:none;" x-data="examApp()">
+    <div class="exam-layout">
+    <div class="exam-main">
+        
         <!-- Top Navigation -->
         <div class="exam-topbar">
             <div class="exam-title-area">
@@ -516,7 +517,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         <i class="bi bi-clock-history"></i> <span x-text="formatTime(timeLeft)">--:--:--</span>
                     </div>
                 </template>
-                <button type="button" class="btn text-dark border-0 p-1" data-bs-toggle="offcanvas" data-bs-target="#questionGridSheet">
+                <button type="button" class="btn text-dark border-0 p-1 btn-sidebar-toggle" data-bs-toggle="offcanvas" data-bs-target="#questionGridSheet">
                     <i class="bi bi-grid-fill fs-3"></i>
                 </button>
             </div>
@@ -649,64 +650,63 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             </button>
         </div>
 
-        <!-- Bottom Sheet Question Grid -->
-        <div class="offcanvas offcanvas-bottom" tabindex="-1" id="questionGridSheet" aria-labelledby="questionGridSheetLabel">
-            <div class="sheet-drag-handle"></div>
-            <div class="offcanvas-header pb-0 pt-2 border-bottom-0">
-                <h5 class="offcanvas-title fw-bold" id="questionGridSheetLabel" style="font-size: 18px;">Navigasi Soal</h5>
+        <!-- Mobile Sidebar (offcanvas-end) -->
+        <div class="offcanvas offcanvas-end" tabindex="-1" id="questionGridSheet">
+            <div class="offcanvas-header border-bottom">
+                <h5 class="offcanvas-title fw-bold"><i class="bi bi-grid-3x3-gap-fill me-2"></i>Navigasi Soal</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
             </div>
-            <div class="offcanvas-body">
+            <div class="offcanvas-body p-3">
                 <div class="q-grid-container">
                     <template x-for="(q, idx) in questions" :key="q.question_id">
-                        <button class="q-grid-btn" :class="getGridButtonClass(idx)" @click="goToQuestion(idx)" data-bs-dismiss="offcanvas" data-bs-target="#questionGridSheet" x-text="idx + 1"></button>
+                        <button class="q-grid-btn" :class="getGridButtonClass(idx)" @click="goToQuestion(idx); closeMobileSidebar()" x-text="idx + 1"></button>
                     </template>
                 </div>
                 
-                <div class="d-flex justify-content-between align-items-center mt-3 px-3 py-2 rounded-3 mx-3" style="background: rgba(0,0,0,0.03); font-size:13px;">
-                    <div class="d-flex align-items-center gap-1"><span class="d-inline-block rounded-circle" style="width:10px;height:10px;background:var(--color-primary);"></span> <span x-text="countAnswered()"></span></div>
-                    <div class="d-flex align-items-center gap-1"><span class="d-inline-block rounded-circle" style="width:10px;height:10px;background:var(--color-warning);"></span> <span x-text="countFlagged()"></span></div>
-                    <div class="d-flex align-items-center gap-1"><span class="d-inline-block rounded-circle border" style="width:10px;height:10px;background:var(--color-surface);border-color:rgba(0,0,0,0.3);"></span> <span x-text="questions.length - countAnswered()"></span></div>
-                </div>
-
-                <div class="mt-4 px-3 pb-3">
-                    <button type="button" class="btn btn-outline-secondary w-100 rounded-pill" style="height:48px;font-weight:600;" data-bs-dismiss="offcanvas">Tutup</button>
+                <div class="sidebar-legend">
+                    <div class="sidebar-legend-item"><span class="legend-dot" style="background:var(--color-primary);"></span> Dijawab: <strong x-text="countAnswered()"></strong></div>
+                    <div class="sidebar-legend-item"><span class="legend-dot" style="background:var(--color-warning);"></span> Ditandai: <strong x-text="countFlagged()"></strong></div>
+                    <div class="sidebar-legend-item"><span class="legend-dot" style="background:rgba(0,0,0,0.08); border: 1px solid rgba(0,0,0,0.15);"></span> Belum: <strong x-text="questions.length - countAnswered()"></strong></div>
                 </div>
             </div>
         </div>
 
-        <!-- Desktop Sidebar (always visible on lg+, opens on hover) -->
-        <div class="desktop-drawer-wrapper d-none d-lg-block">
-            <div class="desktop-drawer-trigger">
-                <i class="bi bi-grid-3x3-gap-fill text-primary mb-2 fs-5"></i>
-                <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 13px; font-weight: 700; letter-spacing: 2px; color: var(--color-text-muted);">
-                    SOAL
-                </div>
+    </div><!-- /exam-main -->
+
+    <!-- Desktop Sidebar -->
+    <div class="desktop-drawer-wrapper d-none d-lg-block">
+        <div class="desktop-drawer-trigger">
+            <i class="bi bi-grid-3x3-gap-fill text-primary mb-2 fs-5"></i>
+            <div style="writing-mode: vertical-rl; text-orientation: mixed; font-size: 13px; font-weight: 700; letter-spacing: 2px; color: var(--color-text-muted);">
+                SOAL
+            </div>
+        </div>
+        
+        <div class="desktop-drawer">
+            <div class="drawer-header border-bottom pb-3 mb-4">
+                <h5 class="fw-bold mb-0 text-primary"><i class="bi bi-grid-3x3-gap-fill me-2"></i>Navigasi Soal</h5>
             </div>
             
-            <div class="desktop-drawer">
-                <div class="drawer-header border-bottom pb-3 mb-4">
-                    <h5 class="fw-bold mb-0 text-primary"><i class="bi bi-grid-3x3-gap-fill me-2"></i>Navigasi Soal</h5>
-                </div>
-                
-                <div class="q-grid-container mb-4">
-                    <template x-for="(q, idx) in questions" :key="q.log_id || q.question_id">
-                        <button class="q-grid-btn shadow-sm" :class="getGridButtonClass(idx)" @click="goToQuestion(idx)" x-text="idx + 1"></button>
-                    </template>
-                </div>
-                
-                <div class="sidebar-legend mb-4">
-                    <div class="sidebar-legend-item mb-2"><span class="legend-dot shadow-sm d-inline-block rounded-circle me-2" style="width:12px;height:12px;background:var(--color-primary);"></span> Dijawab: <strong x-text="countAnswered()"></strong></div>
-                    <div class="sidebar-legend-item mb-2"><span class="legend-dot shadow-sm d-inline-block rounded-circle me-2" style="width:12px;height:12px;background:var(--color-warning);"></span> Ditandai: <strong x-text="countFlagged()"></strong></div>
-                    <div class="sidebar-legend-item"><span class="legend-dot shadow-sm d-inline-block rounded-circle me-2" style="width:12px;height:12px;background:rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.1);"></span> Belum: <strong x-text="questions.length - countAnswered()"></strong></div>
-                </div>
-                
-                <div class="mt-auto pt-3 border-top">
-                    <button type="button" class="btn btn-danger w-100 rounded-3 fw-bold py-2 shadow-sm" style="height: 48px;" @click="confirmFinish()">
-                        <i class="bi bi-stop-circle-fill me-2"></i>Akhiri Ujian
-                    </button>
-                </div>
+            <div class="q-grid-container mb-4">
+                <template x-for="(q, idx) in questions" :key="q.log_id || q.question_id">
+                    <button class="q-grid-btn shadow-sm" :class="getGridButtonClass(idx)" @click="goToQuestion(idx)" x-text="idx + 1"></button>
+                </template>
+            </div>
+            
+            <div class="sidebar-legend mb-4">
+                <div class="sidebar-legend-item"><span class="legend-dot shadow-sm" style="background:var(--color-primary);"></span> Dijawab: <strong x-text="countAnswered()"></strong></div>
+                <div class="sidebar-legend-item"><span class="legend-dot shadow-sm" style="background:var(--color-warning);"></span> Ditandai: <strong x-text="countFlagged()"></strong></div>
+                <div class="sidebar-legend-item"><span class="legend-dot shadow-sm" style="background:rgba(0,0,0,0.04); border: 1px solid rgba(0,0,0,0.1);"></span> Belum: <strong x-text="questions.length - countAnswered()"></strong></div>
+            </div>
+            
+            <div class="mt-auto pt-3 border-top">
+                <button type="button" class="btn btn-danger w-100 rounded-3 fw-bold py-2 shadow-sm" style="height: 48px;" @click="confirmFinish()">
+                    <i class="bi bi-stop-circle-fill me-2"></i>Akhiri Ujian
+                </button>
             </div>
         </div>
+    </div>
+    </div><!-- /exam-layout -->
 
         <!-- Finish Confirmation Modal -->
         <div class="modal fade" id="finishModal" tabindex="-1" data-bs-backdrop="static">
@@ -741,7 +741,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body py-4 text-center">
-                        <i class="bi bi-exclamation-triangle text-danger" style="font-size:4rem;"></i>
+                        <i class="bi bi-exclamation-triangle text-danger" style="font-size: 4rem;"></i>
                         <h4 class="fw-bold mt-3">Belum Memenuhi Syarat!</h4>
                         <p class="mb-0 fs-5">Nilai ujian Anda saat ini belum memenuhi kriteria batas kelulusan.</p>
                         <p class="text-danger fw-bold mt-2">Anda diwajibkan untuk melanjutkan pengerjaan ujian!</p>
@@ -757,17 +757,38 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 </div>
             </div>
         </div>
+
+        <!-- Unanswered Required Modal (allow_noanswer = 0) -->
+        <div class="modal fade" id="unansweredRequiredModal" tabindex="-1" data-bs-backdrop="static">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content rounded-3 border-0 shadow">
+                    <div class="modal-header bg-warning border-bottom-0 pb-3">
+                        <h5 class="modal-title fw-bold text-dark"><i class="bi bi-exclamation-circle-fill me-2"></i>Soal Belum Lengkap</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body py-4 text-center">
+                        <i class="bi bi-clipboard-x text-warning" style="font-size: 4rem;"></i>
+                        <h4 class="fw-bold mt-3">Jawab Semua Soal!</h4>
+                        <p class="mb-0 fs-5">Anda masih memiliki <strong><span x-text="questions.length - countAnswered()"></span> soal</strong> yang belum dijawab.</p>
+                        <p class="text-muted mt-2">Ujian ini mewajibkan semua soal dijawab sebelum dapat diselesaikan.</p>
+                    </div>
+                    <div class="modal-footer border-top-0 pt-0">
+                        <button type="button" class="btn btn-primary w-100 py-2 fw-bold" data-bs-dismiss="modal">
+                            <i class="bi bi-pencil-square me-2"></i>Kembali Mengerjakan
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div><!-- /examContent -->
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-    // ═══════════════════════════════════════════════════════
-    //  RUNTIME STATE
-    // ═══════════════════════════════════════════════════════
     let examStarted = false;
     let ATTEMPT_ID  = null;
+    let USER_ID     = null;
     let CSRF_NAME   = '';
     let CSRF_HASH   = '';
     let STUDENT_NAME = '';
@@ -776,14 +797,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     const API = EXAM_CONFIG.apiBaseUrl;
 
     $.ajaxSetup({
-        xhrFields: {
-            withCredentials: true
-        }
+        xhrFields: { withCredentials: true }
     });
 
-    // ═══════════════════════════════════════════════════════
-    //  UTILITY: Build form data with CSRF
-    // ═══════════════════════════════════════════════════════
     function buildFormData(obj) {
         const fd = new FormData();
         if (CSRF_NAME) fd.append(CSRF_NAME, CSRF_HASH);
@@ -798,18 +814,16 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     }
 
     function updateCsrf(res) {
-        if (res && res.csrf_name && res.csrf_hash) {
-            CSRF_NAME = res.csrf_name;
-            CSRF_HASH = res.csrf_hash;
+        if (res) {
+            if (res.csrf_name) CSRF_NAME = res.csrf_name;
+            if (res.csrf_token) CSRF_HASH = res.csrf_token;
+            if (res.csrf_hash) CSRF_HASH = res.csrf_hash;
         }
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  1. INIT FLOW — Sync with backend session
-    // ═══════════════════════════════════════════════════════
+    // ═══ INIT FLOW ═══
     async function initExam() {
         const loading = document.getElementById('loadingScreen');
-
         loading.style.display = 'flex';
 
         try {
@@ -837,20 +851,18 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
 
             if (res.status === 'success') {
-                // Check if admin deleted the static page while student was trying to access it from cache
                 if (res.test && (res.test.exam_mode !== 'static' || !res.test.static_page_path)) {
                     window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
                     return;
                 }
 
-                // Store runtime data
                 ATTEMPT_ID   = res.attempt_id;
+                USER_ID      = res.user ? res.user.id : null;
                 STUDENT_NAME = res.user ? (res.user.firstname + ' ' + res.user.lastname).trim() : '';
                 START_TIME   = (res.test && res.test.started_at_ms) ? res.test.started_at_ms : Date.now();
                 const serverNow = (res.test && res.test.server_now_ms) ? res.test.server_now_ms : Date.now();
                 const timeOffset = serverNow - Date.now();
 
-                // Merge saved answers into embedded questions
                 const mergedQuestions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData));
                 const mergedAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData));
 
@@ -876,7 +888,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     });
                 }
 
-                // Store questions and answers globally for Alpine
                 window.__examData = {
                     questions: mergedQuestions,
                     answers: mergedAnswers,
@@ -886,10 +897,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     timeOffset: timeOffset,
                 };
 
-                // Notify AlpineJS that data with saved answers has been merged and loaded
                 document.dispatchEvent(new CustomEvent('exam-data-loaded'));
 
-                // Update anti-cheat overlay text if provided
                 if (res.anti_cheat) {
                     EXAM_CONFIG.antiCheat = res.anti_cheat;
                     document.getElementById('antiCheatTitle').textContent = res.anti_cheat.title || 'Peringatan Kecurangan!';
@@ -917,9 +926,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  2. AUTO FULLSCREEN ON INTERACTION
-    // ═══════════════════════════════════════════════════════
+    // ═══ AUTO FULLSCREEN ═══
     ['click', 'touchstart', 'keydown'].forEach(evt => {
         document.addEventListener(evt, function() {
             if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) return;
@@ -931,9 +938,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         });
     });
 
-    // ═══════════════════════════════════════════════════════
-    //  3. ALPINE.JS EXAM APP
-    // ═══════════════════════════════════════════════════════
+    // ═══ ALPINE.JS EXAM APP ═══
     document.addEventListener('alpine:init', () => {
         Alpine.data('examApp', () => ({
             questions: [],
@@ -952,7 +957,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             syncInterval: null,
 
             parseMatching() {
-                // Parse matching/TF options for type 4 & 5
                 this.questions.forEach(q => {
                     q.is_flagged = false;
                     if (q.question_type == 4 || q.question_type == 5) {
@@ -967,11 +971,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                             let left  = parts[0] || '';
                             let right = parts[1] || '';
                             if (left && right) {
-                                q.matchingPairs.push({
-                                    left: left,
-                                    right: right,
-                                    selected: savedMatching[left] || ''
-                                });
+                                q.matchingPairs.push({ left, right, selected: savedMatching[left] || '' });
                                 rights.push(right);
                             }
                         });
@@ -981,12 +981,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             },
 
             init() {
-                // Synchronously initialize embedded questions so they render immediately
                 this.questions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData || []));
                 this.allAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData || {}));
                 this.parseMatching();
 
-                // Listen for API init completion (when saved answers are merged)
                 document.addEventListener('exam-data-loaded', () => {
                     const data = window.__examData || {};
                     this.questions  = data.questions  || this.questions;
@@ -994,10 +992,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     this.studentName = data.studentName || '';
                     this.parseMatching();
 
-                    // Initialize features that depend on server session
-                    this.initSSE();
+                    this.initWebSocket();
 
-                    // Countdown timer
                     if (this.durationMinutes > 0) {
                         const beginTimeMs = data.beginTimeMs || Date.now();
                         const timeOffset = data.timeOffset || 0;
@@ -1015,7 +1011,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                                 });
                             } else {
                                 this.timeLeft = distance;
-                                // 5-minute warning
                                 if (distance <= 300000 && !this.warningShown) {
                                     this.warningShown = true;
                                     Swal.fire({
@@ -1034,7 +1029,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     }
                 });
 
-                // Auto-sync every 60 seconds
                 this.syncInterval = setInterval(() => {
                     if (!ATTEMPT_ID) return;
                     const fd = buildFormData({ attempt_id: ATTEMPT_ID });
@@ -1047,7 +1041,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         dataType: 'json',
                         success: (res) => { 
                             updateCsrf(res); 
-                            // Fallback sync_mode detection if SSE fails
                             if (res.exam_mode !== undefined) {
                                 if (res.exam_mode !== 'static' || !res.static_page_path) {
                                     window.isSubmitting = true;
@@ -1066,98 +1059,109 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 }, 60000);
             },
 
-            // ── SSE ──
-            initSSE() {
-                if (typeof EventSource === 'undefined' || !ATTEMPT_ID) {
-                    this.fallbackPolling();
+            initWebSocket() {
+                if (!ATTEMPT_ID) {
                     return;
                 }
+                const urlObj = new URL(API);
+                const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsHost = urlObj.host;
+                const wsUrl = `${protocol}//${wsHost}/ws/?user_id=${USER_ID}&attempt_id=${ATTEMPT_ID}`;
+                
+                this.connectWebSocket(wsUrl);
+            },
 
-                const sseUrl = API + '/api/exam/stream/' + ATTEMPT_ID;
-                this.sseSource = new EventSource(sseUrl);
-                this.sseErrorCount = 0;
+            connectWebSocket(wsUrl) {
+                this.ws = new WebSocket(wsUrl);
 
-                this.sseSource.addEventListener('ban', (e) => {
-                    const d = JSON.parse(e.data);
-                    this.sseSource.close();
-                    Swal.fire({ title:'Akun Di-Ban', text:d.message, icon:'error', allowOutsideClick:false, allowEscapeKey:false, confirmButtonText:'OK' })
-                        .then(() => { window.location.href = API + '/login'; });
-                });
+                this.ws.onopen = () => {
+                    this.wsErrorCount = 0;
+                    console.log('WebSocket connected');
+                };
 
-                this.sseSource.addEventListener('kick', (e) => {
-                    const d = JSON.parse(e.data);
-                    this.sseSource.close();
-                    Swal.fire('Sesi Dihentikan', d.message, 'error')
-                        .then(() => { window.location.href = API + '/login'; });
-                });
+                this.ws.onmessage = (e) => {
+                    const payload = JSON.parse(e.data);
+                    const eventName = payload.event;
+                    const d = payload.data || {};
 
-                this.sseSource.addEventListener('finished', (e) => {
-                    const d = JSON.parse(e.data);
-                    this.sseSource.close();
-                    Swal.fire('Ujian Selesai', d.message, 'info')
-                        .then(() => { window.location.href = API + '/student/dashboard'; });
-                });
-
-                this.sseSource.addEventListener('extend_time', (e) => {
-                    const d = JSON.parse(e.data);
-                    if (d.test_id == EXAM_CONFIG.testId) {
-                        this.durationMinutes = d.duration_minutes;
-                        const data = window.__examData || {};
-                        const beginTimeMs = data.beginTimeMs || Date.now();
-                        this.endTimeMs = beginTimeMs + (this.durationMinutes * 60 * 1000);
-                        this.warningShown = false;
-                        
-                        Swal.fire({
-                            title: 'Waktu Ditambahkan!',
-                            text: 'Admin telah menambahkan waktu ujian. Silakan periksa sisa waktu Anda.',
-                            icon: 'success',
-                            toast: true,
-                            position: 'top-end',
-                            showConfirmButton: false,
-                            timer: 5000,
-                            timerProgressBar: true
-                        });
+                    if (eventName === 'ban') {
+                        this.ws.close();
+                        Swal.fire({ title:'Akun Di-Ban', text:d.message, icon:'error', allowOutsideClick:false, allowEscapeKey:false, confirmButtonText:'OK' })
+                            .then(() => { window.location.href = API + '/login'; });
                     }
-                });
-
-                this.sseSource.addEventListener('sync_mode', (e) => {
-                    const d = JSON.parse(e.data);
-                    // Ignore the very first sync if it matches our current state
-                    if (d.exam_mode !== 'static' || !d.static_page_path) {
-                        // Admin disabled static mode. Force redirect to dynamic take.php
-                        window.isSubmitting = true;
-                        window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                    } else {
-                        // Still static. Did the path change?
-                        const expectedUrl = API + '/' + d.static_page_path;
-                        const currentPath = window.location.pathname;
-                        // Since expectedUrl might have domain, we check if currentPath is in expectedUrl
-                        if (!expectedUrl.includes(currentPath)) {
-                            // Path changed! Force reload to the new static page
-                            window.isSubmitting = true;
-                            window.location.href = expectedUrl;
+                    else if (eventName === 'kick') {
+                        this.ws.close();
+                        Swal.fire('Sesi Dihentikan', d.message, 'error')
+                            .then(() => { window.location.href = API + '/login'; });
+                    }
+                    else if (eventName === 'finished') {
+                        this.ws.close();
+                        Swal.fire('Ujian Selesai', d.message, 'info')
+                            .then(() => { window.location.href = API + '/student/dashboard'; });
+                    }
+                    else if (eventName === 'extend_time') {
+                        if (d.test_id == EXAM_CONFIG.testId) {
+                            this.durationMinutes = d.duration_minutes;
+                            const data = window.__examData || {};
+                            const beginTimeMs = data.beginTimeMs || Date.now();
+                            this.endTimeMs = beginTimeMs + (this.durationMinutes * 60 * 1000);
+                            this.warningShown = false;
+                            
+                            Swal.fire({
+                                title: 'Waktu Ditambahkan!',
+                                text: 'Admin telah menambahkan waktu ujian. Silakan periksa sisa waktu Anda.',
+                                icon: 'success',
+                                toast: true,
+                                position: 'top-end',
+                                showConfirmButton: false,
+                                timer: 5000,
+                                timerProgressBar: true
+                            });
                         }
                     }
-                });
-
-                this.sseSource.addEventListener('connected', () => {
-                    this.sseErrorCount = 0;
-                });
-
-                this.sseSource.onerror = () => {
-                    this.sseErrorCount++;
-                    if (this.sseErrorCount > 10) {
-                        this.sseSource.close();
-                        this.fallbackPolling();
+                    else if (eventName === 'sync_mode') {
+                        if (d.exam_mode !== 'static' || !d.static_page_path) {
+                            window.isSubmitting = true;
+                            window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
+                        } else {
+                            const expectedUrl = API + '/' + d.static_page_path;
+                            const currentPath = window.location.pathname;
+                            if (!expectedUrl.includes(currentPath)) {
+                                window.isSubmitting = true;
+                                window.location.href = expectedUrl;
+                            }
+                        }
                     }
+                };
+
+                this.ws.onclose = (e) => {
+                    console.warn('WebSocket closed', e);
+                    this.reconnectWebSocket(wsUrl);
+                };
+
+                this.ws.onerror = (err) => {
+                    console.error('WebSocket error', err);
+                    this.ws.close();
                 };
             },
 
-            fallbackPolling() {
-                console.log('SSE fallback: relying on autosave piggybacking for status detection');
+            reconnectWebSocket(wsUrl) {
+                if (!this.wsErrorCount) this.wsErrorCount = 0;
+                this.wsErrorCount++;
+                
+                if (this.wsErrorCount > 10) {
+                    console.warn('WebSocket reconnect limit reached');
+                    return;
+                }
+                
+                const delay = Math.min(1000 * Math.pow(2, this.wsErrorCount), 30000);
+                console.log(`Reconnecting WebSocket in ${delay}ms...`);
+                
+                setTimeout(() => {
+                    this.connectWebSocket(wsUrl);
+                }, delay);
             },
 
-            // ── Computed ──
             get currentQuestion() { return this.questions[this.currentIndex] || {}; },
             get currentAnswers()  { return this.allAnswers[this.currentQuestion.question_id] || []; },
 
@@ -1169,22 +1173,25 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 return (h<10?"0"+h:h)+":"+(m<10?"0"+m:m)+":"+(s<10?"0"+s:s);
             },
 
-            // ── Navigation ──
             nextQuestion() {
                 if (this.currentIndex < this.questions.length - 1) this.currentIndex++;
                 else this.confirmFinish();
-                
                 this.checkExamMode();
             },
             prevQuestion() { 
                 if (this.currentIndex > 0) this.currentIndex--; 
-                
                 this.checkExamMode();
             },
             goToQuestion(idx) { 
                 this.currentIndex = idx; 
-                
                 this.checkExamMode();
+            },
+            closeMobileSidebar() {
+                const el = document.getElementById('questionGridSheet');
+                if (el) {
+                    const bs = bootstrap.Offcanvas.getInstance(el);
+                    if (bs) bs.hide();
+                }
             },
 
             checkExamMode() {
@@ -1216,33 +1223,26 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 });
             },
 
-            // ── Answer Handlers ──
             selectRadio(answerId) {
-                // Prevent saving if the answer is already selected
                 let currentSelected = this.currentAnswers.find(a => a.is_selected == 1);
-                if (currentSelected && currentSelected.answer_id == answerId) {
-                    return; 
-                }
+                if (currentSelected && currentSelected.answer_id == answerId) return;
                 this.currentAnswers.forEach(a => { a.is_selected = (a.answer_id == answerId) ? 1 : 0; });
                 this.saveAnswer();
             },
             toggleCheckbox(answerId, isChecked) {
                 let ans = this.currentAnswers.find(a => a.answer_id == answerId);
                 if (ans) {
-                    // Prevent saving if state is unchanged
                     if (ans.is_selected == (isChecked ? 1 : 0)) return;
                     ans.is_selected = isChecked ? 1 : 0;
                 }
                 this.saveAnswer();
             },
             updateMatching(index, value) {
-                // Prevent saving if value is unchanged
                 if (this.questions[this.currentIndex].matchingPairs[index].selected === value) return;
                 this.questions[this.currentIndex].matchingPairs[index].selected = value;
                 this.saveAnswer();
             },
 
-            // ── Autosave ──
             saveAnswer() {
                 this.isSaving = true;
                 const questionId = this.currentQuestion.question_id;
@@ -1272,6 +1272,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 .done((res) => {
                     this.isSaving = false;
                     updateCsrf(res);
+                    this.showSavedToast = true;
+                    setTimeout(() => { this.showSavedToast = false; }, 2000);
                     if (res.status === 'kicked') {
                         if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
                         Swal.fire('Informasi', res.message, 'info').then(() => {
@@ -1291,7 +1293,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 });
             },
 
-            // ── Counting ──
             countAnswered() {
                 let count = 0;
                 this.questions.forEach(q => {
@@ -1332,8 +1333,12 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 return classes.join(' ');
             },
 
-            // ── Finish Flow ──
             confirmFinish() {
+                if (EXAM_CONFIG.allowNoanswer === 0 && this.countAnswered() < this.questions.length) {
+                    new bootstrap.Modal(document.getElementById('unansweredRequiredModal')).show();
+                    return;
+                }
+
                 this.isSaving = true;
                 const fd = buildFormData({ attempt_id: ATTEMPT_ID });
 
@@ -1363,7 +1368,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             async forceSubmit() {
                 const w1 = await Swal.fire({
                     title: 'Peringatan 1',
-                    text: "Apakah Anda yakin? Nilai Anda saat ini tidak memenuhi syarat kelulusan.",
+                    text: "Apakah Anda yakin ingin mengakhiri ujian?",
                     icon: 'warning', showCancelButton: true, confirmButtonText: 'Yakin', cancelButtonText: 'Batal'
                 });
                 if (!w1.isConfirmed) return;
@@ -1377,13 +1382,14 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
                 const w3 = await Swal.fire({
                     title: 'Peringatan Terakhir',
-                    text: "Ujian akan diakhiri secara permanen dengan status gagal. Lanjutkan?",
+                    text: "Ujian akan diakhiri secara permanen. Lanjutkan?",
                     icon: 'error', showCancelButton: true, confirmButtonText: 'Akhiri Ujian',
                     cancelButtonText: 'Batal', confirmButtonColor: '#d33'
                 });
                 if (w3.isConfirmed) {
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('warningFinishModal'));
-                    if (modal) modal.hide();
+                    document.querySelectorAll('.modal.show').forEach(m => {
+                        bootstrap.Modal.getInstance(m)?.hide();
+                    });
                     this.submitFinish();
                 }
             },
@@ -1391,6 +1397,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             submitFinish() {
                 window.isSubmitting = true;
                 this.isSaving = true;
+                if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
                 const fd = buildFormData({ test_id: EXAM_CONFIG.testId, attempt_id: ATTEMPT_ID });
 
@@ -1404,16 +1411,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 })
                 .done((res) => {
                     updateCsrf(res);
-                    if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                    Swal.fire({
-                        title: 'Ujian Selesai!',
-                        text: res.message || 'Jawaban Anda telah disimpan.',
-                        icon: 'success',
-                        allowOutsideClick: false,
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        window.location.href = API + '/student/dashboard';
-                    });
+                    if (res.redirect) {
+                        window.location.href = res.redirect;
+                    } else {
+                        window.location.href = API + '/student/results/view/' + EXAM_CONFIG.testId;
+                    }
                 })
                 .fail((err) => {
                     this.isSaving = false;
@@ -1425,9 +1427,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }));
     });
 
-    // ═══════════════════════════════════════════════════════
-    //  4. ANTI-CHEAT ENGINE
-    // ═══════════════════════════════════════════════════════
+    // ═══ ANTI-CHEAT ENGINE ═══
     (function() {
         let isSuspended = false;
         let isLocked    = false;
@@ -1444,7 +1444,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }).done((res) => { updateCsrf(res); });
         }
 
-        // ── TAB SWITCH → INSTANT BAN ──
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
             if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) return; 
@@ -1468,7 +1467,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 });
         });
 
-        // ── FULLSCREEN EXIT → WARNING OVERLAY ──
         document.addEventListener('fullscreenchange', function() {
             if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
             
@@ -1519,13 +1517,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         });
     })();
 
-    // ═══════════════════════════════════════════════════════
-    //  5. BOOT — Start the init flow on page load
-    // ═══════════════════════════════════════════════════════
+    // ═══ BOOT ═══
     document.addEventListener('DOMContentLoaded', function() {
         initExam();
 
-        // Image Lightbox Logic
         const lightbox = document.getElementById('imageLightbox');
         const lightboxImg = document.getElementById('imageLightboxImg');
         

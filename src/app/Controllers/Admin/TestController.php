@@ -52,6 +52,12 @@ class TestController extends BaseController
             $data[$field] = $this->request->getPost($field) ? 1 : 0;
         }
 
+        $triStateFields = ['show_score_after_exam', 'show_correct_answers', 'allow_review'];
+        foreach ($triStateFields as $field) {
+            $val = $this->request->getPost($field);
+            $data[$field] = ($val === '' || $val === 'default' || $val === null) ? null : (int) $val;
+        }
+
         // Auto-calculate end_time based on begin_time and duration_minutes (Hardcap logic)
         if (!empty($data['begin_time']) && !empty($data['duration_minutes'])) {
             $data['end_time'] = date('Y-m-d H:i:s', strtotime($data['begin_time'] . " + {$data['duration_minutes']} minutes"));
@@ -110,6 +116,12 @@ class TestController extends BaseController
             $data[$field] = $this->request->getPost($field) ? 1 : 0;
         }
 
+        $triStateFields = ['show_score_after_exam', 'show_correct_answers', 'allow_review'];
+        foreach ($triStateFields as $field) {
+            $val = $this->request->getPost($field);
+            $data[$field] = ($val === '' || $val === 'default' || $val === null) ? null : (int) $val;
+        }
+
         // Auto-calculate end_time based on begin_time and duration_minutes (Hardcap logic)
         if (!empty($data['begin_time']) && !empty($data['duration_minutes'])) {
             $data['end_time'] = date('Y-m-d H:i:s', strtotime($data['begin_time'] . " + {$data['duration_minutes']} minutes"));
@@ -153,11 +165,13 @@ class TestController extends BaseController
 
             // Clear Redis cache
             try {
-                $redis = new \Redis();
-                if ($redis->connect('redis', 6379)) {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
                     $redis->del("exam_answers:{$attempt->id}");
                 }
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+                log_message('error', 'Redis error in TestController::delete: ' . $e->getMessage());
+            }
         }
         $db->table('test_attempts')->where('test_id', $id)->delete();
 
@@ -197,15 +211,17 @@ class TestController extends BaseController
 
             // Notify clients via SSE if running
             try {
-                $redis = new \Redis();
-                if ($redis->connect('redis', 6379)) {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
                     $redis->publish('exam_events', json_encode([
                         'event' => 'extend_time',
                         'test_id' => $id,
                         'duration_minutes' => $newDuration
                     ]));
                 }
-            } catch (\Exception $e) {}
+            } catch (\Exception $e) {
+                log_message('error', 'Redis publish error in TestController::extendTime: ' . $e->getMessage());
+            }
 
             return redirect()->back()->with('success', "Berhasil menambahkan waktu {$extraMinutes} menit untuk semua peserta.");
         }
