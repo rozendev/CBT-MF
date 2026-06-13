@@ -65,7 +65,18 @@ Semua perintah CLI dapat dijalankan melalui script utilitas yang disediakan:
 ### 4. Progress Jawaban Tidak Tersimpan (Autosave Error)
 - **Solusi**: Pastikan Redis menyala, karena semua *autosave* ditulis sementara ke Redis (`exam_answers:attemptId`) sebelum di-*flush* ke MariaDB secara massal di akhir ujian. Cek log `docker logs ujian_redis`.
 
-### 5. PHP-FPM Resource Exhausted / Server Terasa Lambat
+### 5. Sesi Cepat Berakhir atau Session Menumpuk
+- **Solusi**: Pastikan *session handler* di file `src/.env` tidak ter-*override* ke *file* biasa. Untuk performa terbaik di Docker, atur `app.sessionDriver = 'CodeIgniter\Session\Handlers\RedisHandler'` dan pastikan `app.sessionSavePath` mengarah ke Redis server Anda (`tcp://redis:6379`).
+
+### 6. Error Permission / Gagal Generate Static Exam
+- **Gejala**: Muncul pesan error tidak dapat menulis file HTML saat melakukan *Generate* halaman statis, atau gambar/file tidak bisa diunggah.
+- **Solusi**: Pastikan folder `src/writable/` dan `src/public/static/` memiliki izin tulis (write access). Jika folder belum ada, buat terlebih dahulu:
+  ```bash
+  mkdir -p src/writable src/public/static
+  chmod -R 777 src/writable src/public/static
+  ```
+
+### 7. PHP-FPM Resource Exhausted / Server Terasa Lambat
 - **Solusi**: Jika Anda baru saja beralih dari versi lawas (yang masih menggunakan Server-Sent Events / EventSource), pastikan Anda telah sepenuhnya mendeploy Daemon WebSocket. Cara termudahnya adalah periksa *Network tab* di *DevTools* Browser. Anda harusnya melihat aktivitas ke `wss://domain.com/ws/` dengan status kode `101 Switching Protocols`, bukan request yang terus-menerus "*Pending*" (itu adalah sisa SSE FPM).
 
 ## 🗂 Struktur Repositori

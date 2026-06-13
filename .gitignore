@@ -33,3 +33,4 @@ docker/mariadb/data/
 /src/vendor/
 /src/writable/
 /src/public/static/
+/src/graphify-out/
