@@ -6,10 +6,25 @@
 
 set -e
 
+# Load .env file or fallback to .env.example
+ENV_FILE="$(dirname "$0")/../.env"
+if [ ! -f "$ENV_FILE" ]; then
+  ENV_FILE="$(dirname "$0")/../.env.example"
+fi
+
+if [ -f "$ENV_FILE" ]; then
+  # Export variables (ignore comments and empty lines)
+  export $(grep -v '^#' "$ENV_FILE" | grep -v '^$' | xargs)
+fi
+
 COMPOSE="docker compose"
-PHP_CONTAINER="ujian_php"
-DB_CONTAINER="ujian_mariadb"
-REDIS_CONTAINER="ujian_redis"
+PHP_CONTAINER="${CONTAINER_PHP:-ujian_php}"
+DB_CONTAINER="${CONTAINER_DB:-ujian_mariadb}"
+REDIS_CONTAINER="${CONTAINER_REDIS:-ujian_redis}"
+DB_USER="${DB_USERNAME:-sayasukakamu}"
+DB_PASS="${DB_PASSWORD:-sayasukakamu}"
+DB_NAME="${DB_DATABASE:-cbt-mf}"
+ROOT_PASS="${MYSQL_ROOT_PASSWORD:-root_secret}"
 
 case "$1" in
 
@@ -57,18 +72,18 @@ case "$1" in
   # ─── Database Commands ───────────────────────────────────
   db)
     echo "🗄️  Connecting to MariaDB..."
-    docker exec -it $DB_CONTAINER mariadb -u ujian_user -pujian_secret sistem_ujian
+    docker exec -it $DB_CONTAINER mariadb -u $DB_USER -p$DB_PASS $DB_NAME
     ;;
 
   db-root)
     echo "🗄️  Connecting to MariaDB as root..."
-    docker exec -it $DB_CONTAINER mariadb -u root -proot_secret
+    docker exec -it $DB_CONTAINER mariadb -u root -p$ROOT_PASS
     ;;
 
   db-export)
     FILENAME=${2:-"backup_$(date +%Y%m%d_%H%M%S).sql"}
     echo "📦 Exporting database to $FILENAME..."
-    docker exec $DB_CONTAINER mariadb-dump -u root -proot_secret sistem_ujian > "$FILENAME"
+    docker exec $DB_CONTAINER mariadb-dump -u root -p$ROOT_PASS $DB_NAME > "$FILENAME"
     echo "✅ Exported to $FILENAME"
     ;;
 
@@ -78,7 +93,7 @@ case "$1" in
       exit 1
     fi
     echo "📥 Importing $2..."
-    docker exec -i $DB_CONTAINER mariadb -u root -proot_secret sistem_ujian < "$2"
+    docker exec -i $DB_CONTAINER mariadb -u root -p$ROOT_PASS $DB_NAME < "$2"
     echo "✅ Import complete"
     ;;
 

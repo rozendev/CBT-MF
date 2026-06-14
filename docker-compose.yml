@@ -2,7 +2,7 @@ services:
   # ─── Nginx ──────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
-    container_name: ujian_nginx
+    container_name: ${CONTAINER_NGINX}
     restart: unless-stopped
     ports:
       - "8080:80"
@@ -20,7 +20,7 @@ services:
     build:
       context: ./docker/php-fpm
       dockerfile: Dockerfile
-    container_name: ujian_php
+    container_name: ${CONTAINER_PHP}
     restart: unless-stopped
     volumes:
       - ./src:/var/www/html
@@ -46,7 +46,7 @@ services:
     build:
       context: ./docker/php-fpm
       dockerfile: Dockerfile
-    container_name: ujian_websocket
+    container_name: ${CONTAINER_WEBSOCKET}
     restart: unless-stopped
     command: php spark websocket:serve
     ports:
@@ -73,7 +73,7 @@ services:
   # ─── Cloudflare Tunnel ──────────────────────────────────────
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: ujian_cloudflared
+    container_name: ${CONTAINER_CLOUDFLARED}
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
@@ -86,7 +86,7 @@ services:
   # ─── MariaDB ────────────────────────────────────────────────
   mariadb:
     image: mariadb:latest
-    container_name: ujian_mariadb
+    container_name: ${CONTAINER_DB}
     restart: unless-stopped
     command: --max_connections=500
     ports:
@@ -111,7 +111,7 @@ services:
   # ─── phpMyAdmin ─────────────────────────────────────────────
   phpmyadmin:
     image: phpmyadmin:latest
-    container_name: ujian_phpmyadmin
+    container_name: ${CONTAINER_PHPMYADMIN}
     restart: unless-stopped
     ports:
       - "127.0.0.1:8081:80"      # localhost only, JANGAN lewat tunnel
@@ -130,7 +130,7 @@ services:
   # ─── Redis ──────────────────────────────────────────────────
   redis:
     image: redis:alpine
-    container_name: ujian_redis
+    container_name: ${CONTAINER_REDIS}
     restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"    # localhost only
