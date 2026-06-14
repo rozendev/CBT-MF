@@ -302,6 +302,12 @@ class ExamApiController extends BaseController
 
         $testLogModel->update($logId, ['answered_at' => date('Y-m-d H:i:s')]);
 
+        try {
+            $cache = service('cache');
+            $cache->delete("attempt_questions_{$attemptId}");
+            $cache->delete("attempt_answers_{$attemptId}");
+        } catch (\Exception $e) {}
+
         return $this->response->setJSON(['status' => 'success', 'csrf_token' => csrf_hash()]);
     }
 

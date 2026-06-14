@@ -289,6 +289,11 @@ class ExamService
 
             if ($db->transStatus() !== false) {
                 $redis->del($redisKey);
+                try {
+                    $cache = \Config\Services::cache();
+                    $cache->delete("attempt_questions_{$attemptId}");
+                    $cache->delete("attempt_answers_{$attemptId}");
+                } catch (\Exception $e) {}
                 return true;
             }
             return false;

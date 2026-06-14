@@ -273,6 +273,12 @@ class ExamController extends BaseController
         // (This is lightweight enough, but if extreme concurrency is needed, this can be moved to Redis too)
         $testLogModel->update($logId, ['answered_at' => date('Y-m-d H:i:s')]);
 
+        try {
+            $cache = service('cache');
+            $cache->delete("attempt_questions_{$attemptId}");
+            $cache->delete("attempt_answers_{$attemptId}");
+        } catch (\Exception $e) {}
+
         return $this->response->setJSON(['status' => 'success']);
     }
 
