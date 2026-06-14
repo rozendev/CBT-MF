@@ -40,8 +40,38 @@ class TestModel extends Model
         ]
     ];
 
+    protected $afterUpdate = ['clearCache'];
+    protected $afterDelete = ['clearCache'];
+
     /**
-     * Delete test subject sets and associations before true delete
-     * (Normally CASCADE handles this if foreign keys are set up correctly)
+     * Find a test by ID and cache it
      */
+    public function findCached(int $id)
+    {
+        $cache = service('cache');
+        $cacheKey = "test_details_{$id}";
+        $test = $cache->get($cacheKey);
+        if ($test === null) {
+            $test = $this->find($id);
+            if ($test) {
+                try {
+                    $cache->save($cacheKey, $test, 300); // 5 minutes
+                } catch (\Exception $e) {}
+            }
+        }
+        return $test;
+    }
+
+    protected function clearCache(array $data)
+    {
+        if (isset($data['id'])) {
+            $ids = is_array($data['id']) ? $data['id'] : [$data['id']];
+            foreach ($ids as $id) {
+                try {
+                    service('cache')->delete("test_details_{$id}");
+                } catch (\Exception $e) {}
+            }
+        }
+        return $data;
+    }
 }

@@ -800,6 +800,19 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         xhrFields: { withCredentials: true }
     });
 
+    // Automatically update CSRF token on every AJAX response to prevent token out-of-sync
+    $(document).ajaxComplete(function(event, xhr, settings) {
+        const csrfHeader = xhr.getResponseHeader('X-CSRF-TOKEN');
+        if (csrfHeader) {
+            CSRF_HASH = csrfHeader;
+            $.ajaxSetup({
+                headers: {
+                    'X-CSRF-TOKEN': csrfHeader
+                }
+            });
+        }
+    });
+
     function buildFormData(obj) {
         const fd = new FormData();
         if (CSRF_NAME) fd.append(CSRF_NAME, CSRF_HASH);

@@ -30,13 +30,13 @@ class ExamController extends BaseController
      */
     public function prepare($id)
     {
-        $test = $this->testModel->find($id);
+        $test = $this->testModel->findCached($id);
         if (!$test || !$test->is_enabled) {
             return redirect()->to('/student/dashboard')->with('error', 'Ujian tidak tersedia.');
         }
 
         // Check if user has an active attempt
-        $activeAttempt = $this->attemptModel->getActiveAttempt($id, session('user_id'));
+        $activeAttempt = $this->attemptModel->getActiveAttemptCached($id, session('user_id'));
         if ($activeAttempt) {
             if ($test->exam_mode == 'static' && !empty($test->static_page_path)) {
                 return redirect()->to(base_url($test->static_page_path));
@@ -61,7 +61,7 @@ class ExamController extends BaseController
      */
     public function start($id)
     {
-        $test = $this->testModel->find($id);
+        $test = $this->testModel->findCached($id);
         if (!$test || !$test->is_enabled) {
             return redirect()->to('/student/dashboard')->with('error', 'Ujian tidak valid.');
         }
@@ -75,7 +75,7 @@ class ExamController extends BaseController
         }
 
         // Check for active attempt again
-        $activeAttempt = $this->attemptModel->getActiveAttempt($id, $userId);
+        $activeAttempt = $this->attemptModel->getActiveAttemptCached($id, $userId);
         if ($activeAttempt) {
             return redirect()->to('/student/exam/take/' . $id);
         }
@@ -99,13 +99,13 @@ class ExamController extends BaseController
     public function take($id)
     {
         $userId = session('user_id');
-        $attempt = $this->attemptModel->getActiveAttempt($id, $userId);
+        $attempt = $this->attemptModel->getActiveAttemptCached($id, $userId);
         
         if (!$attempt) {
             return redirect()->to('/student/dashboard')->with('error', 'Ujian telah selesai atau belum dimulai.');
         }
 
-        $test = $this->testModel->find($id);
+        $test = $this->testModel->findCached($id);
 
         if ($test->exam_mode == 'static' && !empty($test->static_page_path)) {
             return redirect()->to(base_url($test->static_page_path));
@@ -113,30 +113,46 @@ class ExamController extends BaseController
 
         // Fetch questions generated for this attempt
         $db = \Config\Database::connect();
+        $cache = service('cache');
         
-        $sql = "
-            SELECT tl.*, tl.id as log_id
-            FROM test_logs tl
-            WHERE tl.test_attempt_id = ?
-            ORDER BY tl.display_order ASC
-        ";
-        $questions = $db->query($sql, [$attempt->id])->getResult();
+        $questionsKey = "attempt_questions_{$attempt->id}";
+        $questions = $cache->get($questionsKey);
+        if ($questions === null) {
+            $sql = "
+                SELECT tl.*, tl.id as log_id
+                FROM test_logs tl
+                WHERE tl.test_attempt_id = ?
+                ORDER BY tl.display_order ASC
+            ";
+            $questions = $db->query($sql, [$attempt->id])->getResult();
+            try {
+                $cache->save($questionsKey, $questions, 7200); // 2 hours
+            } catch (\Exception $e) {}
+        }
 
         // Fetch answers for all these questions
         $logIds = array_column($questions, 'log_id');
         $answers = [];
         if (!empty($logIds)) {
-            $ansSql = "
-                SELECT tla.*, tla.id as log_answer_id
-                FROM test_log_answers tla
-                WHERE tla.test_log_id IN ?
-                ORDER BY tla.display_order ASC
-            ";
-            $rawAnswers = $db->query($ansSql, [$logIds])->getResult();
-            
-            // Group answers by test_log_id
-            foreach ($rawAnswers as $ans) {
-                $answers[$ans->test_log_id][] = $ans;
+            $answersKey = "attempt_answers_{$attempt->id}";
+            $answers = $cache->get($answersKey);
+            if ($answers === null) {
+                $ansSql = "
+                    SELECT tla.*, tla.id as log_answer_id
+                    FROM test_log_answers tla
+                    WHERE tla.test_log_id IN ?
+                    ORDER BY tla.display_order ASC
+                ";
+                $rawAnswers = $db->query($ansSql, [$logIds])->getResult();
+                
+                $answers = [];
+                // Group answers by test_log_id
+                foreach ($rawAnswers as $ans) {
+                    $answers[$ans->test_log_id][] = $ans;
+                }
+                try {
+                    $cache->save($answersKey, $answers, 7200); // 2 hours
+                } catch (\Exception $e) {}
             }
         }
 
@@ -201,11 +217,11 @@ class ExamController extends BaseController
         $questionType = $this->request->getPost('question_type');
         
         $testLogModel = new TestLogModel();
-        $log = $testLogModel->find($logId);
+        $log = $testLogModel->findCached($logId);
         if (!$log) return $this->response->setJSON(['status' => 'error']);
 
         $attemptModel = new \App\Models\TestAttemptModel();
-        $attempt = $attemptModel->find($log->test_attempt_id);
+        $attempt = $attemptModel->findCached($log->test_attempt_id);
         if (!$attempt || $attempt->user_id !== session('user_id')) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Unauthorized']);
         }
@@ -266,7 +282,7 @@ class ExamController extends BaseController
     public function finish($id)
     {
         $userId = session('user_id');
-        $attempt = $this->attemptModel->getActiveAttempt($id, $userId);
+        $attempt = $this->attemptModel->getActiveAttemptCached($id, $userId);
         
         if ($attempt) {
             $this->flushRedisAnswersToDb($attempt->id);
@@ -315,8 +331,8 @@ class ExamController extends BaseController
         // Release session lock early
         session_write_close();
 
-        $attempt = $this->attemptModel->where('id', $attemptId)->where('user_id', $userId)->first();
-        if (!$attempt) {
+        $attempt = $this->attemptModel->findCached($attemptId);
+        if (!$attempt || (string)$attempt->user_id !== (string)$userId) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
         }
 
@@ -338,8 +354,8 @@ class ExamController extends BaseController
         session_write_close();
 
         $attemptModel = new \App\Models\TestAttemptModel();
-        $attempt = $attemptModel->where('id', $attemptId)->where('user_id', $userId)->first();
-        if (!$attempt) {
+        $attempt = $attemptModel->findCached($attemptId);
+        if (!$attempt || (string)$attempt->user_id !== (string)$userId) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
         }
 

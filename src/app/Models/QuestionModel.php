@@ -71,4 +71,32 @@ class QuestionModel extends Model
         $db->transComplete();
         return $db->transStatus();
     }
+
+    protected $afterUpdate = ['clearRelatedAttemptCache'];
+    protected $afterDelete = ['clearRelatedAttemptCache'];
+
+    protected function clearRelatedAttemptCache(array $data)
+    {
+        if (isset($data['id'])) {
+            $ids = is_array($data['id']) ? $data['id'] : [$data['id']];
+            if (!empty($ids)) {
+                $db = \Config\Database::connect();
+                $attempts = $db->table('test_logs')
+                              ->select('test_attempt_id')
+                              ->whereIn('question_id', $ids)
+                              ->distinct()
+                              ->get()
+                              ->getResult();
+                
+                $cache = service('cache');
+                foreach ($attempts as $att) {
+                    try {
+                        $cache->delete("attempt_questions_{$att->test_attempt_id}");
+                        $cache->delete("attempt_answers_{$att->test_attempt_id}");
+                    } catch (\Exception $e) {}
+                }
+            }
+        }
+        return $data;
+    }
 }
