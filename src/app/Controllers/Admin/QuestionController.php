@@ -241,6 +241,33 @@ class QuestionController extends BaseController
         return redirect()->back()->with('error', 'Gagal menghapus soal.');
     }
 
+    public function uploadImage()
+    {
+        $file = $this->request->getFile('image');
+        if (!$file || !$file->isValid() || $file->hasMoved()) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'File tidak valid']);
+        }
+
+        $rules = [
+            'image' => 'is_image[image]|ext_in[image,png,jpg,jpeg,gif]|max_size[image,5120]'
+        ];
+
+        if (!$this->validate($rules)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => implode(', ', $this->validator->getErrors())]);
+        }
+
+        $newName = $file->getRandomName();
+        $file->move(FCPATH . 'uploads', $newName);
+        
+        $url = base_url('uploads/' . $newName);
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'url' => $url,
+            'csrf_token' => csrf_hash()
+        ]);
+    }
+
     /**
      * Helper to parse and save answers from the POST request
      */

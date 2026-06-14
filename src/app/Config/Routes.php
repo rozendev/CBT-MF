@@ -101,6 +101,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->post('questions/word-import/process', 'Admin\WordImportController::process');
     $routes->get('questions/preview/(:num)', 'Admin\QuestionController::preview/$1');
     $routes->post('questions/bulk-delete', 'Admin\QuestionController::bulkDelete');
+    $routes->post('questions/upload-image', 'Admin\QuestionController::uploadImage');
 
     $routes->get('tests', 'Admin\TestController::index');
     $routes->get('tests/create', 'Admin\TestController::create');

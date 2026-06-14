@@ -3,10 +3,12 @@
 <?= $this->section('page_title') ?><?= $question ? 'Edit Soal' : 'Tambah Soal Baru' ?><?= $this->endSection() ?>
 
 <?= $this->section('styles') ?>
-<link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
+<link href="<?= base_url('vendor/quill/quill.snow.css') ?>" rel="stylesheet">
 <style>
     .answer-row { transition: all 0.2s ease; }
     .answer-row:hover { background-color: #f8f9fa; }
+    .ql-editor { font-size: 1rem; min-height: 150px; }
+    .ql-toolbar.ql-snow { border: none; border-bottom: 1px solid #dee2e6; }
 </style>
 <?= $this->endSection() ?>
 
@@ -32,8 +34,9 @@
                 <div class="card-header bg-white border-bottom py-3">
                     <h6 class="m-0 fw-bold text-primary"><i class="bi bi-pencil-square me-2"></i>Teks Pertanyaan</h6>
                 </div>
-                <div class="card-body">
-                    <textarea class="form-control summernote" name="description" required><?= old('description', $question->description ?? '') ?></textarea>
+                <div class="card-body p-0">
+                    <div id="editor-description" style="min-height: 200px; border: none;"><?= old('description', $question->description ?? '') ?></div>
+                    <textarea style="display: none;" id="description" name="description" required><?= old('description', $question->description ?? '') ?></textarea>
                 </div>
             </div>
 
@@ -55,9 +58,12 @@
                 <div class="card-header bg-white border-bottom py-3">
                     <h6 class="m-0 fw-bold text-secondary"><i class="bi bi-info-circle me-2"></i>Penjelasan Jawaban (Opsional)</h6>
                 </div>
-                <div class="card-body">
-                    <textarea class="form-control summernote" name="explanation"><?= old('explanation', $question->explanation ?? '') ?></textarea>
-                    <div class="form-text mt-2">Penjelasan ini dapat ditampilkan kepada siswa setelah ujian selesai.</div>
+                <div class="card-body p-0">
+                    <div id="editor-explanation" style="min-height: 150px; border: none;"><?= old('explanation', $question->explanation ?? '') ?></div>
+                    <textarea style="display: none;" id="explanation" name="explanation"><?= old('explanation', $question->explanation ?? '') ?></textarea>
+                </div>
+                <div class="card-footer bg-white border-top py-2">
+                    <div class="form-text">Penjelasan ini dapat ditampilkan kepada siswa setelah ujian selesai.</div>
                 </div>
             </div>
         </div>
@@ -129,27 +135,99 @@
 
 <?= $this->section('scripts') ?>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
+<script src="<?= base_url('vendor/quill/quill.js') ?>"></script>
 <script>
     $(document).ready(function() {
-        $('.summernote').summernote({
-            height: 200,
-            toolbar: [
-                ['style', ['style']],
-                ['font', ['bold', 'underline', 'clear', 'superscript', 'subscript']],
-                ['color', ['color']],
-                ['para', ['ul', 'ol', 'paragraph']],
-                ['table', ['table']],
-                ['insert', ['link', 'picture', 'video']],
-                ['view', ['fullscreen', 'codeview', 'help']]
-            ]
+        // Quill Toolbar configuration
+        const toolbarOptions = [
+            [{ 'header': [1, 2, 3, false] }],
+            ['bold', 'italic', 'underline', 'strike'],
+            [{ 'color': [] }, { 'background': [] }],
+            [{ 'script': 'sub'}, { 'script': 'super' }],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            [{ 'indent': '-1'}, { 'indent': '+1' }],
+            ['link', 'image', 'video'],
+            ['clean']
+        ];
+
+        // Initialize Quill editors
+        const quillDescription = new Quill('#editor-description', {
+            theme: 'snow',
+            modules: {
+                toolbar: toolbarOptions
+            }
         });
+
+        const quillExplanation = new Quill('#editor-explanation', {
+            theme: 'snow',
+            modules: {
+                toolbar: toolbarOptions
+            }
+        });
+
+        // Setup image upload handler for Quill (server-side URL uploads)
+        function setupImageUpload(quill) {
+            const toolbar = quill.getModule('toolbar');
+            toolbar.addHandler('image', function() {
+                const input = document.createElement('input');
+                input.setAttribute('type', 'file');
+                input.setAttribute('accept', 'image/*');
+                input.click();
+
+                input.onchange = async () => {
+                    const file = input.files[0];
+                    if (!file) return;
+
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    
+                    // Add CSRF Token
+                    const csrfName = '<?= csrf_token() ?>';
+                    let csrfHash = '<?= csrf_hash() ?>';
+                    formData.append(csrfName, csrfHash);
+
+                    try {
+                        const res = await $.ajax({
+                            url: '<?= base_url('/admin/questions/upload-image') ?>',
+                            type: 'POST',
+                            data: formData,
+                            processData: false,
+                            contentType: false,
+                            dataType: 'json'
+                        });
+
+                        if (res.status === 'success' && res.url) {
+                            const range = quill.getSelection();
+                            quill.insertEmbed(range.index, 'image', res.url);
+                        } else {
+                            alert('Gagal mengunggah gambar: ' + (res.message || 'Error'));
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert('Terjadi kesalahan saat mengunggah gambar.');
+                    }
+                };
+            });
+        }
+
+        setupImageUpload(quillDescription);
+        setupImageUpload(quillExplanation);
 
         // Initialize answers UI
         renderAnswerUI();
 
-        // Hook for form submission to handle Type 4 (Matching) & Type 5 (Complex T/F)
+        // Hook for form submission to copy Quill content & handle Type 4/5
         $('form').on('submit', function() {
+            // Get HTML from Quill and clean empty editor values
+            let descHtml = quillDescription.root.innerHTML;
+            let explHtml = quillExplanation.root.innerHTML;
+
+            if (descHtml.trim() === '<p><br></p>') descHtml = '';
+            if (explHtml.trim() === '<p><br></p>') explHtml = '';
+
+            $('#description').val(descHtml);
+            $('#explanation').val(explHtml);
+
             const type = parseInt($('#question_type').val());
             if (type === 4 || type === 5) {
                 $('.matching-hidden').remove();
