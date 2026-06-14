@@ -89,11 +89,27 @@ Setelah Composer selesai menginstal dependensi, jalankan migrasi database dan se
 
 ### 6. Error Permission / Gagal Generate Static Exam
 - **Gejala**: Muncul pesan error tidak dapat menulis file HTML saat melakukan *Generate* halaman statis, atau gambar/file tidak bisa diunggah.
-- **Solusi**: Pastikan folder `src/writable/` dan `src/public/static/` memiliki izin tulis (write access). Jika folder belum ada, buat terlebih dahulu:
-  ```bash
-  mkdir -p src/writable src/public/static
-  chmod -R 777 src/writable src/public/static
-  ```
+- **Solusi**: Pastikan folder `src/writable/` dan `src/public/static/` dapat ditulis oleh kontainer web server (PHP-FPM). Sesuai *best practice* keamanan, hindari penggunaan `chmod 777`.
+
+Lakukan pengaturan kepemilikan ke grup web server (`www-data`, atau GID 33 di Docker) dan beri izin akses `775` (rwxrwxr-x):
+
+**Di Linux Host:**
+```bash
+# Buat direktori jika belum ada
+mkdir -p src/writable src/public/static
+
+# Ubah kepemilikan grup ke GID 33 (www-data) dan atur permission ke 775
+sudo chown -R :33 src/writable src/public/static
+chmod -R 775 src/writable src/public/static
+```
+
+**Atau langsung dari dalam kontainer PHP:**
+```bash
+./scripts/cmd.sh shell
+chown -R www-data:www-data writable public/static
+chmod -R 775 writable public/static
+exit
+```
 
 ### 7. PHP-FPM Resource Exhausted / Server Terasa Lambat
 - **Solusi**: Jika Anda baru saja beralih dari versi lawas (yang masih menggunakan Server-Sent Events / EventSource), pastikan Anda telah sepenuhnya mendeploy Daemon WebSocket. Cara termudahnya adalah periksa *Network tab* di *DevTools* Browser. Anda harusnya melihat aktivitas ke `wss://domain.com/ws/` dengan status kode `101 Switching Protocols`, bukan request yang terus-menerus "*Pending*" (itu adalah sisa SSE FPM).
