@@ -16,12 +16,18 @@ Aplikasi ini menggunakan teknologi **WebSocket (ReactPHP/Ratchet)** untuk deteks
 Aplikasi ini sepenuhnya berjalan di dalam Docker. Semua perintah dieksekusi menggunakan *wrapper* script `./scripts/cmd.sh`.
 
 ### 1. Persiapan Environment
-```bash
-cp src/env src/.env
-# Sesuaikan app.baseURL dan database di src/.env
-```
+1. Salin file environment untuk Docker Compose di root direktori:
+   ```bash
+   cp .env.example .env
+   # Sesuaikan kredensial database & Redis jika diperlukan di .env
+   ```
+2. Salin file environment untuk CodeIgniter di dalam folder `src/`:
+   ```bash
+   cp src/env src/.env
+   # Sesuaikan app.baseURL dan database di src/.env
+   ```
 
-Jika menggunakan Cloudflare Tunnel:
+Jika menggunakan Cloudflare Tunnel, atur variabel lingkungan `CF_TUNNEL_TOKEN` di file `.env` root atau export di shell:
 ```bash
 export CF_TUNNEL_TOKEN="token_anda_disini"
 ```
@@ -37,11 +43,24 @@ Service yang berjalan:
 - **Redis**: `localhost:6379`
 - **WebSocket**: Port `8060` (di-proxy secara transparan oleh Nginx via `/ws/`)
 
-### 3. Migrasi Database & Composer
-Semua perintah CLI dapat dijalankan melalui script utilitas yang disediakan:
+### 3. Composer & Migrasi Database (Saat Pertama Kali Clone)
+Saat pertama kali melakukan clone repositori, Anda harus menginstal semua dependensi Composer di dalam kontainer PHP sebelum dapat menjalankan migrasi database.
+
+Anda dapat masuk ke shell kontainer PHP dan menjalankan perintah Composer secara interaktif:
+```bash
+./scripts/cmd.sh shell                      # Masuk ke dalam bash container PHP
+composer install                            # Jalankan composer install di dalam container
+exit                                        # Keluar dari shell container
+```
+
+Atau jalankan perintah langsung dari host menggunakan wrapper script:
 ```bash
 ./scripts/cmd.sh composer install          # Instalasi dependency
-./scripts/cmd.sh php spark migrate         # Migrasi database
+```
+
+Setelah Composer selesai menginstal dependensi, jalankan migrasi database dan seeder data awal:
+```bash
+./scripts/cmd.sh php spark migrate         # Jalankan migrasi database
 ./scripts/cmd.sh php spark db:seed MainSeeder # (Opsional) Seeder data awal
 ```
 

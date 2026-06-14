@@ -33,13 +33,13 @@ services:
     networks:
       - ujian_network
     environment:
-      - DB_HOST=mariadb
-      - DB_PORT=3306
-      - DB_DATABASE=cbt-mf
-      - DB_USERNAME=sayasukakamu
-      - DB_PASSWORD=sayasukakamu
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
 
   # ─── WebSocket Daemon ───────────────────────────────────────
   websocket:
@@ -62,13 +62,13 @@ services:
     networks:
       - ujian_network
     environment:
-      - DB_HOST=mariadb
-      - DB_PORT=3306
-      - DB_DATABASE=cbt-mf
-      - DB_USERNAME=sayasukakamu
-      - DB_PASSWORD=sayasukakamu
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
 
   # ─── Cloudflare Tunnel ──────────────────────────────────────
   cloudflared:
@@ -95,10 +95,10 @@ services:
       - mariadb_data:/var/lib/mysql
       - ./docker/mariadb/init:/docker-entrypoint-initdb.d
     environment:
-      MYSQL_ROOT_PASSWORD: root_secret
-      MYSQL_DATABASE: cbt-mf
-      MYSQL_USER: sayasukakamu
-      MYSQL_PASSWORD: sayasukakamu
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -116,10 +116,10 @@ services:
     ports:
       - "127.0.0.1:8081:80"      # localhost only, JANGAN lewat tunnel
     environment:
-      PMA_HOST: mariadb
-      PMA_PORT: 3306
-      PMA_USER: sayasukakamu
-      PMA_PASSWORD: sayasukakamu
+      PMA_HOST: ${DB_HOST}
+      PMA_PORT: ${DB_PORT}
+      PMA_USER: ${DB_USERNAME}
+      PMA_PASSWORD: ${DB_PASSWORD}
       UPLOAD_LIMIT: 64M
     depends_on:
       mariadb:
