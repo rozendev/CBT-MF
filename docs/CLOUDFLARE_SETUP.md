@@ -46,9 +46,3 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/ZONE_ID/purge_cache" \
 1. Buka file statis di browser: `https://ujian.sekolah.id/static/.../nama-ujian.html`
 2. Buka **Developer Tools → Network → Headers**
 3. Pastikan response header mengandung: `cf-cache-status: HIT` (setelah request kedua)
-
-## Catatan Penting
-
-- **SSE (Server-Sent Events)** tidak bisa di-cache dan akan selalu melewati CDN langsung ke origin server
-- **API calls** juga selalu bypass cache (sudah dikonfigurasi di rule kedua)
-- Jika menggunakan **Cloudflare Workers**, bisa ditambahkan logika routing yang lebih canggih
