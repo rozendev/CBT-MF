@@ -87,27 +87,27 @@ Setelah Composer selesai menginstal dependensi, jalankan migrasi database dan se
 ### 5. Sesi Cepat Berakhir atau Session Menumpuk
 - **Solusi**: Pastikan *session handler* di file `src/.env` tidak ter-*override* ke *file* biasa. Untuk performa terbaik di Docker, atur `app.sessionDriver = 'CodeIgniter\Session\Handlers\RedisHandler'` dan pastikan `app.sessionSavePath` mengarah ke Redis server Anda (`tcp://redis:6379`).
 
-### 6. Error Permission / Gagal Generate Static Exam
-- **Gejala**: Muncul pesan error tidak dapat menulis file HTML saat melakukan *Generate* halaman statis, atau gambar/file tidak bisa diunggah.
-- **Solusi**: Pastikan folder `src/writable/` dan `src/public/static/` dapat ditulis oleh kontainer web server (PHP-FPM). Sesuai *best practice* keamanan, hindari penggunaan `chmod 777`.
+### 6. Error Permission / Gagal Generate Static atau Upload Gambar (Could not move file)
+- **Gejala**: Muncul pesan error tidak dapat menulis file HTML saat melakukan *Generate* halaman statis, atau error seperti `Could not move file "..." to "/var/www/html/public/uploads/"` saat mengunggah gambar di editor.
+- **Solusi**: Pastikan folder `src/writable/`, `src/public/static/`, dan `src/public/uploads/` dapat ditulis oleh kontainer web server (PHP-FPM). Sesuai *best practice* keamanan, hindari penggunaan `chmod 777`.
 
 Lakukan pengaturan kepemilikan ke grup web server (`www-data`, atau GID 33 di Docker) dan beri izin akses `775` (rwxrwxr-x):
 
 **Di Linux Host:**
 ```bash
 # Buat direktori jika belum ada
-mkdir -p src/writable src/public/static
+mkdir -p src/writable src/public/static src/public/uploads
 
 # Ubah kepemilikan grup ke GID 33 (www-data) dan atur permission ke 775
-sudo chown -R :33 src/writable src/public/static
-chmod -R 775 src/writable src/public/static
+sudo chown -R :33 src/writable src/public/static src/public/uploads
+chmod -R 775 src/writable src/public/static src/public/uploads
 ```
 
 **Atau langsung dari dalam kontainer PHP:**
 ```bash
 ./scripts/cmd.sh shell
-chown -R www-data:www-data writable public/static
-chmod -R 775 writable public/static
+chown -R www-data:www-data writable public/static public/uploads
+chmod -R 775 writable public/static public/uploads
 exit
 ```
 
