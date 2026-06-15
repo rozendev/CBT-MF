@@ -17,7 +17,12 @@ if (file_exists($envPath)) {
     }
 }
 
-if ($needsInstall) {
+// Allow health check endpoint even when installer is unlocked
+$requestUri = $_SERVER['REQUEST_URI'] ?? '';
+$healthPath = parse_url($requestUri, PHP_URL_PATH);
+$isHealthCheck = ($healthPath === '/health');
+
+if ($needsInstall && !$isHealthCheck) {
     header('Location: /install/index.php');
     exit;
 }

@@ -398,6 +398,37 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             gap: 6px;
             z-index: 1010;
         }
+        
+        /* Offline notification banner */
+        .offline-banner {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffc107;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 1030;
+            max-width: 90%;
+        }
+        .offline-banner.syncing {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-color: #17a2b8;
+        }
+        .offline-banner.synced {
+            background: #d4edda;
+            color: #155724;
+            border-color: #28a745;
+        }
         /* Hide sidebar toggle on desktop */
         @media (min-width: 992px) {
             .btn-sidebar-toggle {
@@ -485,6 +516,21 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         </div>
         <div class="autosave-chip" x-show="isSaving" x-transition.opacity.duration.150ms style="display: none;">
             <span class="spinner-border spinner-border-sm text-primary" role="status" style="width: 1rem; height: 1rem;"></span> Menyimpan...
+        </div>
+
+        <!-- Offline/Sync Notification Banner -->
+        <div class="offline-banner" x-show="syncStatus === 'offline'" x-transition.opacity.duration.300ms style="display: none;">
+            <i class="bi bi-wifi-off"></i>
+            <span>Tidak ada koneksi internet. Jawaban disimpan di perangkat Anda.</span>
+            <span x-show="pendingCount > 0" class="badge bg-warning text-dark" x-text="pendingCount + ' pending'"></span>
+        </div>
+        <div class="offline-banner syncing" x-show="syncStatus === 'syncing'" x-transition.opacity.duration.300ms style="display: none;">
+            <span class="spinner-border spinner-border-sm" role="status" style="width: 1rem; height: 1rem;"></span>
+            <span>Sinkronisasi jawaban...</span>
+        </div>
+        <div class="offline-banner synced" x-show="syncStatus === 'synced'" x-transition.opacity.duration.300ms style="display: none;">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>Jawaban berhasil disinkronkan!</span>
         </div>
 
         <!-- Main Content -->
@@ -793,6 +839,11 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 timeLeft: 0,
                 timerInterval: null,
                 warningShown: false,
+                
+                // Offline mode properties
+                isOnline: navigator.onLine,
+                syncStatus: '', // 'offline' | 'syncing' | 'synced' | ''
+                pendingCount: 0,
 
                 init() {
                     // Parse Matching Options for Type 4 and Type 5
@@ -826,6 +877,27 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     setInterval(() => {
                         $.post('<?= base_url('/student/exam/auto-sync') ?>', { attempt_id: ATTEMPT_ID });
                     }, 60000);
+
+                    // ═══ OFFLINE MODE: Event Listeners ═══
+                    window.addEventListener('online', () => {
+                        this.isOnline = true;
+                        console.log('Back online - syncing pending answers...');
+                        this.syncPendingAnswers();
+                    });
+                    
+                    window.addEventListener('offline', () => {
+                        this.isOnline = false;
+                        this.syncStatus = 'offline';
+                        this.updatePendingCount();
+                        console.log('Went offline - answers will be saved locally');
+                    });
+                    
+                    // Check for pending answers on page load
+                    this.updatePendingCount();
+                    if (this.pendingCount > 0 && this.isOnline) {
+                        console.log(`Found ${this.pendingCount} pending answers - syncing...`);
+                        this.syncPendingAnswers();
+                    }
 
                     // ═══ SSE: Real-time Ban/Kick Detection ═══
                     this.initWebSocket();
@@ -1021,7 +1093,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
 
                 saveAnswer() {
-                    this.isSaving = true;
                     const logId = this.currentQuestion.log_id;
                     const type = this.currentQuestion.question_type;
                     let data = { log_id: logId, question_type: type };
@@ -1038,29 +1109,177 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         data.selected_answers = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
                     }
 
-                    $.post('<?= base_url('/student/exam/autosave') ?>', data)
-                     .done((res) => { 
-                         this.isSaving = false;
-                         this.showSavedToast = true;
-                         setTimeout(() => { this.showSavedToast = false; }, 2000);
-                         
-                         if (res.status === 'kicked') {
-                             if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                             Swal.fire('Informasi', res.message, 'info').then(() => {
-                                 window.location.href = '<?= base_url('/login') ?>';
-                             });
-                         }
-                     })
-                     .fail((err) => { 
-                         this.isSaving = false; 
-                         console.error("Gagal menyimpan jawaban", err);
-                         if (err.status === 401 || err.status === 403) {
-                             if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                             Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                 window.location.href = '<?= base_url('/login') ?>';
-                             });
-                         }
-                     });
+                    // Always save to LocalStorage first
+                    this.saveToLocalStorage(logId, type, data);
+                    this.updatePendingCount();
+
+                    // If online, send to server immediately
+                    if (this.isOnline) {
+                        this.isSaving = true;
+                        $.post('<?= base_url('/student/exam/autosave') ?>', data)
+                         .done((res) => { 
+                             this.isSaving = false;
+                             this.showSavedToast = true;
+                             setTimeout(() => { this.showSavedToast = false; }, 2000);
+                             
+                             // Remove from pending queue on success
+                             this.clearPendingAnswer(logId);
+                             this.updatePendingCount();
+                             
+                             if (res.status === 'kicked') {
+                                 if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                                 Swal.fire('Informasi', res.message, 'info').then(() => {
+                                     window.location.href = '<?= base_url('/login') ?>';
+                                 });
+                             }
+                         })
+                         .fail((err) => { 
+                             this.isSaving = false; 
+                             console.error("Gagal menyimpan jawaban, akan dicoba lagi saat online", err);
+                             
+                             // If failed due to auth, redirect
+                             if (err.status === 401 || err.status === 403) {
+                                 if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                                 Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
+                                     window.location.href = '<?= base_url('/login') ?>';
+                                 });
+                             }
+                             // Otherwise, answer is already in LocalStorage, will sync later
+                         });
+                    } else {
+                        // Offline - show saved locally indicator
+                        this.showSavedToast = true;
+                        setTimeout(() => { this.showSavedToast = false; }, 2000);
+                    }
+                },
+
+                /**
+                 * Save answer to LocalStorage for offline recovery
+                 */
+                saveToLocalStorage(logId, questionType, data) {
+                    try {
+                        const storageKey = `exam_offline_${ATTEMPT_ID}`;
+                        let storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
+                        
+                        storage.pending[logId] = {
+                            question_type: questionType,
+                            data: data,
+                            timestamp: Date.now()
+                        };
+                        
+                        localStorage.setItem(storageKey, JSON.stringify(storage));
+                    } catch (e) {
+                        console.error('Failed to save to LocalStorage:', e);
+                    }
+                },
+
+                /**
+                 * Load pending answers from LocalStorage
+                 */
+                loadPendingAnswers() {
+                    try {
+                        const storageKey = `exam_offline_${ATTEMPT_ID}`;
+                        const storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
+                        return storage.pending || {};
+                    } catch (e) {
+                        console.error('Failed to load from LocalStorage:', e);
+                        return {};
+                    }
+                },
+
+                /**
+                 * Clear a specific pending answer from LocalStorage
+                 */
+                clearPendingAnswer(logId) {
+                    try {
+                        const storageKey = `exam_offline_${ATTEMPT_ID}`;
+                        let storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
+                        delete storage.pending[logId];
+                        localStorage.setItem(storageKey, JSON.stringify(storage));
+                    } catch (e) {
+                        console.error('Failed to clear from LocalStorage:', e);
+                    }
+                },
+
+                /**
+                 * Update pending count from LocalStorage
+                 */
+                updatePendingCount() {
+                    const pending = this.loadPendingAnswers();
+                    this.pendingCount = Object.keys(pending).length;
+                },
+
+                /**
+                 * Sync all pending answers to server when back online
+                 */
+                async syncPendingAnswers() {
+                    const pending = this.loadPendingAnswers();
+                    const pendingIds = Object.keys(pending);
+                    
+                    if (pendingIds.length === 0) {
+                        this.syncStatus = '';
+                        return;
+                    }
+
+                    this.syncStatus = 'syncing';
+                    console.log(`Syncing ${pendingIds.length} pending answers...`);
+
+                    let successCount = 0;
+                    let failCount = 0;
+
+                    for (const logId of pendingIds) {
+                        const answerData = pending[logId];
+                        
+                        try {
+                            await new Promise((resolve, reject) => {
+                                $.post('<?= base_url('/student/exam/autosave') ?>', answerData.data)
+                                 .done((res) => {
+                                     if (res.status === 'kicked') {
+                                         reject(new Error('kicked'));
+                                     } else {
+                                         this.clearPendingAnswer(logId);
+                                         successCount++;
+                                         resolve();
+                                     }
+                                 })
+                                 .fail((err) => {
+                                     if (err.status === 401 || err.status === 403) {
+                                         reject(new Error('auth'));
+                                     } else {
+                                         failCount++;
+                                         resolve(); // Continue with other answers
+                                     }
+                                 });
+                            });
+                        } catch (err) {
+                            if (err.message === 'kicked' || err.message === 'auth') {
+                                // Auth error - stop syncing and redirect
+                                if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                                Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
+                                    window.location.href = '<?= base_url('/login') ?>';
+                                });
+                                return;
+                            }
+                        }
+                        
+                        // Small delay between requests to avoid overwhelming server
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    this.updatePendingCount();
+                    
+                    if (successCount > 0) {
+                        this.syncStatus = 'synced';
+                        setTimeout(() => { 
+                            this.syncStatus = this.pendingCount > 0 ? 'offline' : '';
+                        }, 3000);
+                        console.log(`Synced ${successCount} answers successfully`);
+                    }
+                    
+                    if (failCount > 0) {
+                        console.warn(`${failCount} answers failed to sync, will retry later`);
+                        this.syncStatus = this.pendingCount > 0 ? 'offline' : '';
+                    }
                 },
 
                 countAnswered() {
@@ -1165,12 +1384,50 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     }
                 },
 
-                submitFinish() {
+                async submitFinish() {
+                    // If offline with pending answers, block submission
+                    if (!this.isOnline && this.pendingCount > 0) {
+                        Swal.fire({
+                            title: 'Tidak Ada Koneksi',
+                            text: `Anda memiliki ${this.pendingCount} jawaban yang belum tersinkronisasi. Harap sambungkan ke internet sebelum mengakhiri ujian.`,
+                            icon: 'warning',
+                            confirmButtonText: 'OK'
+                        });
+                        return;
+                    }
+
+                    // Sync any remaining pending answers first
+                    if (this.pendingCount > 0) {
+                        this.syncStatus = 'syncing';
+                        await this.syncPendingAnswers();
+                        
+                        // If still have pending after sync (failed), warn user
+                        if (this.pendingCount > 0) {
+                            const proceed = await Swal.fire({
+                                title: 'Sinkronisasi Gagal',
+                                text: `Masih ada ${this.pendingCount} jawaban yang gagal disinkronisasi. Tetap akhiri ujian?`,
+                                icon: 'warning',
+                                showCancelButton: true,
+                                confirmButtonText: 'Ya, Akhiri',
+                                cancelButtonText: 'Lanjut Mengerjakan'
+                            });
+                            if (!proceed.isConfirmed) {
+                                this.syncStatus = 'offline';
+                                return;
+                            }
+                        }
+                    }
+
                     window.isSubmitting = true;
                     if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
 
                     $.post(FINISH_URL, { attempt_id: ATTEMPT_ID })
                      .done((res) => {
+                         // Clear LocalStorage on successful finish
+                         try {
+                             localStorage.removeItem(`exam_offline_${ATTEMPT_ID}`);
+                         } catch(e) {}
+                         
                          if (res.redirect) {
                              window.location.href = res.redirect;
                          } else {

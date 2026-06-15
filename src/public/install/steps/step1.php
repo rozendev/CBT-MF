@@ -5,11 +5,12 @@ $extIntl = extension_loaded('intl');
 $extMbstring = extension_loaded('mbstring');
 $extCurl = extension_loaded('curl');
 $extRedis = extension_loaded('redis');
+$extGd = extension_loaded('gd');
 
 $envWritable = is_writable(__DIR__ . '/../../..') || is_writable(__DIR__ . '/../../../.env');
 $writableDir = is_writable(__DIR__ . '/../../../writable');
 
-$allOk = $phpVersionOk && $extPdo && $extIntl && $extMbstring && $extCurl && $extRedis && $envWritable && $writableDir;
+$allOk = $phpVersionOk && $extPdo && $extIntl && $extMbstring && $extCurl && $extRedis && $extGd && $envWritable && $writableDir;
 ?>
 
 <h5 class="fw-bold mb-4">Langkah 1: Pemeriksaan Sistem</h5>
@@ -26,7 +27,11 @@ $allOk = $phpVersionOk && $extPdo && $extIntl && $extMbstring && $extCurl && $ex
     </li>
     <li class="list-group-item d-flex justify-content-between align-items-center">
         <span>Redis Extension</span>
-        <?php if ($extRedis): ?><span class="badge bg-success rounded-pill"><i class="bi bi-check"></i> OK</span><?php else: ?><span class="badge bg-warning rounded-pill"><i class="bi bi-exclamation"></i> Required</span><?php endif; ?>
+        <?php if ($extRedis): ?><span class="badge bg-success rounded-pill"><i class="bi bi-check"></i> OK</span><?php else: ?><span class="badge bg-danger rounded-pill"><i class="bi bi-x"></i> Failed</span><?php endif; ?>
+    </li>
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>GD Extension (Image Processing)</span>
+        <?php if ($extGd): ?><span class="badge bg-success rounded-pill"><i class="bi bi-check"></i> OK</span><?php else: ?><span class="badge bg-danger rounded-pill"><i class="bi bi-x"></i> Failed</span><?php endif; ?>
     </li>
     <li class="list-group-item d-flex justify-content-between align-items-center">
         <span>Intl & Mbstring Extensions</span>

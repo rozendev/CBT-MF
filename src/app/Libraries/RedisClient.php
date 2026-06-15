@@ -22,7 +22,7 @@ class RedisClient
             $redis = new \Redis();
             $host = env('redis.host', 'redis');
             $port = (int) env('redis.port', 6379);
-            $password = env('redis.password', '');
+            $password = env('REDIS_PASSWORD', '');
 
             if (!$redis->connect($host, $port, 2.0)) {
                 log_message('error', "Could not connect to Redis at {$host}:{$port}");

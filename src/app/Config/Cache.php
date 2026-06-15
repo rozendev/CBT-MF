@@ -195,4 +195,22 @@ class Cache extends BaseConfig
      * @var list<int>
      */
     public array $cacheStatusCodes = [];
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Override Redis cache config from environment variables
+        $cacheHandler = env('cache.handler', '');
+        if ($cacheHandler === 'redis') {
+            $this->handler = 'redis';
+            $this->redis['host'] = env('cache.redis.host', 'redis');
+            $this->redis['port'] = (int) env('cache.redis.port', 6379);
+            
+            $password = env('cache.redis.password', '');
+            if (!empty($password)) {
+                $this->redis['password'] = $password;
+            }
+        }
+    }
 }

@@ -4,6 +4,9 @@ use CodeIgniter\Router\RouteCollection;
 
 /** @var RouteCollection $routes */
 
+// ── Health Check (public) ─────────────────────────
+$routes->get('health', 'HealthController::index');
+
 // ── Auth Routes (public) ────────────────────────────
 $routes->get('login', 'Auth\AuthController::login');
 $routes->post('login', 'Auth\AuthController::attemptLogin');

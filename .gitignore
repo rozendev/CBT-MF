@@ -21,6 +21,9 @@ Thumbs.db
 # Docker volumes (persisted data)
 docker/mariadb/data/
 
+# Backups
+/backups/
+
 # Logs
 *.log
 

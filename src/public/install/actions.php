@@ -12,6 +12,7 @@ if ($action === 'test_db') {
     
     $redis_host = $_POST['redis_host'] ?? '127.0.0.1';
     $redis_port = $_POST['redis_port'] ?? '6379';
+    $redis_password = $_POST['redis_password'] ?? '';
 
     try {
         $pdo = new PDO("mysql:host=$host;port=$port", $user, $pass);
@@ -26,15 +27,24 @@ if ($action === 'test_db') {
             try {
                 $redis = new Redis();
                 if ($redis->connect($redis_host, (int)$redis_port, 2)) {
-                    $redisOk = true;
+                    if (!empty($redis_password)) {
+                        if (!$redis->auth($redis_password)) {
+                            throw new Exception('Redis authentication failed');
+                        }
+                    }
+                    if ($redis->ping()) {
+                        $redisOk = true;
+                    }
                 }
-            } catch (Exception $e) { }
+            } catch (Exception $e) {
+                $redisOk = false;
+            }
         }
 
         if ($redisOk) {
             echo json_encode(['status' => 'success', 'message' => 'Koneksi MySQL dan Redis berhasil!']);
         } else {
-            echo json_encode(['status' => 'error', 'message' => 'Koneksi MySQL berhasil, tapi koneksi Redis gagal! Pastikan Redis berjalan.']);
+            echo json_encode(['status' => 'error', 'message' => 'Koneksi MySQL berhasil, tapi koneksi Redis gagal! Pastikan Redis berjalan dan password benar.']);
         }
     } catch (PDOException $e) {
         echo json_encode(['status' => 'error', 'message' => 'Koneksi MySQL gagal: ' . $e->getMessage()]);
@@ -87,6 +97,10 @@ if ($action === 'install') {
     $serverData = $_SESSION['server_setup'] ?? [];
     $appUrl = $serverData['app_url'] ?? $baseInstallerUrl . '../';
     
+    $redisPassword = $dbData['redis_password'] ?? '';
+    $escapedRedisPassword = addslashes($redisPassword);
+    $redisPasswordLine = !empty($redisPassword) ? "cache.redis.password = '{$escapedRedisPassword}'" : "# cache.redis.password = ''";
+    
     // We will generate a fresh .env, initially setting it to development to bypass the interactive prompt for migrations
     $newEnv = <<<ENV
 CI_ENVIRONMENT = development
@@ -110,8 +124,17 @@ session.matchIP = false
 redis.host = '{$dbData['redis_host']}'
 redis.port = {$dbData['redis_port']}
 
+cache.handler = 'redis'
+cache.redis.host = '{$dbData['redis_host']}'
+cache.redis.port = {$dbData['redis_port']}
+{$redisPasswordLine}
+
 INSTALLER_LOCKED = true
 ENV;
+
+    if (!empty($redisPassword)) {
+        $newEnv .= "\nREDIS_PASSWORD = '{$escapedRedisPassword}'\n";
+    }
 
     if (!empty($cfData['cf_real_ip'])) {
         $newEnv .= "\nCLOUDFLARE_REAL_IP = true\n";

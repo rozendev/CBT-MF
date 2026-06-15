@@ -89,7 +89,7 @@ class Filters extends BaseFilters
                 'api/keep-alive',
                 'queue/ping',
             ]],
-            'multilogin' => ['except' => ['login', 'logout', 'maintenance', 'student/exam/stream/*', 'api/exam/stream/*']],
+            'multilogin' => ['except' => ['login', 'logout', 'maintenance', 'health', 'student/exam/stream/*', 'api/exam/stream/*']],
         ],
         'after' => [
             'secureheaders',

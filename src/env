@@ -71,3 +71,12 @@
 # cache.handler = 'redis'
 # cache.redis.host = 'redis'
 # cache.redis.port = 6379
+# cache.redis.password = ''
+
+#--------------------------------------------------------------------
+# REDIS
+#--------------------------------------------------------------------
+
+# redis.host = 'redis'
+# redis.port = 6379
+# REDIS_PASSWORD = ''

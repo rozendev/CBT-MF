@@ -30,14 +30,19 @@
 
     <h6 class="fw-bold border-bottom pb-2 mb-3"><i class="bi bi-server me-2"></i>Redis Server</h6>
     <div class="row g-3 mb-4">
-        <div class="col-md-8">
+        <div class="col-md-6">
             <label class="form-label">Redis Host</label>
             <input type="text" name="redis_host" class="form-control" value="127.0.0.1" required>
             <div class="form-text">Bisa menggunakan IP, 'localhost', atau nama kontainer 'redis'.</div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label class="form-label">Port</label>
             <input type="number" name="redis_port" class="form-control" value="6379" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Password <span class="text-muted small">(opsional)</span></label>
+            <input type="password" name="redis_password" class="form-control" placeholder="Kosongkan jika tanpa password">
+            <div class="form-text">Kosongkan jika Redis tanpa password.</div>
         </div>
     </div>
 
