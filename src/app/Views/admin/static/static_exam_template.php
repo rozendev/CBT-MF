@@ -1924,14 +1924,23 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 dataType: 'json'
             }).done((res) => {
                 updateCsrf(res);
+
+                // Sync LocalStorage counter with server's authoritative count
+                if (res.current_strikes !== undefined) {
+                    const localData = loadStrikeData();
+                    const serverStrikes = res.current_strikes;
+                    const serverMax = res.max_strikes || AC_CONFIG.max_strikes;
+
+                    // Server is source of truth — update LocalStorage to match
+                    localData.strikes = serverStrikes;
+                    localData.banned = serverStrikes >= serverMax;
+                    localData.serverSyncedAt = Date.now();
+                    saveStrikeData(localData);
+                }
+
                 // If server says lock, trigger ban on client too
                 if (res.action === 'lock') {
                     const strikeData = loadStrikeData();
-                    if (!strikeData.banned) {
-                        strikeData.banned = true;
-                        strikeData.strikes = Math.max(strikeData.strikes, AC_CONFIG.max_strikes);
-                        saveStrikeData(strikeData);
-                    }
                     showBannedScreen(strikeData.strikes, res.message || 'Ujian dikunci oleh server.');
                 }
             }).fail(() => {});

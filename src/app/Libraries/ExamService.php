@@ -322,34 +322,40 @@ class ExamService
         $settingModel = new \App\Models\SettingModel();
         $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
         if (!$isAntiCheatEnabled) {
-            return ['status' => 'success', 'action' => 'none'];
+            return ['status' => 'success', 'action' => 'none', 'current_strikes' => (int)($attempt->cheat_strikes ?? 0)];
         }
 
         $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
         $suspendTimer = (int) $settingModel->getValue('suspend_timer_seconds', 30);
         $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
-        $currentStrikes = (int) $attempt->cheat_strikes + 1;
+        $currentStrikes = (int)($attempt->cheat_strikes ?? 0) + 1;
 
-        if ($cheatType === 'tab_switch' || $currentStrikes >= $maxStrikes || $forceLogout) {
-            // INSTANT BAN
+        // Determine if this violation should trigger a ban
+        $isBanned = ($currentStrikes >= $maxStrikes) || $forceLogout;
+
+        if ($isBanned) {
+            // BAN: lock attempt and optionally deactivate account
             $this->attemptModel->update($attemptId, [
                 'cheat_strikes' => $currentStrikes,
-                'status' => 2 // Paused instead of locked, so progress is saved
+                'status' => 2 // Paused — progress is saved
             ]);
-            // Also deactivate user account
-            $userModel = new \App\Models\UserModel();
-            $userModel->update($userId, ['is_active' => 0]);
 
-            // Delete session from Redis to kick immediately and set ban signal
+            // Only deactivate account if force_logout is enabled
+            if ($forceLogout) {
+                $userModel = new \App\Models\UserModel();
+                $userModel->update($userId, ['is_active' => 0]);
+            }
+
+            // Redis: signal ban and publish kick event
             try {
                 $redis = \App\Libraries\RedisClient::getInstance();
                 if ($redis) {
-                    $redis->del("user_session:{$userId}");
                     $redis->setex("ban_signal:{$userId}", 120, '1');
-                    
-                    $reason = $forceLogout ? 'melakukan pelanggaran saat ujian (Auto-Lock)' : 
-                              ($cheatType === 'tab_switch' ? 'mengganti tab' : 'melewati batas maksimal peringatan keluar layar penuh');
-                    
+
+                    $reason = $forceLogout
+                        ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
+                        : 'melewati batas maksimal peringatan (' . $currentStrikes . '/' . $maxStrikes . ')';
+
                     $redis->publish('exam_events', json_encode([
                         'event' => 'kick',
                         'user_id' => $userId,
@@ -360,34 +366,43 @@ class ExamService
                 log_message('error', 'Redis error in handleCheat: ' . $e->getMessage());
             }
 
-            $reason = '';
-            if ($forceLogout) {
-                $reason = 'melakukan pelanggaran saat ujian (Auto-Lock)';
-            } else {
-                $reason = $cheatType === 'tab_switch' ? 'mengganti tab' : 'melewati batas maksimal peringatan keluar layar penuh';
-            }
-            
-            $this->activityLog->log('exam_locked', $userId, 'test', $attempt->test_id, 
-                "INSTANT BAN: Siswa $reason saat ujian (Strike: $currentStrikes)");
-            
+            $reason = $forceLogout
+                ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
+                : 'melewati batas maksimal peringatan (' . $currentStrikes . '/' . $maxStrikes . ')';
+
+            $this->activityLog->log('exam_locked', $userId, 'test', $attempt->test_id,
+                "BAN: Siswa $reason saat ujian (Strike: $currentStrikes/$maxStrikes)");
+
             return [
                 'status' => 'success',
                 'action' => 'lock',
-                'message' => "Ujian dikunci karena Anda terdeteksi $reason. Akun Anda dikunci."
+                'message' => "Ujian dikunci karena Anda terdeteksi $reason.",
+                'current_strikes' => $currentStrikes,
+                'max_strikes' => $maxStrikes,
             ];
         } else {
-            // FULLSCREEN EXIT = WARNING (suspend sementara)
+            // WARNING: increment counter, suspend temporarily
             $this->attemptModel->update($attemptId, [
                 'cheat_strikes' => $currentStrikes
             ]);
-            $this->activityLog->log('exam_suspended', $userId, 'test', $attempt->test_id, 
-                "WARNING: Siswa keluar dari fullscreen (Strike: $currentStrikes)");
+
+            $label = match($cheatType) {
+                'tab_switch' => 'membuka tab lain',
+                'fullscreen_exit' => 'keluar dari fullscreen',
+                'suspend_bypass' => 'melewati hukuman suspend',
+                default => 'pelanggaran tidak diketahui',
+            };
+
+            $this->activityLog->log('exam_suspended', $userId, 'test', $attempt->test_id,
+                "WARNING: Siswa $label (Strike: $currentStrikes/$maxStrikes)");
 
             return [
                 'status' => 'success',
                 'action' => 'suspend',
                 'timer' => $suspendTimer,
-                'strike' => $currentStrikes
+                'strike' => $currentStrikes,
+                'current_strikes' => $currentStrikes,
+                'max_strikes' => $maxStrikes,
             ];
         }
     }
