@@ -1870,9 +1870,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     (function() {
         let isSuspended = false;
         let isLocked    = false;
+        let suspendTimerInterval = null;
 
         const AC_CONFIG = EXAM_CONFIG.antiCheat || {};
         const STORAGE_KEY = `exam_anticheat_${EXAM_CONFIG.testId}`;
+        const SUSPEND_KEY = `exam_suspend_${EXAM_CONFIG.testId}`;
 
         function loadStrikeData() {
             try {
@@ -1914,7 +1916,18 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }).done((res) => { updateCsrf(res); }).fail(() => {});
         }
 
-        function suspendLocally(strikeData, type) {
+        function clearSuspend() {
+            try {
+                localStorage.removeItem(SUSPEND_KEY);
+            } catch(e) {}
+            isSuspended = false;
+            if (suspendTimerInterval) {
+                clearInterval(suspendTimerInterval);
+                suspendTimerInterval = null;
+            }
+        }
+
+        function startSuspendOverlay(strikeData, remainingSec) {
             isSuspended = true;
             document.getElementById('examContent').style.display = 'none';
             var overlay = document.getElementById('suspendOverlay');
@@ -1923,20 +1936,39 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             document.getElementById('strikeCount').innerText = strikeData.strikes;
             document.getElementById('maxStrikes').innerText = AC_CONFIG.max_strikes;
 
-            var sec = AC_CONFIG.suspend_timer || 30;
+            var sec = remainingSec;
             var timerEl = document.getElementById('suspendTimerDisplay');
             timerEl.innerText = sec;
 
-            var cd = setInterval(function() {
+            if (suspendTimerInterval) clearInterval(suspendTimerInterval);
+
+            suspendTimerInterval = setInterval(function() {
                 sec--;
                 timerEl.innerText = sec;
                 if (sec <= 0) {
-                    clearInterval(cd);
+                    clearInterval(suspendTimerInterval);
+                    suspendTimerInterval = null;
                     overlay.style.display = 'none';
                     isSuspended = false;
                     document.getElementById('examContent').style.display = 'block';
+                    clearSuspend();
                 }
             }, 1000);
+        }
+
+        function suspendWithPersistence(strikeData, type) {
+            // Store suspend state in LocalStorage
+            const suspendDuration = AC_CONFIG.suspend_timer || 30;
+            try {
+                localStorage.setItem(SUSPEND_KEY, JSON.stringify({
+                    active: true,
+                    startedAt: Date.now(),
+                    duration: suspendDuration,
+                    type: type
+                }));
+            } catch(e) {}
+
+            startSuspendOverlay(strikeData, suspendDuration);
         }
 
         function handleViolation(type) {
@@ -1944,6 +1976,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
             if (strikeData.banned) {
                 isLocked = true;
+                clearSuspend();
                 if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
                 Swal.fire({
                     title: 'Ujian Dikunci',
@@ -1958,13 +1991,20 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 return;
             }
 
-            suspendLocally(strikeData, type);
+            suspendWithPersistence(strikeData, type);
         }
 
-        // Check if already banned on page load
+        // ── Check for active suspend on page load (bypass detection) ──
         const existingData = loadStrikeData();
+        let activeSuspend = null;
+        try {
+            activeSuspend = JSON.parse(localStorage.getItem(SUSPEND_KEY) || 'null');
+        } catch(e) {}
+
         if (existingData.banned) {
+            // Already banned — lock and redirect
             isLocked = true;
+            clearSuspend();
             setTimeout(function() {
                 Swal.fire({
                     title: 'Ujian Dikunci',
@@ -1977,6 +2017,42 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     window.location.href = API + '/student/dashboard';
                 });
             }, 500);
+        } else if (activeSuspend && activeSuspend.active) {
+            // Student tried to bypass the overlay (refresh/back) — penalize
+            const newStrikeData = addStrike('suspend_bypass');
+            reportCheatToServer('suspend_bypass');
+
+            if (newStrikeData.banned) {
+                isLocked = true;
+                clearSuspend();
+                setTimeout(function() {
+                    Swal.fire({
+                        title: 'Ujian Dikunci',
+                        html: 'Anda mencoba melewati hukuman suspend (<strong>' + newStrikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>).<br><br>Ujian dikunci. Hubungi <strong>pengawas ujian</strong>.',
+                        icon: 'error',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        confirmButtonText: 'OK'
+                    }).then(() => {
+                        window.location.href = API + '/student/dashboard';
+                    });
+                }, 500);
+            } else {
+                // Reset timer to full duration as punishment
+                const fullDuration = AC_CONFIG.suspend_timer || 30;
+                try {
+                    localStorage.setItem(SUSPEND_KEY, JSON.stringify({
+                        active: true,
+                        startedAt: Date.now(),
+                        duration: fullDuration,
+                        type: 'suspend_bypass'
+                    }));
+                } catch(e) {}
+
+                setTimeout(function() {
+                    startSuspendOverlay(newStrikeData, fullDuration);
+                }, 300);
+            }
         }
 
         // ── Tab Switch Detection ──
@@ -1985,8 +2061,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (AC_CONFIG.enabled === false) return;
 
             const strikeData = addStrike('tab_switch');
-
-            // Always report to server (fire-and-forget, works when online)
             reportCheatToServer('tab_switch');
 
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
@@ -2003,7 +2077,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     confirmButtonText: 'OK'
                 }).then(() => { window.location.href = API + '/student/dashboard'; });
             } else {
-                // Warning — stay in exam, just show alert
+                // Warning only — stay in exam
                 Swal.fire({
                     title: 'Peringatan!',
                     html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br><small class="text-muted">Jika mencapai batas maksimal, ujian akan dikunci.</small>',
@@ -2022,10 +2096,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 return;
             }
 
-            // Report to server (fire-and-forget)
             reportCheatToServer('fullscreen_exit');
-
-            // Handle locally
             handleViolation('fullscreen_exit');
         });
     })();
