@@ -1764,6 +1764,20 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             },
 
             async submitFinish() {
+                // Check if banned due to anti-cheat violations
+                try {
+                    const acData = JSON.parse(localStorage.getItem(`exam_anticheat_${EXAM_CONFIG.testId}`) || '{"banned":false}');
+                    if (acData.banned) {
+                        Swal.fire({
+                            title: 'Ujian Dikunci',
+                            html: 'Anda tidak dapat mengakhiri ujian karena akun Anda dikunci akibat pelanggaran (<strong>' + acData.strikes + '/' + EXAM_CONFIG.antiCheat.max_strikes + '</strong>).<br><br>Hubungi <strong>pengawas ujian</strong> untuk membuka kunci.',
+                            icon: 'error',
+                            confirmButtonText: 'OK'
+                        });
+                        return;
+                    }
+                } catch(e) {}
+
                 // If offline with pending answers, block submission
                 if (!this.isOnline && this.pendingCount > 0) {
                     Swal.fire({
@@ -1814,6 +1828,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     // Clear LocalStorage on successful finish
                     try {
                         localStorage.removeItem(`exam_offline_static_${EXAM_CONFIG.testId}`);
+                        localStorage.removeItem(`exam_anticheat_${EXAM_CONFIG.testId}`);
                     } catch(e) {}
 
                     updateCsrf(res);
@@ -1833,93 +1848,168 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }));
     });
 
-    // ═══ ANTI-CHEAT ENGINE ═══
+    // ═══ ANTI-CHEAT ENGINE (OFFLINE-FIRST) ═══
     (function() {
         let isSuspended = false;
         let isLocked    = false;
 
-        function reportCheat(type) {
+        const AC_CONFIG = EXAM_CONFIG.antiCheat || {};
+        const STORAGE_KEY = `exam_anticheat_${EXAM_CONFIG.testId}`;
+
+        function loadStrikeData() {
+            try {
+                return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"strikes":0,"banned":false}');
+            } catch(e) {
+                return { strikes: 0, banned: false };
+            }
+        }
+
+        function saveStrikeData(data) {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch(e) {}
+        }
+
+        function addStrike(type) {
+            const data = loadStrikeData();
+            data.strikes++;
+            data.lastStrikeAt = Date.now();
+            data.lastType = type;
+
+            if (data.strikes >= AC_CONFIG.max_strikes) {
+                data.banned = true;
+            }
+            saveStrikeData(data);
+            return data;
+        }
+
+        function reportCheatToServer(type) {
+            if (!ATTEMPT_ID) return;
             const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
-            return $.ajax({
+            $.ajax({
                 url: API + '/api/exam/report-cheat',
                 type: 'POST',
                 data: fd,
                 processData: false,
                 contentType: false,
                 dataType: 'json'
-            }).done((res) => { updateCsrf(res); });
+            }).done((res) => { updateCsrf(res); }).fail(() => {});
         }
 
-        document.addEventListener('visibilitychange', function() {
-            if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
-            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) return; 
-            
-            isLocked = true;
-
-            reportCheat('tab_switch')
-                .done(function(res) {
-                    if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                    if (res.status === 'success') {
-                        Swal.fire('Peringatan', res.message || 'Anda terdeteksi membuka tab lain. Ujian dikunci.', 'warning')
-                            .then(() => { window.location.href = API + '/student/dashboard'; });
-                    } else if (res.status === 'suspended') {
-                        Swal.fire('Dihentikan', 'Sesi Anda telah dihentikan oleh Admin.', 'error')
-                            .then(() => { window.location.href = API + '/student/dashboard'; });
-                    }
-                })
-                .fail(function() {
-                    Swal.fire('Error', 'Kecurangan terdeteksi. Ujian dikunci.', 'error')
-                        .then(() => { window.location.href = API + '/student/dashboard'; });
-                });
-        });
-
-        document.addEventListener('fullscreenchange', function() {
-            if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
-            
-            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) {
-                reportCheat('fullscreen_exit');
-                return;
-            }
-            
+        function suspendLocally(strikeData, type) {
             isSuspended = true;
-
             document.getElementById('examContent').style.display = 'none';
             var overlay = document.getElementById('suspendOverlay');
             overlay.style.display = 'flex';
 
-            reportCheat('fullscreen_exit')
-                .done(function(res) {
-                    if (res.action === 'lock') {
-                        isLocked = true;
-                        Swal.fire('Informasi', res.message, 'info')
-                            .then(() => { window.location.href = API + '/login'; });
-                    } else if (res.action === 'suspend') {
-                        document.getElementById('strikeCount').innerText = res.strike;
-                        var sec = parseInt(res.timer);
-                        var timerEl = document.getElementById('suspendTimerDisplay');
-                        timerEl.innerText = sec;
+            document.getElementById('strikeCount').innerText = strikeData.strikes;
+            document.getElementById('maxStrikes').innerText = AC_CONFIG.max_strikes;
 
-                        var cd = setInterval(function() {
-                            sec--;
-                            timerEl.innerText = sec;
-                            if (sec <= 0) {
-                                clearInterval(cd);
-                                document.getElementById('suspendOverlay').style.display = 'none';
-                                isSuspended = false;
-                                document.getElementById('examContent').style.display = 'block';
-                            }
-                        }, 1000);
-                    } else if (res.action === 'none') {
-                        document.getElementById('suspendOverlay').style.display = 'none';
-                        isSuspended = false;
-                        document.getElementById('examContent').style.display = 'block';
-                    }
-                })
-                .fail(function() {
+            var sec = AC_CONFIG.suspend_timer || 30;
+            var timerEl = document.getElementById('suspendTimerDisplay');
+            timerEl.innerText = sec;
+
+            var cd = setInterval(function() {
+                sec--;
+                timerEl.innerText = sec;
+                if (sec <= 0) {
+                    clearInterval(cd);
                     overlay.style.display = 'none';
                     isSuspended = false;
                     document.getElementById('examContent').style.display = 'block';
+                }
+            }, 1000);
+        }
+
+        function handleViolation(type) {
+            const strikeData = addStrike(type);
+
+            if (strikeData.banned) {
+                isLocked = true;
+                if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                Swal.fire({
+                    title: 'Ujian Dikunci',
+                    html: 'Anda telah melebihi batas pelanggaran (<strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>).<br><br>Ujian Anda dikunci. Hubungi <strong>pengawas ujian</strong> untuk membuka kunci atau mereset ujian Anda.',
+                    icon: 'error',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    confirmButtonText: 'OK'
+                }).then(() => {
+                    window.location.href = API + '/student/dashboard';
                 });
+                return;
+            }
+
+            suspendLocally(strikeData, type);
+        }
+
+        // Check if already banned on page load
+        const existingData = loadStrikeData();
+        if (existingData.banned) {
+            isLocked = true;
+            setTimeout(function() {
+                Swal.fire({
+                    title: 'Ujian Dikunci',
+                    html: 'Akun Anda telah dikunci karena pelanggaran berulang (<strong>' + existingData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>).<br><br>Hubungi <strong>pengawas ujian</strong> untuk membuka kunci atau mereset ujian Anda.',
+                    icon: 'error',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    confirmButtonText: 'OK'
+                }).then(() => {
+                    window.location.href = API + '/student/dashboard';
+                });
+            }, 500);
+        }
+
+        // ── Tab Switch Detection (instant ban) ──
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
+            if (AC_CONFIG.enabled === false) return;
+
+            isLocked = true;
+            const strikeData = addStrike('tab_switch');
+
+            // Always report to server (fire-and-forget, works when online)
+            reportCheatToServer('tab_switch');
+
+            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+
+            if (strikeData.banned) {
+                Swal.fire({
+                    title: 'Ujian Dikunci',
+                    html: 'Anda terdeteksi membuka tab lain. Pelanggaran: <strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>.<br><br>Hubungi <strong>pengawas ujian</strong> untuk membuka kunci.',
+                    icon: 'error',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    confirmButtonText: 'OK'
+                }).then(() => { window.location.href = API + '/student/dashboard'; });
+            } else {
+                // Tab switch = instant lock even if not banned yet
+                Swal.fire({
+                    title: 'Pelanggaran Terdeteksi',
+                    html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Hubungi <strong>pengawas ujian</strong> untuk melanjutkan.',
+                    icon: 'error',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    confirmButtonText: 'OK'
+                }).then(() => { window.location.href = API + '/student/dashboard'; });
+            }
+        });
+
+        // ── Fullscreen Exit Detection ──
+        document.addEventListener('fullscreenchange', function() {
+            if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
+
+            if (AC_CONFIG.enabled === false) {
+                reportCheatToServer('fullscreen_exit');
+                return;
+            }
+
+            // Report to server (fire-and-forget)
+            reportCheatToServer('fullscreen_exit');
+
+            // Handle locally
+            handleViolation('fullscreen_exit');
         });
     })();
 
