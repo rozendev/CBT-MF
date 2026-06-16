@@ -116,6 +116,7 @@ class StaticExamController extends BaseController
             'apiBaseUrl' => $baseUrl,
             'questionsData' => $questionsData,
             'answersData' => $answersData,
+            'generatedAt' => time(),
         ]);
 
         // Create output directory

@@ -417,6 +417,37 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
         }
 
+        /* Offline notification banner */
+        .offline-banner {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffc107;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 1030;
+            max-width: 90%;
+        }
+        .offline-banner.syncing {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-color: #17a2b8;
+        }
+        .offline-banner.synced {
+            background: #d4edda;
+            color: #155724;
+            border-color: #28a745;
+        }
+
         /* Image Lightbox Overlay */
         .image-lightbox {
             position: fixed; inset: 0; z-index: 1050;
@@ -456,6 +487,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             answersData: <?= json_encode($answersData ?? []) ?>,
             randomQuestions: <?= $test->random_questions ? 'true' : 'false' ?>,
             randomAnswers: <?= $test->random_answers ? 'true' : 'false' ?>,
+            generatedAt: <?= $generatedAt ?>,
         };
 
         if (EXAM_CONFIG.randomQuestions) {
@@ -534,6 +566,21 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         </div>
         <div class="autosave-chip" x-show="isSaving" x-transition.opacity.duration.150ms style="display: none;">
             <span class="spinner-border spinner-border-sm text-primary" role="status" style="width: 1rem; height: 1rem;"></span> Menyimpan...
+        </div>
+
+        <!-- Offline/Sync Notification Banner -->
+        <div class="offline-banner" x-show="syncStatus === 'offline'" x-transition.opacity.duration.300ms style="display: none;">
+            <i class="bi bi-wifi-off"></i>
+            <span>Tidak ada koneksi internet. Jawaban disimpan di perangkat Anda.</span>
+            <span x-show="pendingCount > 0" class="badge bg-warning text-dark" x-text="pendingCount + ' pending'"></span>
+        </div>
+        <div class="offline-banner syncing" x-show="syncStatus === 'syncing'" x-transition.opacity.duration.300ms style="display: none;">
+            <span class="spinner-border spinner-border-sm" role="status" style="width: 1rem; height: 1rem;"></span>
+            <span>Sinkronisasi jawaban...</span>
+        </div>
+        <div class="offline-banner synced" x-show="syncStatus === 'synced'" x-transition.opacity.duration.300ms style="display: none;">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>Jawaban berhasil disinkronkan!</span>
         </div>
 
         <!-- Main Content -->
@@ -876,6 +923,14 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 const serverNow = (res.test && res.test.server_now_ms) ? res.test.server_now_ms : Date.now();
                 const timeOffset = serverNow - Date.now();
 
+                // Save to sessionStorage for offline recovery
+                try {
+                    sessionStorage.setItem(`exam_attempt_${EXAM_CONFIG.testId}`, ATTEMPT_ID);
+                    sessionStorage.setItem(`exam_student_${EXAM_CONFIG.testId}`, STUDENT_NAME);
+                } catch (e) {
+                    console.warn('Failed to save to sessionStorage:', e);
+                }
+
                 const mergedQuestions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData));
                 const mergedAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData));
 
@@ -933,9 +988,74 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 examStarted = true;
             }
         } catch (err) {
-            loading.style.display = 'none';
-            const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : 'Gagal menghubungi server. Periksa koneksi Anda.';
-            Swal.fire('Error', msg, 'error');
+            // Offline fallback: if network fails, try to load from baked-in data + LocalStorage
+            if (!navigator.onLine || err.readyState === 0 || err.status === 0) {
+                console.log('Offline detected - loading from baked-in data and LocalStorage');
+
+                // Use baked-in questions and answers from EXAM_CONFIG
+                const mergedQuestions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData));
+                const mergedAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData));
+
+                // Restore answers from LocalStorage if available
+                try {
+                    const storageKey = `exam_offline_static_${EXAM_CONFIG.testId}`;
+                    const storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
+                    const pending = storage.pending || {};
+
+                    for (const [questionId, answerData] of Object.entries(pending)) {
+                        const q = mergedQuestions.find(q => q.question_id == questionId);
+                        if (!q) continue;
+
+                        if (q.question_type == 3) {
+                            q.answer_text = answerData.data.answer_text || '';
+                        } else if (q.question_type == 4 || q.question_type == 5) {
+                            q.answer_text = answerData.data.matching_answers_json || '{}';
+                        } else {
+                            const selectedIds = answerData.data.selected_answers || [];
+                            if (mergedAnswers[questionId]) {
+                                mergedAnswers[questionId].forEach(ans => {
+                                    ans.is_selected = selectedIds.includes(ans.answer_id) ? 1 : 0;
+                                });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to restore from LocalStorage:', e);
+                }
+
+                // Try to restore attempt_id from session storage or use placeholder
+                ATTEMPT_ID = sessionStorage.getItem(`exam_attempt_${EXAM_CONFIG.testId}`) || null;
+                STUDENT_NAME = sessionStorage.getItem(`exam_student_${EXAM_CONFIG.testId}`) || '';
+
+                window.__ExamData = {
+                    questions: mergedQuestions,
+                    answers: mergedAnswers,
+                    attemptId: ATTEMPT_ID,
+                    studentName: STUDENT_NAME,
+                    beginTimeMs: Date.now(),
+                    timeOffset: 0,
+                };
+
+                document.dispatchEvent(new CustomEvent('exam-data-loaded'));
+
+                loading.style.display = 'none';
+                document.getElementById('examContent').style.display = 'block';
+                examStarted = true;
+
+                Swal.fire({
+                    title: 'Mode Offline',
+                    text: 'Anda sedang offline. Jawaban akan disimpan di perangkat dan disinkronkan saat koneksi kembali.',
+                    icon: 'info',
+                    toast: true,
+                    position: 'top',
+                    timer: 4000,
+                    showConfirmButton: false
+                });
+            } else {
+                loading.style.display = 'none';
+                const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : 'Gagal menghubungi server. Periksa koneksi Anda.';
+                Swal.fire('Error', msg, 'error');
+            }
         }
     }
 
@@ -968,6 +1088,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             sseSource: null,
             sseErrorCount: 0,
             syncInterval: null,
+
+            // Offline mode properties
+            isOnline: navigator.onLine,
+            syncStatus: '',
+            pendingCount: 0,
 
             parseMatching() {
                 this.questions.forEach(q => {
@@ -1041,6 +1166,27 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         }, 1000);
                     }
                 });
+
+                // ═══ OFFLINE MODE: Event Listeners ═══
+                window.addEventListener('online', () => {
+                    this.isOnline = true;
+                    console.log('Back online - syncing pending answers...');
+                    this.syncPendingAnswers();
+                });
+
+                window.addEventListener('offline', () => {
+                    this.isOnline = false;
+                    this.syncStatus = 'offline';
+                    this.updatePendingCount();
+                    console.log('Went offline - answers will be saved locally');
+                });
+
+                // Check for pending answers on page load
+                this.updatePendingCount();
+                if (this.pendingCount > 0 && this.isOnline) {
+                    console.log(`Found ${this.pendingCount} pending answers - syncing...`);
+                    this.syncPendingAnswers();
+                }
 
                 this.syncInterval = setInterval(() => {
                     if (!ATTEMPT_ID) return;
@@ -1257,53 +1403,193 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             },
 
             saveAnswer() {
-                this.isSaving = true;
                 const questionId = this.currentQuestion.question_id;
                 const type  = this.currentQuestion.question_type;
-                let payload = { attempt_id: ATTEMPT_ID, question_id: questionId, question_type: type };
+                let data = { attempt_id: ATTEMPT_ID, question_id: questionId, question_type: type, generated_at: EXAM_CONFIG.generatedAt };
 
                 if (type == 3) {
-                    payload.answer_text = this.currentQuestion.answer_text || '';
+                    data.answer_text = this.currentQuestion.answer_text || '';
                 } else if (type == 4 || type == 5) {
                     let matches = {};
                     this.currentQuestion.matchingPairs.forEach(p => { matches[p.left] = p.selected; });
-                    payload.matching_answers_json = JSON.stringify(matches);
+                    data.matching_answers_json = JSON.stringify(matches);
                 } else {
-                    payload['selected_answers'] = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
+                    data.selected_answers = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
                 }
 
-                const fd = buildFormData(payload);
+                // Always save to LocalStorage first
+                this.saveToLocalStorage(questionId, type, data);
+                this.updatePendingCount();
 
-                $.ajax({
-                    url: API + '/api/exam/autosave',
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    dataType: 'json'
-                })
-                .done((res) => {
-                    this.isSaving = false;
-                    updateCsrf(res);
+                // If online, send to server immediately
+                if (this.isOnline) {
+                    this.isSaving = true;
+                    const fd = buildFormData(data);
+
+                    $.ajax({
+                        url: API + '/api/exam/autosave',
+                        type: 'POST',
+                        data: fd,
+                        processData: false,
+                        contentType: false,
+                        dataType: 'json'
+                    })
+                    .done((res) => {
+                        this.isSaving = false;
+                        updateCsrf(res);
+                        this.showSavedToast = true;
+                        setTimeout(() => { this.showSavedToast = false; }, 2000);
+
+                        // Remove from pending queue on success
+                        this.clearPendingAnswer(questionId);
+                        this.updatePendingCount();
+
+                        if (res.status === 'kicked') {
+                            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                            Swal.fire('Informasi', res.message, 'info').then(() => {
+                                window.location.href = API + '/login';
+                            });
+                        }
+                    })
+                    .fail((err) => {
+                        this.isSaving = false;
+                        console.error("Gagal menyimpan jawaban, akan dicoba lagi saat online", err);
+
+                        if (err.status === 401 || err.status === 403) {
+                            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                            Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
+                                window.location.href = API + '/login';
+                            });
+                        }
+                        // Otherwise, answer is already in LocalStorage, will sync later
+                    });
+                } else {
+                    // Offline - show saved locally indicator
                     this.showSavedToast = true;
                     setTimeout(() => { this.showSavedToast = false; }, 2000);
-                    if (res.status === 'kicked') {
-                        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                        Swal.fire('Informasi', res.message, 'info').then(() => {
-                            window.location.href = API + '/login';
+                }
+            },
+
+            saveToLocalStorage(questionId, questionType, data) {
+                try {
+                    const storageKey = `exam_offline_static_${EXAM_CONFIG.testId}`;
+                    let storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
+
+                    storage.pending[questionId] = {
+                        question_type: questionType,
+                        data: data,
+                        timestamp: Date.now()
+                    };
+
+                    localStorage.setItem(storageKey, JSON.stringify(storage));
+                } catch (e) {
+                    console.error('Failed to save to LocalStorage:', e);
+                }
+            },
+
+            loadPendingAnswers() {
+                try {
+                    const storageKey = `exam_offline_static_${EXAM_CONFIG.testId}`;
+                    const storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
+                    return storage.pending || {};
+                } catch (e) {
+                    console.error('Failed to load from LocalStorage:', e);
+                    return {};
+                }
+            },
+
+            clearPendingAnswer(questionId) {
+                try {
+                    const storageKey = `exam_offline_static_${EXAM_CONFIG.testId}`;
+                    let storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
+                    delete storage.pending[questionId];
+                    localStorage.setItem(storageKey, JSON.stringify(storage));
+                } catch (e) {
+                    console.error('Failed to clear from LocalStorage:', e);
+                }
+            },
+
+            updatePendingCount() {
+                const pending = this.loadPendingAnswers();
+                this.pendingCount = Object.keys(pending).length;
+            },
+
+            async syncPendingAnswers() {
+                const pending = this.loadPendingAnswers();
+                const pendingIds = Object.keys(pending);
+
+                if (pendingIds.length === 0) {
+                    this.syncStatus = '';
+                    return;
+                }
+
+                this.syncStatus = 'syncing';
+                console.log(`Syncing ${pendingIds.length} pending answers...`);
+
+                let successCount = 0;
+                let failCount = 0;
+
+                for (const questionId of pendingIds) {
+                    const answerData = pending[questionId];
+
+                    try {
+                        await new Promise((resolve, reject) => {
+                            const fd = buildFormData(answerData.data);
+                            $.ajax({
+                                url: API + '/api/exam/autosave',
+                                type: 'POST',
+                                data: fd,
+                                processData: false,
+                                contentType: false,
+                                dataType: 'json'
+                            })
+                            .done((res) => {
+                                updateCsrf(res);
+                                if (res.status === 'kicked') {
+                                    reject(new Error('kicked'));
+                                } else {
+                                    this.clearPendingAnswer(questionId);
+                                    successCount++;
+                                    resolve();
+                                }
+                            })
+                            .fail((err) => {
+                                if (err.status === 401 || err.status === 403) {
+                                    reject(new Error('auth'));
+                                } else {
+                                    failCount++;
+                                    resolve();
+                                }
+                            });
                         });
+                    } catch (err) {
+                        if (err.message === 'kicked' || err.message === 'auth') {
+                            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                            Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
+                                window.location.href = API + '/login';
+                            });
+                            return;
+                        }
                     }
-                })
-                .fail((err) => {
-                    this.isSaving = false;
-                    console.error("Gagal menyimpan jawaban", err);
-                    if (err.status === 401 || err.status === 403) {
-                        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                        Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                            window.location.href = API + '/login';
-                        });
-                    }
-                });
+
+                    // Small delay between requests to avoid overwhelming server
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+
+                this.updatePendingCount();
+
+                if (successCount > 0) {
+                    this.syncStatus = 'synced';
+                    setTimeout(() => {
+                        this.syncStatus = this.pendingCount > 0 ? 'offline' : '';
+                    }, 3000);
+                    console.log(`Synced ${successCount} answers successfully`);
+                }
+
+                if (failCount > 0) {
+                    console.warn(`${failCount} answers failed to sync, will retry later`);
+                    this.syncStatus = this.pendingCount > 0 ? 'offline' : '';
+                }
             },
 
             countAnswered() {
@@ -1407,9 +1693,41 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 }
             },
 
-            submitFinish() {
+            async submitFinish() {
+                // If offline with pending answers, block submission
+                if (!this.isOnline && this.pendingCount > 0) {
+                    Swal.fire({
+                        title: 'Tidak Ada Koneksi',
+                        text: `Anda memiliki ${this.pendingCount} jawaban yang belum tersinkronisasi. Harap sambungkan ke internet sebelum mengakhiri ujian.`,
+                        icon: 'warning',
+                        confirmButtonText: 'OK'
+                    });
+                    return;
+                }
+
+                // Sync any remaining pending answers first
+                if (this.pendingCount > 0) {
+                    this.syncStatus = 'syncing';
+                    await this.syncPendingAnswers();
+
+                    // If still have pending after sync (failed), warn user
+                    if (this.pendingCount > 0) {
+                        const proceed = await Swal.fire({
+                            title: 'Sinkronisasi Gagal',
+                            text: `Masih ada ${this.pendingCount} jawaban yang gagal disinkronisasi. Tetap akhiri ujian?`,
+                            icon: 'warning',
+                            showCancelButton: true,
+                            confirmButtonText: 'Ya, Akhiri',
+                            cancelButtonText: 'Lanjut Mengerjakan'
+                        });
+                        if (!proceed.isConfirmed) {
+                            this.syncStatus = 'offline';
+                            return;
+                        }
+                    }
+                }
+
                 window.isSubmitting = true;
-                this.isSaving = true;
                 if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
                 const fd = buildFormData({ test_id: EXAM_CONFIG.testId, attempt_id: ATTEMPT_ID });
@@ -1423,6 +1741,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     dataType: 'json'
                 })
                 .done((res) => {
+                    // Clear LocalStorage on successful finish
+                    try {
+                        localStorage.removeItem(`exam_offline_static_${EXAM_CONFIG.testId}`);
+                    } catch(e) {}
+
                     updateCsrf(res);
                     if (res.redirect) {
                         window.location.href = res.redirect;
@@ -1554,6 +1877,68 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
         });
     });
+
+    // ═══ SERVICE WORKER FOR OFFLINE SUPPORT ═══
+    if ('serviceWorker' in navigator) {
+        const swCode = `
+            const CACHE_NAME = 'exam-static-${test->id}-v1';
+            const urlsToCache = [
+                self.location.href,
+                'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css',
+                'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css',
+                'https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js',
+                'https://cdn.jsdelivr.net/npm/sweetalert2@11',
+                'https://code.jquery.com/jquery-3.7.1.min.js',
+                'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'
+            ];
+
+            self.addEventListener('install', event => {
+                event.waitUntil(
+                    caches.open(CACHE_NAME)
+                        .then(cache => cache.addAll(urlsToCache))
+                        .then(() => self.skipWaiting())
+                );
+            });
+
+            self.addEventListener('activate', event => {
+                event.waitUntil(
+                    caches.keys().then(names => {
+                        return Promise.all(
+                            names.filter(name => name.startsWith('exam-static-${test->id}') && name !== CACHE_NAME)
+                                .map(name => caches.delete(name))
+                        );
+                    }).then(() => self.clients.claim())
+                );
+            });
+
+            self.addEventListener('fetch', event => {
+                event.respondWith(
+                    caches.match(event.request)
+                        .then(response => {
+                            if (response) return response;
+                            return fetch(event.request).then(response => {
+                                if (!response || response.status !== 200 || response.type !== 'basic') {
+                                    return response;
+                                }
+                                const responseToCache = response.clone();
+                                caches.open(CACHE_NAME).then(cache => {
+                                    cache.put(event.request, responseToCache);
+                                });
+                                return response;
+                            });
+                        })
+                        .catch(() => caches.match(self.location.href))
+                );
+            });
+        `;
+
+        const blob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(blob);
+
+        navigator.serviceWorker.register(swUrl, { scope: './' })
+            .then(reg => console.log('Service Worker registered:', reg.scope))
+            .catch(err => console.warn('Service Worker registration failed:', err));
+    }
     </script>
 </body>
 </html>

@@ -272,6 +272,36 @@ class ExamApiController extends BaseController
             return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian telah dikunci.']);
         }
 
+        // Validate generated_at timestamp for static exams (offline mode protection)
+        $generatedAt = $this->request->getPost('generated_at');
+        if ($generatedAt) {
+            $test = $this->testModel->findCached($attempt->test_id);
+            if ($test && $test->exam_mode === 'static') {
+                $maxAge = 7 * 86400; // 7 days
+                if (time() - (int)$generatedAt > $maxAge) {
+                    return $this->response->setJSON([
+                        'status' => 'error',
+                        'message' => 'Halaman ujian statis sudah kadaluarsa. Hubungi pengawas.'
+                    ]);
+                }
+
+                // Validate within exam time window
+                $now = date('Y-m-d H:i:s');
+                if ($test->begin_time && $now < $test->begin_time) {
+                    return $this->response->setJSON([
+                        'status' => 'error',
+                        'message' => 'Ujian belum dimulai.'
+                    ]);
+                }
+                if ($test->end_time && $now > $test->end_time) {
+                    return $this->response->setJSON([
+                        'status' => 'error',
+                        'message' => 'Waktu ujian telah berakhir.'
+                    ]);
+                }
+            }
+        }
+
         session_write_close();
 
         $payload = [];
