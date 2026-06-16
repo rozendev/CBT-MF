@@ -1133,6 +1133,13 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
                     this.initWebSocket();
 
+                    // Check for pending answers after ATTEMPT_ID is set
+                    this.updatePendingCount();
+                    if (this.pendingCount > 0 && this.isOnline) {
+                        console.log(`Found ${this.pendingCount} pending answers after init - syncing...`);
+                        this.syncPendingAnswers();
+                    }
+
                     if (this.durationMinutes > 0) {
                         const beginTimeMs = data.beginTimeMs || Date.now();
                         const timeOffset = data.timeOffset || 0;
@@ -1183,9 +1190,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     console.log('Went offline - answers will be saved locally');
                 });
 
-                // Check for pending answers on page load
+                // Check for pending answers on page load (only if ATTEMPT_ID is already set)
                 this.updatePendingCount();
-                if (this.pendingCount > 0 && this.isOnline) {
+                if (this.pendingCount > 0 && this.isOnline && ATTEMPT_ID) {
                     console.log(`Found ${this.pendingCount} pending answers - syncing...`);
                     this.syncPendingAnswers();
                 }
