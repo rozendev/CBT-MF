@@ -249,7 +249,7 @@ class QuestionController extends BaseController
         }
 
         $rules = [
-            'image' => 'is_image[image]|ext_in[image,png,jpg,jpeg,gif]|max_size[image,5120]'
+            'image' => 'is_image[image]|ext_in[image,png,jpg,jpeg,gif,webp]|max_size[image,5120]'
         ];
 
         if (!$this->validate($rules)) {
@@ -257,9 +257,88 @@ class QuestionController extends BaseController
         }
 
         $newName = $file->getRandomName();
-        $file->move(FCPATH . 'uploads', $newName);
+        $uploadPath = FCPATH . 'uploads/questions';
         
-        $url = base_url('uploads/' . $newName);
+        // Create directory if not exists
+        if (!is_dir($uploadPath)) {
+            mkdir($uploadPath, 0755, true);
+        }
+        
+        $file->move($uploadPath, $newName);
+        $filePath = $uploadPath . '/' . $newName;
+        
+        // Auto-resize if image is too large (max 1920px width/height)
+        $maxDimension = 1920;
+        $imageInfo = getimagesize($filePath);
+        
+        if ($imageInfo !== false) {
+            $width = $imageInfo[0];
+            $height = $imageInfo[1];
+            $mimeType = $imageInfo['mime'];
+            
+            // Resize if either dimension exceeds max
+            if ($width > $maxDimension || $height > $maxDimension) {
+                // Calculate new dimensions maintaining aspect ratio
+                $ratio = min($maxDimension / $width, $maxDimension / $height);
+                $newWidth = (int)($width * $ratio);
+                $newHeight = (int)($height * $ratio);
+                
+                // Create image resource based on type
+                $source = null;
+                switch ($mimeType) {
+                    case 'image/jpeg':
+                        $source = imagecreatefromjpeg($filePath);
+                        break;
+                    case 'image/png':
+                        $source = imagecreatefrompng($filePath);
+                        break;
+                    case 'image/gif':
+                        $source = imagecreatefromgif($filePath);
+                        break;
+                    case 'image/webp':
+                        $source = imagecreatefromwebp($filePath);
+                        break;
+                }
+                
+                if ($source !== null) {
+                    // Create resized image
+                    $resized = imagecreatetruecolor($newWidth, $newHeight);
+                    
+                    // Preserve transparency for PNG, GIF, and WebP
+                    if (in_array($mimeType, ['image/png', 'image/gif', 'image/webp'])) {
+                        imagealphablending($resized, false);
+                        imagesavealpha($resized, true);
+                        $transparent = imagecolorallocatealpha($resized, 255, 255, 255, 127);
+                        imagefilledrectangle($resized, 0, 0, $newWidth, $newHeight, $transparent);
+                    }
+                    
+                    // Resize with high quality
+                    imagecopyresampled($resized, $source, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                    
+                    // Save resized image with compression
+                    switch ($mimeType) {
+                        case 'image/jpeg':
+                            imagejpeg($resized, $filePath, 85); // 85% quality
+                            break;
+                        case 'image/png':
+                            imagepng($resized, $filePath, 6); // Compression level 6
+                            break;
+                        case 'image/gif':
+                            imagegif($resized, $filePath);
+                            break;
+                        case 'image/webp':
+                            imagewebp($resized, $filePath, 85); // 85% quality
+                            break;
+                    }
+                    
+                    // Free memory
+                    imagedestroy($source);
+                    imagedestroy($resized);
+                }
+            }
+        }
+        
+        $url = base_url('uploads/questions/' . $newName);
 
         return $this->response->setJSON([
             'status' => 'success',
