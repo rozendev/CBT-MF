@@ -1173,6 +1173,15 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                                 console.log(`Anti-cheat synced from server: ${serverStrikes}/${serverMaxStrikes} strikes`);
                             }
                         }
+
+                        // After sync, check if still banned — block immediately
+                        if (window.__antiCheat) {
+                            const syncedData = window.__antiCheat.loadStrikeData();
+                            if (syncedData.banned) {
+                                window.__antiCheat.showBannedScreen(syncedData.strikes, 'Ujian Anda dikunci oleh server.');
+                                return;
+                            }
+                        }
                     } catch(e) {}
 
                     // Check for pending answers after ATTEMPT_ID is set
@@ -1975,24 +1984,21 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             const strikeData = addStrike(type);
 
             if (strikeData.banned) {
-                isLocked = true;
-                clearSuspend();
-                if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                Swal.fire({
-                    title: 'Ujian Dikunci',
-                    html: 'Anda telah melebihi batas pelanggaran (<strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>).<br><br>Ujian Anda dikunci. Hubungi <strong>pengawas ujian</strong> untuk membuka kunci atau mereset ujian Anda.',
-                    icon: 'error',
-                    allowOutsideClick: false,
-                    allowEscapeKey: false,
-                    confirmButtonText: 'OK'
-                }).then(() => {
-                    window.location.href = API + '/student/dashboard';
-                });
+                showBannedScreen(strikeData.strikes, 'Anda telah melebihi batas pelanggaran.');
                 return;
             }
 
             suspendWithPersistence(strikeData, type);
         }
+
+        // ── Expose functions for server-authoritative sync ──
+        window.__antiCheat = {
+            showBannedScreen: showBannedScreen,
+            loadStrikeData: loadStrikeData,
+            addStrike: addStrike,
+            reportCheatToServer: reportCheatToServer,
+            maxStrikes: AC_CONFIG.max_strikes,
+        };
 
         // ── Check for active suspend on page load (bypass detection) ──
         const existingData = loadStrikeData();
@@ -2001,42 +2007,36 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             activeSuspend = JSON.parse(localStorage.getItem(SUSPEND_KEY) || 'null');
         } catch(e) {}
 
-        if (existingData.banned) {
-            // Already banned — lock and redirect
+        function showBannedScreen(strikes, reason) {
             isLocked = true;
             clearSuspend();
-            setTimeout(function() {
-                Swal.fire({
-                    title: 'Ujian Dikunci',
-                    html: 'Akun Anda telah dikunci karena pelanggaran berulang (<strong>' + existingData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>).<br><br>Hubungi <strong>pengawas ujian</strong> untuk membuka kunci atau mereset ujian Anda.',
-                    icon: 'error',
-                    allowOutsideClick: false,
-                    allowEscapeKey: false,
-                    confirmButtonText: 'OK'
-                }).then(() => {
-                    window.location.href = API + '/student/dashboard';
-                });
-            }, 500);
+            // Immediately hide exam and show lock screen
+            var examContent = document.getElementById('examContent');
+            if (examContent) examContent.style.display = 'none';
+            var loading = document.getElementById('loadingScreen');
+            if (loading) loading.style.display = 'none';
+
+            Swal.fire({
+                title: 'Ujian Dikunci',
+                html: reason + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Hubungi <strong>pengawas ujian</strong> untuk membuka kunci atau mereset ujian Anda.',
+                icon: 'error',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                confirmButtonText: 'OK'
+            }).then(() => {
+                window.location.href = API + '/student/dashboard';
+            });
+        }
+
+        if (existingData.banned) {
+            showBannedScreen(existingData.strikes, 'Akun Anda telah dikunci karena pelanggaran berulang.');
         } else if (activeSuspend && activeSuspend.active) {
             // Student tried to bypass the overlay (refresh/back) — penalize
             const newStrikeData = addStrike('suspend_bypass');
             reportCheatToServer('suspend_bypass');
 
             if (newStrikeData.banned) {
-                isLocked = true;
-                clearSuspend();
-                setTimeout(function() {
-                    Swal.fire({
-                        title: 'Ujian Dikunci',
-                        html: 'Anda mencoba melewati hukuman suspend (<strong>' + newStrikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>).<br><br>Ujian dikunci. Hubungi <strong>pengawas ujian</strong>.',
-                        icon: 'error',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        confirmButtonText: 'OK'
-                    }).then(() => {
-                        window.location.href = API + '/student/dashboard';
-                    });
-                }, 500);
+                showBannedScreen(newStrikeData.strikes, 'Anda mencoba melewati hukuman suspend.');
             } else {
                 // Reset timer to full duration as punishment
                 const fullDuration = AC_CONFIG.suspend_timer || 30;
@@ -2066,16 +2066,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
             if (strikeData.banned) {
-                // Reached max strikes — lock and redirect
-                isLocked = true;
-                Swal.fire({
-                    title: 'Ujian Dikunci',
-                    html: 'Anda terdeteksi membuka tab lain terlalu sering (<strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>).<br><br>Ujian Anda dikunci. Hubungi <strong>pengawas ujian</strong> untuk membuka kunci.',
-                    icon: 'error',
-                    allowOutsideClick: false,
-                    allowEscapeKey: false,
-                    confirmButtonText: 'OK'
-                }).then(() => { window.location.href = API + '/student/dashboard'; });
+                // Reached max strikes — lock and redirect immediately
+                showBannedScreen(strikeData.strikes, 'Anda terdeteksi membuka tab lain terlalu sering.');
             } else {
                 // Warning only — stay in exam
                 Swal.fire({
