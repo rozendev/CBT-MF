@@ -1980,12 +1980,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }, 500);
         }
 
-        // ── Tab Switch Detection (instant ban) ──
+        // ── Tab Switch Detection ──
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
             if (AC_CONFIG.enabled === false) return;
 
-            isLocked = true;
             const strikeData = addStrike('tab_switch');
 
             // Always report to server (fire-and-forget, works when online)
@@ -1994,24 +1993,24 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
             if (strikeData.banned) {
+                // Reached max strikes — lock and redirect
+                isLocked = true;
                 Swal.fire({
                     title: 'Ujian Dikunci',
-                    html: 'Anda terdeteksi membuka tab lain. Pelanggaran: <strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>.<br><br>Hubungi <strong>pengawas ujian</strong> untuk membuka kunci.',
+                    html: 'Anda terdeteksi membuka tab lain terlalu sering (<strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong>).<br><br>Ujian Anda dikunci. Hubungi <strong>pengawas ujian</strong> untuk membuka kunci.',
                     icon: 'error',
                     allowOutsideClick: false,
                     allowEscapeKey: false,
                     confirmButtonText: 'OK'
                 }).then(() => { window.location.href = API + '/student/dashboard'; });
             } else {
-                // Tab switch = instant lock even if not banned yet
+                // Warning — stay in exam, just show alert
                 Swal.fire({
-                    title: 'Pelanggaran Terdeteksi',
-                    html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Hubungi <strong>pengawas ujian</strong> untuk melanjutkan.',
-                    icon: 'error',
-                    allowOutsideClick: false,
-                    allowEscapeKey: false,
-                    confirmButtonText: 'OK'
-                }).then(() => { window.location.href = API + '/student/dashboard'; });
+                    title: 'Peringatan!',
+                    html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br><small class="text-muted">Jika mencapai batas maksimal, ujian akan dikunci.</small>',
+                    icon: 'warning',
+                    confirmButtonText: 'Saya Mengerti'
+                });
             }
         });
 
