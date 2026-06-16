@@ -420,32 +420,47 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         /* Offline notification banner */
         .offline-banner {
             position: fixed;
-            top: 70px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #fff3cd;
+            bottom: 80px;
+            left: 16px;
+            right: auto;
+            background: rgba(255, 243, 205, 0.95);
             color: #856404;
             border: 1px solid #ffc107;
-            padding: 10px 20px;
+            padding: 8px 12px;
             border-radius: 8px;
-            font-size: 13px;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-size: 12px;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             display: flex;
             align-items: center;
             gap: 8px;
-            z-index: 1030;
-            max-width: 90%;
+            z-index: 1015;
+            max-width: calc(100% - 32px);
+            backdrop-filter: blur(4px);
         }
         .offline-banner.syncing {
-            background: #d1ecf1;
+            background: rgba(209, 236, 241, 0.95);
             color: #0c5460;
             border-color: #17a2b8;
         }
         .offline-banner.synced {
-            background: #d4edda;
+            background: rgba(212, 237, 218, 0.95);
             color: #155724;
             border-color: #28a745;
+        }
+        .offline-banner .close-btn {
+            background: none;
+            border: none;
+            color: inherit;
+            opacity: 0.6;
+            cursor: pointer;
+            padding: 0;
+            font-size: 16px;
+            line-height: 1;
+            margin-left: 4px;
+        }
+        .offline-banner .close-btn:hover {
+            opacity: 1;
         }
 
         /* Image Lightbox Overlay */
@@ -569,18 +584,19 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         </div>
 
         <!-- Offline/Sync Notification Banner -->
-        <div class="offline-banner" x-show="syncStatus === 'offline'" x-transition.opacity.duration.300ms style="display: none;">
+        <div class="offline-banner" x-show="syncStatus === 'offline' && !bannerDismissed" x-transition.opacity.duration.300ms style="display: none;">
             <i class="bi bi-wifi-off"></i>
-            <span>Tidak ada koneksi internet. Jawaban disimpan di perangkat Anda.</span>
+            <span>Offline. Jawaban disimpan di perangkat.</span>
             <span x-show="pendingCount > 0" class="badge bg-warning text-dark" x-text="pendingCount + ' pending'"></span>
+            <button class="close-btn" @click="bannerDismissed = true" title="Tutup">&times;</button>
         </div>
         <div class="offline-banner syncing" x-show="syncStatus === 'syncing'" x-transition.opacity.duration.300ms style="display: none;">
             <span class="spinner-border spinner-border-sm" role="status" style="width: 1rem; height: 1rem;"></span>
-            <span>Sinkronisasi jawaban...</span>
+            <span>Sync...</span>
         </div>
         <div class="offline-banner synced" x-show="syncStatus === 'synced'" x-transition.opacity.duration.300ms style="display: none;">
             <i class="bi bi-check-circle-fill"></i>
-            <span>Jawaban berhasil disinkronkan!</span>
+            <span>Tersinkronkan!</span>
         </div>
 
         <!-- Main Content -->
@@ -1094,6 +1110,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             syncStatus: '',
             pendingCount: 0,
             consecutiveFailures: 0,
+            bannerDismissed: false,
 
             parseMatching() {
                 this.questions.forEach(q => {
@@ -1572,6 +1589,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 }
 
                 this.syncStatus = 'syncing';
+                this.bannerDismissed = false;
                 console.log(`Syncing ${pendingIds.length} pending answers...`);
 
                 let successCount = 0;
@@ -1629,9 +1647,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 if (successCount > 0) {
                     this.isOnline = true;
                     this.consecutiveFailures = 0;
+                    this.bannerDismissed = false;
                     this.syncStatus = 'synced';
                     setTimeout(() => {
                         this.syncStatus = this.pendingCount > 0 ? 'offline' : '';
+                        this.bannerDismissed = false;
                     }, 3000);
                     console.log(`Synced ${successCount} answers successfully`);
                 }
