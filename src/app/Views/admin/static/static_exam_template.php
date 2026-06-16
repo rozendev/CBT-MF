@@ -1844,10 +1844,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     dataType: 'json'
                 })
                 .done((res) => {
-                    // Clear LocalStorage on successful finish
+                    // Clear offline answers LocalStorage on successful finish
                     try {
                         localStorage.removeItem(`exam_offline_static_${EXAM_CONFIG.testId}`);
-                        localStorage.removeItem(`exam_anticheat_${EXAM_CONFIG.testId}`);
                     } catch(e) {}
 
                     updateCsrf(res);
