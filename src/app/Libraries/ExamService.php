@@ -328,7 +328,25 @@ class ExamService
         $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
         $suspendTimer = (int) $settingModel->getValue('suspend_timer_seconds', 30);
         $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
-        $currentStrikes = (int)($attempt->cheat_strikes ?? 0) + 1;
+        
+        $currentStrikes = (int)($attempt->cheat_strikes ?? 0);
+
+        // If already banned/locked, just return the lock status without incrementing further
+        if ($currentStrikes >= $maxStrikes || $attempt->status == 2) {
+             $reason = $forceLogout
+                ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
+                : 'melewati batas maksimal peringatan (' . $currentStrikes . '/' . $maxStrikes . ')';
+
+             return [
+                'status' => 'success',
+                'action' => 'lock',
+                'message' => "Ujian dikunci karena Anda terdeteksi $reason.",
+                'current_strikes' => $currentStrikes,
+                'max_strikes' => $maxStrikes,
+            ];
+        }
+
+        $currentStrikes++;
 
         // Determine if this violation should trigger a ban
         $isBanned = ($currentStrikes >= $maxStrikes) || $forceLogout;

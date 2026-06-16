@@ -547,6 +547,31 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         <p class="mb-2 text-warning">Pelanggaran: <span id="strikeCount" class="fw-bold fs-5">1</span> / <span id="maxStrikes" class="fw-bold fs-5"><?= $antiCheat['max_strikes'] ?></span></p>
     </div>
 
+    <!-- Banned Overlay (Persistent Offline Ban) -->
+    <div class="suspend-overlay" id="bannedOverlay" style="display:none; background: linear-gradient(135deg, #000 0%, #1a0000 100%); z-index: 99999;">
+        <i class="bi bi-shield-lock-fill text-danger mb-4" style="font-size: 8rem;"></i>
+        <h2 class="fw-bold text-danger mb-3">UJIAN DIKUNCI</h2>
+        <p class="fs-5 px-4 mb-4" style="max-width:600px;">
+            Sistem mendeteksi aktivitas mencurigakan atau pelanggaran aturan ujian yang berulang.<br><br>
+            <strong>Anda tidak dapat melanjutkan ujian ini.</strong>
+        </p>
+        
+        <div class="alert alert-danger mx-4 p-4 border-0 rounded-4" style="max-width:500px; background: rgba(220,53,69,0.15); color: #ff8e98;">
+            <div class="mb-2"><i class="bi bi-exclamation-triangle-fill me-2"></i> <strong>PELANGGARAN TERDETEKSI</strong></div>
+            <div class="fs-4 fw-bold mb-3"><span id="bannedStrikeCount">?</span> / <span id="bannedMaxStrikes">?</span></div>
+            <p class="small mb-0 text-white-50">Silakan hubungi pengawas ujian untuk informasi lebih lanjut.</p>
+        </div>
+
+        <div id="bannedSyncingStatus" class="mt-5 text-white-50">
+             <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+             Sinkronisasi status pemblokiran ke server...
+        </div>
+        <div id="bannedErrorStatus" class="mt-5 text-warning" style="display:none;">
+             <i class="bi bi-wifi-off me-2"></i>
+             Koneksi internet terputus. Menunggu koneksi untuk mengunci permanen...
+        </div>
+    </div>
+
     <!-- EXAM CONTENT -->
     <div id="examContent" style="display:none;" x-data="examApp()">
     <div class="exam-layout">
@@ -1879,11 +1904,13 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     (function() {
         let isSuspended = false;
         let isLocked    = false;
+        let isSyncingBanned = false;
         let suspendTimerInterval = null;
 
         const AC_CONFIG = EXAM_CONFIG.antiCheat || {};
         const STORAGE_KEY = `exam_anticheat_${EXAM_CONFIG.testId}`;
         const SUSPEND_KEY = `exam_suspend_${EXAM_CONFIG.testId}`;
+        const PENDING_REPORT_KEY = `exam_pending_cheat_${EXAM_CONFIG.testId}`;
 
         function loadStrikeData() {
             try {
@@ -1914,6 +1941,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
         function reportCheatToServer(type) {
             if (!ATTEMPT_ID) return;
+            if (isSyncingBanned) return;
+            
+            if (isLocked) isSyncingBanned = true;
+
             const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
             $.ajax({
                 url: API + '/api/exam/report-cheat',
@@ -1923,7 +1954,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 contentType: false,
                 dataType: 'json'
             }).done((res) => {
+                isSyncingBanned = false;
                 updateCsrf(res);
+                localStorage.removeItem(PENDING_REPORT_KEY);
 
                 // Sync LocalStorage counter with server's authoritative count
                 if (res.current_strikes !== undefined) {
@@ -1941,9 +1974,53 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 // If server says lock, trigger ban on client too
                 if (res.action === 'lock') {
                     const strikeData = loadStrikeData();
-                    showBannedScreen(strikeData.strikes, res.message || 'Ujian dikunci oleh server.');
+                    // If we are already in the persistent overlay, finalized it with a redirect
+                    if (isLocked) {
+                        finalizeBan(strikeData.strikes, res.message || 'Ujian dikunci oleh server.');
+                    } else {
+                        showBannedScreen(strikeData.strikes, res.message || 'Ujian dikunci oleh server.');
+                    }
                 }
-            }).fail(() => {});
+            }).fail(() => {
+                isSyncingBanned = false;
+                // If offline, save for later retry
+                if (type !== 'banned_retry') {
+                    localStorage.setItem(PENDING_REPORT_KEY, type);
+                }
+                
+                // If we are in banned state, update overlay to show error
+                if (isLocked) {
+                    const syncStatus = document.getElementById('bannedSyncingStatus');
+                    const errorStatus = document.getElementById('bannedErrorStatus');
+                    if (syncStatus) syncStatus.style.display = 'none';
+                    if (errorStatus) errorStatus.style.display = 'block';
+                }
+            });
+        }
+
+        function finalizeBan(strikes, reason) {
+            Swal.fire({
+                title: 'Ujian Dikunci Permanen',
+                html: reason + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
+                icon: 'error',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                showConfirmButton: false,
+                timer: 5000,
+                timerProgressBar: true
+            }).then(() => {
+                const fd = buildFormData({});
+                $.ajax({
+                    url: API + '/logout',
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    complete: () => {
+                        window.location.href = API + '/login';
+                    }
+                });
+            });
         }
 
         function clearSuspend() {
@@ -2031,34 +2108,47 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         function showBannedScreen(strikes, reason) {
             isLocked = true;
             clearSuspend();
+            
             // Immediately hide exam and show lock screen
             var examContent = document.getElementById('examContent');
             if (examContent) examContent.style.display = 'none';
             var loading = document.getElementById('loadingScreen');
             if (loading) loading.style.display = 'none';
+            var suspendOverlay = document.getElementById('suspendOverlay');
+            if (suspendOverlay) suspendOverlay.style.display = 'none';
 
-            Swal.fire({
-                title: 'Ujian Dikunci',
-                html: reason + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Hubungi <strong>pengawas ujian</strong> untuk membuka kunci atau mereset ujian Anda.',
-                icon: 'error',
-                allowOutsideClick: false,
-                allowEscapeKey: false,
-                confirmButtonText: 'OK'
-            }).then(() => {
-                // Logout first, then redirect to login page
-                const fd = buildFormData({});
-                $.ajax({
-                    url: API + '/logout',
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    complete: () => {
-                        window.location.href = API + '/login';
-                    }
-                });
-            });
+            // Show persistent banned overlay
+            var bannedOverlay = document.getElementById('bannedOverlay');
+            if (bannedOverlay) {
+                bannedOverlay.style.display = 'flex';
+                document.getElementById('bannedStrikeCount').innerText = strikes;
+                document.getElementById('bannedMaxStrikes').innerText = AC_CONFIG.max_strikes;
+                
+                // Reset status display
+                document.getElementById('bannedSyncingStatus').style.display = 'block';
+                document.getElementById('bannedErrorStatus').style.display = 'none';
+            }
+
+            // Immediately try to report (if not already reported)
+            reportCheatToServer('offline_ban_sync');
         }
+
+        // ── Retry loop for pending reports (Background Sync) ──
+        setInterval(() => {
+            const pendingType = localStorage.getItem(PENDING_REPORT_KEY);
+            if (pendingType) {
+                 if (isLocked) {
+                     // If locked, update status and retry
+                     const syncStatus = document.getElementById('bannedSyncingStatus');
+                     const errorStatus = document.getElementById('bannedErrorStatus');
+                     if (syncStatus) syncStatus.style.display = 'block';
+                     if (errorStatus) errorStatus.style.display = 'none';
+                     reportCheatToServer('banned_retry');
+                 } else {
+                     reportCheatToServer(pendingType);
+                 }
+            }
+        }, 5000);
 
         if (existingData.banned) {
             showBannedScreen(existingData.strikes, 'Akun Anda telah dikunci karena pelanggaran berulang.');
