@@ -1093,6 +1093,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             isOnline: navigator.onLine,
             syncStatus: '',
             pendingCount: 0,
+            consecutiveFailures: 0,
 
             parseMatching() {
                 this.questions.forEach(q => {
@@ -1170,6 +1171,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 // ═══ OFFLINE MODE: Event Listeners ═══
                 window.addEventListener('online', () => {
                     this.isOnline = true;
+                    this.consecutiveFailures = 0;
                     console.log('Back online - syncing pending answers...');
                     this.syncPendingAnswers();
                 });
@@ -1436,6 +1438,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     })
                     .done((res) => {
                         this.isSaving = false;
+                        this.consecutiveFailures = 0;
                         updateCsrf(res);
                         this.showSavedToast = true;
                         setTimeout(() => { this.showSavedToast = false; }, 2000);
@@ -1454,6 +1457,17 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     .fail((err) => {
                         this.isSaving = false;
                         console.error("Gagal menyimpan jawaban, akan dicoba lagi saat online", err);
+
+                        // Detect network errors (DNS failure, connection refused, etc.)
+                        // readyState 0 = request never sent, status 0 = no response received
+                        if (err.readyState === 0 || err.status === 0) {
+                            this.consecutiveFailures++;
+                            if (this.consecutiveFailures >= 2) {
+                                this.isOnline = false;
+                                this.syncStatus = 'offline';
+                                console.log('Network unreachable - switched to offline mode');
+                            }
+                        }
 
                         if (err.status === 401 || err.status === 403) {
                             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
@@ -1579,6 +1593,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 this.updatePendingCount();
 
                 if (successCount > 0) {
+                    this.isOnline = true;
+                    this.consecutiveFailures = 0;
                     this.syncStatus = 'synced';
                     setTimeout(() => {
                         this.syncStatus = this.pendingCount > 0 ? 'offline' : '';
