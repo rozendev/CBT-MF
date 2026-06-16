@@ -1922,7 +1922,19 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 processData: false,
                 contentType: false,
                 dataType: 'json'
-            }).done((res) => { updateCsrf(res); }).fail(() => {});
+            }).done((res) => {
+                updateCsrf(res);
+                // If server says lock, trigger ban on client too
+                if (res.action === 'lock') {
+                    const strikeData = loadStrikeData();
+                    if (!strikeData.banned) {
+                        strikeData.banned = true;
+                        strikeData.strikes = Math.max(strikeData.strikes, AC_CONFIG.max_strikes);
+                        saveStrikeData(strikeData);
+                    }
+                    showBannedScreen(strikeData.strikes, res.message || 'Ujian dikunci oleh server.');
+                }
+            }).fail(() => {});
         }
 
         function clearSuspend() {
@@ -2018,13 +2030,24 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
             Swal.fire({
                 title: 'Ujian Dikunci',
-                html: reason + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Hubungi <strong>pengawas ujian</strong> untuk membuka kunci atau mereset ujian Anda.',
+                html: reason + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Hubungi <strong>pengawas ujian</strong> untuk membuka kunci atau mereset ujian Anda.',
                 icon: 'error',
                 allowOutsideClick: false,
                 allowEscapeKey: false,
                 confirmButtonText: 'OK'
             }).then(() => {
-                window.location.href = API + '/student/dashboard';
+                // Logout first, then redirect to login page
+                const fd = buildFormData({});
+                $.ajax({
+                    url: API + '/logout',
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    complete: () => {
+                        window.location.href = API + '/login';
+                    }
+                });
             });
         }
 
