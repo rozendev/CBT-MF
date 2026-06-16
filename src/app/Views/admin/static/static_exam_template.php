@@ -979,6 +979,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     studentName: STUDENT_NAME,
                     beginTimeMs: res.test.begin_time_ms,
                     timeOffset: timeOffset,
+                    antiCheat: res.anti_cheat || null,
                 };
 
                 document.dispatchEvent(new CustomEvent('exam-data-loaded'));
@@ -1149,6 +1150,30 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     this.parseMatching();
 
                     this.initWebSocket();
+
+                    // ═══ ANTI-CHEAT: Server-authoritative sync ═══
+                    // When online, server is the source of truth for strike count.
+                    // If admin reset/unbanned, server strikes will be lower than LocalStorage.
+                    try {
+                        const acKey = `exam_anticheat_${EXAM_CONFIG.testId}`;
+                        const localAC = JSON.parse(localStorage.getItem(acKey) || '{"strikes":0,"banned":false}');
+                        const serverStrikes = (data.antiCheat && data.antiCheat.current_strikes !== undefined)
+                            ? data.antiCheat.current_strikes : null;
+                        const serverMaxStrikes = (data.antiCheat && data.antiCheat.max_strikes) || EXAM_CONFIG.antiCheat.max_strikes;
+
+                        if (serverStrikes !== null) {
+                            if (serverStrikes < localAC.strikes || (serverStrikes < serverMaxStrikes && localAC.banned)) {
+                                // Admin reset or reduced strikes — sync LocalStorage
+                                const newData = {
+                                    strikes: serverStrikes,
+                                    banned: serverStrikes >= serverMaxStrikes,
+                                    syncedAt: Date.now()
+                                };
+                                localStorage.setItem(acKey, JSON.stringify(newData));
+                                console.log(`Anti-cheat synced from server: ${serverStrikes}/${serverMaxStrikes} strikes`);
+                            }
+                        }
+                    } catch(e) {}
 
                     // Check for pending answers after ATTEMPT_ID is set
                     this.updatePendingCount();
