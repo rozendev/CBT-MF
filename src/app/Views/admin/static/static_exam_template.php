@@ -922,6 +922,64 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
     }
 
+    const FETCH_TIMEOUT_MS = 15000;
+    const FETCH_MAX_RETRIES = 3;
+    const PING_TIMEOUT_MS = 5000;
+    const PING_URL = API + '/health';
+
+    function redirectReplace(url) {
+        window.location.replace(url);
+    }
+
+    async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+        return fetch(url, {
+            ...options,
+            credentials: 'same-origin',
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+    }
+
+    async function fetchWithRetry(url, options = {}, maxRetries = FETCH_MAX_RETRIES, timeoutMs = FETCH_TIMEOUT_MS) {
+        let lastError;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                const res = await fetchWithTimeout(url, options, timeoutMs);
+                if (res.ok) return res;
+                lastError = new Error('HTTP ' + res.status);
+            } catch (err) {
+                lastError = err;
+            }
+            if (attempt < maxRetries) {
+                await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            }
+        }
+        throw lastError;
+    }
+
+    async function pingServer() {
+        const res = await fetchWithTimeout(PING_URL, { method: 'GET', cache: 'no-store' }, PING_TIMEOUT_MS);
+        return res.ok;
+    }
+
+    async function ensureOnline() {
+        if (!navigator.onLine) return false;
+        try {
+            return await pingServer();
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function logoutAndRedirect(loginUrl) {
+        try {
+            const fd = buildFormData({});
+            await fetchWithRetry(API + '/logout', { method: 'POST', body: fd });
+        } catch (e) {
+            console.warn('Logout request failed, redirecting anyway:', e);
+        }
+        redirectReplace(loginUrl);
+    }
+
     // ═══ INIT FLOW ═══
     async function initExam() {
         const loading = document.getElementById('loadingScreen');
@@ -947,6 +1005,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
             if (res.status === 'error') {
                 loading.style.display = 'none';
+                if (res.action === 'logout') {
+                    await logoutAndRedirect(API + '/login');
+                    return;
+                }
                 Swal.fire('Error', res.message || 'Terjadi kesalahan saat memuat ujian.', 'error');
                 return;
             }
@@ -1005,6 +1067,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     beginTimeMs: res.test.begin_time_ms,
                     timeOffset: timeOffset,
                     antiCheat: res.anti_cheat || null,
+                    user: res.user || null,
                 };
 
                 document.dispatchEvent(new CustomEvent('exam-data-loaded'));
@@ -1069,7 +1132,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 ATTEMPT_ID = sessionStorage.getItem(`exam_attempt_${EXAM_CONFIG.testId}`) || null;
                 STUDENT_NAME = sessionStorage.getItem(`exam_student_${EXAM_CONFIG.testId}`) || '';
 
-                window.__ExamData = {
+                window.__examData = {
                     questions: mergedQuestions,
                     answers: mergedAnswers,
                     attemptId: ATTEMPT_ID,
@@ -1177,37 +1240,16 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     this.initWebSocket();
 
                     // ═══ ANTI-CHEAT: Server-authoritative sync ═══
-                    // When online, server is the source of truth for strike count.
-                    // If admin reset/unbanned, server strikes will be lower than LocalStorage.
-                    try {
-                        const acKey = `exam_anticheat_${EXAM_CONFIG.testId}`;
-                        const localAC = JSON.parse(localStorage.getItem(acKey) || '{"strikes":0,"banned":false}');
-                        const serverStrikes = (data.antiCheat && data.antiCheat.current_strikes !== undefined)
-                            ? data.antiCheat.current_strikes : null;
-                        const serverMaxStrikes = (data.antiCheat && data.antiCheat.max_strikes) || EXAM_CONFIG.antiCheat.max_strikes;
-
-                        if (serverStrikes !== null) {
-                            if (serverStrikes < localAC.strikes || (serverStrikes < serverMaxStrikes && localAC.banned)) {
-                                // Admin reset or reduced strikes — sync LocalStorage
-                                const newData = {
-                                    strikes: serverStrikes,
-                                    banned: serverStrikes >= serverMaxStrikes,
-                                    syncedAt: Date.now()
-                                };
-                                localStorage.setItem(acKey, JSON.stringify(newData));
-                                console.log(`Anti-cheat synced from server: ${serverStrikes}/${serverMaxStrikes} strikes`);
-                            }
+                    if (window.__antiCheat) {
+                        const syncResult = window.__antiCheat.syncFromServer(data.antiCheat, data.user);
+                        if (syncResult.cleared) {
+                            window.__antiCheat.restoreExamAfterUnban();
+                        } else if (syncResult.data && syncResult.data.banned) {
+                            window.__antiCheat.showBannedScreen(syncResult.data.strikes, 'Ujian Anda dikunci oleh server.');
+                            return;
                         }
-
-                        // After sync, check if still banned — block immediately
-                        if (window.__antiCheat) {
-                            const syncedData = window.__antiCheat.loadStrikeData();
-                            if (syncedData.banned) {
-                                window.__antiCheat.showBannedScreen(syncedData.strikes, 'Ujian Anda dikunci oleh server.');
-                                return;
-                            }
-                        }
-                    } catch(e) {}
+                        window.__antiCheat.handleSuspendBypassOnLoad();
+                    }
 
                     // Check for pending answers after ATTEMPT_ID is set
                     this.updatePendingCount();
@@ -1252,10 +1294,18 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 });
 
                 // ═══ OFFLINE MODE: Event Listeners ═══
-                window.addEventListener('online', () => {
+                window.addEventListener('online', async () => {
+                    const ready = await ensureOnline();
+                    if (!ready) return;
+
                     this.isOnline = true;
                     this.consecutiveFailures = 0;
-                    console.log('Back online - syncing pending answers...');
+                    console.log('Back online - validating status and syncing...');
+
+                    if (window.__antiCheat) {
+                        await window.__antiCheat.revalidateFromServer();
+                    }
+
                     this.syncPendingAnswers();
                 });
 
@@ -1343,12 +1393,12 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     if (eventName === 'ban') {
                         this.ws.close();
                         Swal.fire({ title:'Akun Di-Ban', text:d.message, icon:'error', allowOutsideClick:false, allowEscapeKey:false, confirmButtonText:'OK' })
-                            .then(() => { window.location.href = API + '/login'; });
+                            .then(() => logoutAndRedirect(API + '/login'));
                     }
                     else if (eventName === 'kick') {
                         this.ws.close();
                         Swal.fire('Sesi Dihentikan', d.message, 'error')
-                            .then(() => { window.location.href = API + '/login'; });
+                            .then(() => logoutAndRedirect(API + '/login'));
                     }
                     else if (eventName === 'finished') {
                         this.ws.close();
@@ -1554,7 +1604,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         if (res.status === 'kicked') {
                             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
                             Swal.fire('Informasi', res.message, 'info').then(() => {
-                                window.location.href = API + '/login';
+                                redirectReplace(API + '/login');
                             });
                         }
                     })
@@ -1576,7 +1626,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         if (err.status === 401 || err.status === 403) {
                             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
                             Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                window.location.href = API + '/login';
+                                redirectReplace(API + '/login');
                             });
                         }
                         // Otherwise, answer is already in LocalStorage, will sync later
@@ -1685,7 +1735,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         if (err.message === 'kicked' || err.message === 'auth') {
                             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
                             Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                window.location.href = API + '/login';
+                                redirectReplace(API + '/login');
                             });
                             return;
                         }
@@ -1817,7 +1867,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             },
 
             async submitFinish() {
-                // Check if banned due to anti-cheat violations
+                if (await ensureOnline() && window.__antiCheat) {
+                    await window.__antiCheat.revalidateFromServer();
+                }
+
+                // Check if banned due to anti-cheat violations (cache only — server validated above when online)
                 try {
                     const acData = JSON.parse(localStorage.getItem(`exam_anticheat_${EXAM_CONFIG.testId}`) || '{"banned":false}');
                     if (acData.banned) {
@@ -1934,72 +1988,108 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
             if (data.strikes >= AC_CONFIG.max_strikes) {
                 data.banned = true;
+                data.cheat_flag_at = Date.now();
             }
             saveStrikeData(data);
             return data;
         }
 
-        function reportCheatToServer(type) {
-            if (!ATTEMPT_ID) return;
-            if (isSyncingBanned) return;
-            
-            if (isLocked) isSyncingBanned = true;
+        function syncFromServer(serverAntiCheat, serverUser) {
+            const localData = loadStrikeData();
+            const serverStrikes = serverAntiCheat && serverAntiCheat.current_strikes !== undefined
+                ? serverAntiCheat.current_strikes : null;
+            const serverMax = (serverAntiCheat && serverAntiCheat.max_strikes) || AC_CONFIG.max_strikes;
+            const unbannedAtMs = (serverAntiCheat && serverAntiCheat.unbanned_at_ms)
+                || (serverUser && serverUser.unbanned_at_ms)
+                || 0;
+            const cheatFlagAt = localData.cheat_flag_at || 0;
 
-            const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
-            $.ajax({
-                url: API + '/api/exam/report-cheat',
-                type: 'POST',
-                data: fd,
-                processData: false,
-                contentType: false,
-                dataType: 'json'
-            }).done((res) => {
-                isSyncingBanned = false;
-                updateCsrf(res);
+            if (unbannedAtMs > 0 && unbannedAtMs > cheatFlagAt) {
+                localData.strikes = serverStrikes !== null ? serverStrikes : 0;
+                localData.banned = false;
+                delete localData.cheat_flag_at;
+                localData.syncedAt = Date.now();
+                saveStrikeData(localData);
+                localStorage.removeItem(SUSPEND_KEY);
                 localStorage.removeItem(PENDING_REPORT_KEY);
+                isLocked = false;
+                console.log('Cheat flag cleared — admin unbanned after local flag');
+                return { cleared: true, data: localData };
+            }
 
-                // Sync LocalStorage counter with server's authoritative count
-                if (res.current_strikes !== undefined) {
-                    const localData = loadStrikeData();
-                    const serverStrikes = res.current_strikes;
-                    const serverMax = res.max_strikes || AC_CONFIG.max_strikes;
-
-                    // Server is source of truth — update LocalStorage to match
+            if (serverStrikes !== null) {
+                if (serverStrikes < localData.strikes || (serverStrikes < serverMax && localData.banned)) {
                     localData.strikes = serverStrikes;
                     localData.banned = serverStrikes >= serverMax;
-                    localData.serverSyncedAt = Date.now();
+                    if (!localData.banned) delete localData.cheat_flag_at;
+                    localData.syncedAt = Date.now();
+                    saveStrikeData(localData);
+                    console.log(`Anti-cheat synced from server: ${serverStrikes}/${serverMax} strikes`);
+                } else if (serverStrikes >= serverMax) {
+                    localData.strikes = serverStrikes;
+                    localData.banned = true;
+                    if (!localData.cheat_flag_at) localData.cheat_flag_at = Date.now();
                     saveStrikeData(localData);
                 }
+            }
 
-                // If server says lock, trigger ban on client too
-                if (res.action === 'lock') {
-                    const strikeData = loadStrikeData();
-                    // If we are already in the persistent overlay, finalized it with a redirect
-                    if (isLocked) {
-                        finalizeBan(strikeData.strikes, res.message || 'Ujian dikunci oleh server.');
-                    } else {
-                        showBannedScreen(strikeData.strikes, res.message || 'Ujian dikunci oleh server.');
-                    }
-                }
-            }).fail(() => {
+            return { cleared: false, data: loadStrikeData() };
+        }
+
+        function restoreExamAfterUnban() {
+            isLocked = false;
+            const bannedOverlay = document.getElementById('bannedOverlay');
+            if (bannedOverlay) bannedOverlay.style.display = 'none';
+            const examContent = document.getElementById('examContent');
+            if (examContent) examContent.style.display = 'block';
+        }
+
+        async function reportCheatToServer(type) {
+            if (!ATTEMPT_ID) return;
+            if (isSyncingBanned) return;
+
+            if (isLocked) isSyncingBanned = true;
+
+            try {
+                const online = await ensureOnline();
+                if (!online) throw new Error('offline');
+
+                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
+                const res = await fetchWithRetry(API + '/api/exam/report-cheat', { method: 'POST', body: fd });
+                const data = await res.json();
+
                 isSyncingBanned = false;
-                // If offline, save for later retry
+                updateCsrf(data);
+                localStorage.removeItem(PENDING_REPORT_KEY);
+
+                if (data.current_strikes !== undefined) {
+                    syncFromServer({
+                        current_strikes: data.current_strikes,
+                        max_strikes: data.max_strikes || AC_CONFIG.max_strikes,
+                    }, null);
+                }
+
+                if (data.action === 'lock') {
+                    const strikeData = loadStrikeData();
+                    await finalizeBan(strikeData.strikes, data.message || 'Ujian dikunci oleh server.');
+                }
+            } catch (err) {
+                isSyncingBanned = false;
                 if (type !== 'banned_retry') {
                     localStorage.setItem(PENDING_REPORT_KEY, type);
                 }
-                
-                // If we are in banned state, update overlay to show error
+
                 if (isLocked) {
                     const syncStatus = document.getElementById('bannedSyncingStatus');
                     const errorStatus = document.getElementById('bannedErrorStatus');
                     if (syncStatus) syncStatus.style.display = 'none';
                     if (errorStatus) errorStatus.style.display = 'block';
                 }
-            });
+            }
         }
 
-        function finalizeBan(strikes, reason) {
-            Swal.fire({
+        async function finalizeBan(strikes, reason) {
+            await Swal.fire({
                 title: 'Ujian Dikunci Permanen',
                 html: reason + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
                 icon: 'error',
@@ -2008,19 +2098,35 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 showConfirmButton: false,
                 timer: 5000,
                 timerProgressBar: true
-            }).then(() => {
-                const fd = buildFormData({});
-                $.ajax({
-                    url: API + '/logout',
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    complete: () => {
-                        window.location.href = API + '/login';
-                    }
-                });
             });
+            await logoutAndRedirect(API + '/login');
+        }
+
+        async function revalidateFromServer() {
+            if (!await ensureOnline()) return;
+
+            try {
+                const fd = buildFormData({ test_id: EXAM_CONFIG.testId });
+                const res = await fetchWithRetry(API + '/api/exam/init', { method: 'POST', body: fd });
+                const data = await res.json();
+                updateCsrf(data);
+
+                if (data.action === 'logout' || (data.user && data.user.is_active === false)) {
+                    await logoutAndRedirect(API + '/login');
+                    return;
+                }
+
+                if (data.status === 'success') {
+                    const syncResult = syncFromServer(data.anti_cheat, data.user);
+                    if (syncResult.cleared) {
+                        restoreExamAfterUnban();
+                    } else if (syncResult.data && syncResult.data.banned && !isLocked) {
+                        showBannedScreen(syncResult.data.strikes, 'Ujian Anda dikunci oleh server.');
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to revalidate status from server:', e);
+            }
         }
 
         function clearSuspend() {
@@ -2089,21 +2195,49 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             suspendWithPersistence(strikeData, type);
         }
 
+        function handleSuspendBypassOnLoad() {
+            let activeSuspend = null;
+            try {
+                activeSuspend = JSON.parse(localStorage.getItem(SUSPEND_KEY) || 'null');
+            } catch(e) {}
+
+            if (!activeSuspend || !activeSuspend.active || isLocked) return;
+
+            const newStrikeData = addStrike('suspend_bypass');
+            reportCheatToServer('suspend_bypass');
+
+            if (newStrikeData.banned) {
+                showBannedScreen(newStrikeData.strikes, 'Anda mencoba melewati hukuman suspend.');
+                return;
+            }
+
+            const fullDuration = AC_CONFIG.suspend_timer || 30;
+            try {
+                localStorage.setItem(SUSPEND_KEY, JSON.stringify({
+                    active: true,
+                    startedAt: Date.now(),
+                    duration: fullDuration,
+                    type: 'suspend_bypass'
+                }));
+            } catch(e) {}
+
+            setTimeout(function() {
+                startSuspendOverlay(newStrikeData, fullDuration);
+            }, 300);
+        }
+
         // ── Expose functions for server-authoritative sync ──
         window.__antiCheat = {
             showBannedScreen: showBannedScreen,
             loadStrikeData: loadStrikeData,
             addStrike: addStrike,
             reportCheatToServer: reportCheatToServer,
+            syncFromServer: syncFromServer,
+            revalidateFromServer: revalidateFromServer,
+            restoreExamAfterUnban: restoreExamAfterUnban,
+            handleSuspendBypassOnLoad: handleSuspendBypassOnLoad,
             maxStrikes: AC_CONFIG.max_strikes,
         };
-
-        // ── Check for active suspend on page load (bypass detection) ──
-        const existingData = loadStrikeData();
-        let activeSuspend = null;
-        try {
-            activeSuspend = JSON.parse(localStorage.getItem(SUSPEND_KEY) || 'null');
-        } catch(e) {}
 
         function showBannedScreen(strikes, reason) {
             isLocked = true;
@@ -2134,48 +2268,33 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
 
         // ── Retry loop for pending reports (Background Sync) ──
-        setInterval(() => {
+        setInterval(async () => {
             const pendingType = localStorage.getItem(PENDING_REPORT_KEY);
-            if (pendingType) {
-                 if (isLocked) {
-                     // If locked, update status and retry
-                     const syncStatus = document.getElementById('bannedSyncingStatus');
-                     const errorStatus = document.getElementById('bannedErrorStatus');
-                     if (syncStatus) syncStatus.style.display = 'block';
-                     if (errorStatus) errorStatus.style.display = 'none';
-                     reportCheatToServer('banned_retry');
-                 } else {
-                     reportCheatToServer(pendingType);
-                 }
+            if (!pendingType) return;
+
+            if (!(await ensureOnline())) return;
+
+            if (isLocked) {
+                const syncStatus = document.getElementById('bannedSyncingStatus');
+                const errorStatus = document.getElementById('bannedErrorStatus');
+                if (syncStatus) syncStatus.style.display = 'block';
+                if (errorStatus) errorStatus.style.display = 'none';
+                reportCheatToServer('banned_retry');
+            } else {
+                reportCheatToServer(pendingType);
             }
         }, 5000);
 
-        if (existingData.banned) {
-            showBannedScreen(existingData.strikes, 'Akun Anda telah dikunci karena pelanggaran berulang.');
-        } else if (activeSuspend && activeSuspend.active) {
-            // Student tried to bypass the overlay (refresh/back) — penalize
-            const newStrikeData = addStrike('suspend_bypass');
-            reportCheatToServer('suspend_bypass');
-
-            if (newStrikeData.banned) {
-                showBannedScreen(newStrikeData.strikes, 'Anda mencoba melewati hukuman suspend.');
-            } else {
-                // Reset timer to full duration as punishment
-                const fullDuration = AC_CONFIG.suspend_timer || 30;
-                try {
-                    localStorage.setItem(SUSPEND_KEY, JSON.stringify({
-                        active: true,
-                        startedAt: Date.now(),
-                        duration: fullDuration,
-                        type: 'suspend_bypass'
-                    }));
-                } catch(e) {}
-
-                setTimeout(function() {
-                    startSuspendOverlay(newStrikeData, fullDuration);
-                }, 300);
+        // Offline-only: apply cached ban when server validation is unavailable
+        document.addEventListener('exam-data-loaded', () => {
+            if (window.__examData && window.__examData.user) return;
+            const offlineData = loadStrikeData();
+            if (offlineData.banned) {
+                showBannedScreen(offlineData.strikes, 'Akun Anda telah dikunci karena pelanggaran berulang.');
+                return;
             }
-        }
+            handleSuspendBypassOnLoad();
+        }, { once: true });
 
         // ── Tab Switch Detection ──
         document.addEventListener('visibilitychange', function() {

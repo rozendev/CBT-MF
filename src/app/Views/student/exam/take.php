@@ -795,6 +795,67 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             }
         });
 
+        const FETCH_TIMEOUT_MS = 15000;
+        const FETCH_MAX_RETRIES = 3;
+        const PING_TIMEOUT_MS = 5000;
+        const PING_URL = '<?= base_url('/health') ?>';
+        const LOGIN_URL = '<?= base_url('/login') ?>';
+
+        function redirectReplace(url) {
+            window.location.replace(url);
+        }
+
+        async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+            return fetch(url, {
+                ...options,
+                credentials: 'same-origin',
+                signal: AbortSignal.timeout(timeoutMs),
+            });
+        }
+
+        async function fetchWithRetry(url, options = {}, maxRetries = FETCH_MAX_RETRIES, timeoutMs = FETCH_TIMEOUT_MS) {
+            let lastError;
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                try {
+                    const res = await fetchWithTimeout(url, options, timeoutMs);
+                    if (res.ok) return res;
+                    lastError = new Error('HTTP ' + res.status);
+                } catch (err) {
+                    lastError = err;
+                }
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                }
+            }
+            throw lastError;
+        }
+
+        async function pingServer() {
+            const res = await fetchWithTimeout(PING_URL, { method: 'GET', cache: 'no-store' }, PING_TIMEOUT_MS);
+            return res.ok;
+        }
+
+        async function ensureOnline() {
+            if (!navigator.onLine) return false;
+            try {
+                return await pingServer();
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function logoutAndRedirect(loginUrl) {
+            try {
+                await fetchWithRetry('<?= base_url('/logout') ?>', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': '<?= csrf_hash() ?>' },
+                });
+            } catch (e) {
+                console.warn('Logout request failed, redirecting anyway:', e);
+            }
+            redirectReplace(loginUrl);
+        }
+
         // Automatically update CSRF token on every AJAX response
         $(document).ajaxComplete(function(event, xhr, settings) {
             const csrfHeader = xhr.getResponseHeader('X-CSRF-TOKEN');
@@ -879,7 +940,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     }, 60000);
 
                     // ═══ OFFLINE MODE: Event Listeners ═══
-                    window.addEventListener('online', () => {
+                    window.addEventListener('online', async () => {
+                        const ready = await ensureOnline();
+                        if (!ready) return;
                         this.isOnline = true;
                         console.log('Back online - syncing pending answers...');
                         this.syncPendingAnswers();
@@ -971,15 +1034,11 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                                 allowOutsideClick: false,
                                 allowEscapeKey: false,
                                 confirmButtonText: 'OK'
-                            }).then(() => {
-                                window.location.href = '<?= base_url('/login') ?>';
-                            });
+                            }).then(() => logoutAndRedirect(LOGIN_URL));
                         } 
                         else if (eventName === 'kick') {
                             this.ws.close();
-                            Swal.fire('Sesi Dihentikan', data.message, 'error').then(() => {
-                                window.location.href = '<?= base_url('/login') ?>';
-                            });
+                            Swal.fire('Sesi Dihentikan', data.message, 'error').then(() => logoutAndRedirect(LOGIN_URL));
                         }
                         else if (eventName === 'finished') {
                             this.ws.close();
@@ -1129,7 +1188,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                              if (res.status === 'kicked') {
                                  if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                                  Swal.fire('Informasi', res.message, 'info').then(() => {
-                                     window.location.href = '<?= base_url('/login') ?>';
+                                     redirectReplace(LOGIN_URL);
                                  });
                              }
                          })
@@ -1141,7 +1200,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                              if (err.status === 401 || err.status === 403) {
                                  if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                                  Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                     window.location.href = '<?= base_url('/login') ?>';
+                                     redirectReplace(LOGIN_URL);
                                  });
                              }
                              // Otherwise, answer is already in LocalStorage, will sync later
@@ -1253,10 +1312,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                             });
                         } catch (err) {
                             if (err.message === 'kicked' || err.message === 'auth') {
-                                // Auth error - stop syncing and redirect
                                 if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                                 Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                    window.location.href = '<?= base_url('/login') ?>';
+                                    redirectReplace(LOGIN_URL);
                                 });
                                 return;
                             }
@@ -1451,8 +1509,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             document.addEventListener('visibilitychange', function() {
                 if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
                 <?php if (!$isAntiCheatEnabled): ?>return;<?php endif; ?>
-                
-                isLocked = true;
 
                 $.ajax({
                     url: REPORT_CHEAT_URL,
@@ -1460,20 +1516,27 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     data: { attempt_id: ATTEMPT_ID, type: 'tab_switch' },
                     dataType: 'json',
                     success: function(res) {
+                        if (res.action !== 'lock' && res.status !== 'success' && res.status !== 'suspended') return;
+
+                        isLocked = true;
                         if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+
                         if (res.status === 'success') {
                             Swal.fire('Peringatan', res.message || 'Anda terdeteksi membuka tab lain. Ujian dikunci.', 'warning').then(() => {
-                                window.location.href = DASHBOARD_URL;
+                                redirectReplace(DASHBOARD_URL);
                             });
                         } else if (res.status === 'suspended') {
                             Swal.fire('Dihentikan', 'Sesi Anda telah dihentikan oleh Admin.', 'error').then(() => {
-                                window.location.href = DASHBOARD_URL;
+                                redirectReplace(DASHBOARD_URL);
                             });
+                        } else if (res.action === 'lock') {
+                            logoutAndRedirect(LOGIN_URL);
                         }
                     },
                     error: function() {
+                        isLocked = true;
                         Swal.fire('Error', 'Kecurangan terdeteksi. Ujian dikunci.', 'error').then(() => {
-                            window.location.href = DASHBOARD_URL;
+                            redirectReplace(DASHBOARD_URL);
                         });
                     }
                 });
@@ -1505,9 +1568,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     success: function(res) {
                         if (res.action === 'lock') {
                             isLocked = true;
-                            Swal.fire('Informasi', res.message, 'info').then(() => {
-                                window.location.href = '<?= base_url('/login') ?>';
-                            });
+                            logoutAndRedirect(LOGIN_URL);
                         } else if (res.action === 'suspend') {
                             document.getElementById('strikeCount').innerText = res.strike;
                             var sec = parseInt(res.timer);

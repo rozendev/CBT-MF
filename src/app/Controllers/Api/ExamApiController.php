@@ -170,6 +170,18 @@ class ExamApiController extends BaseController
 
         // Load anti-cheat settings
         $settingModel = new \App\Models\SettingModel();
+        $userModel = new \App\Models\UserModel();
+        $user = $userModel->find($userId);
+
+        if (!$user || !(int)$user->is_active) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'status' => 'error',
+                'message' => 'Akun tidak aktif. Silakan hubungi pengawas ujian.',
+                'action' => 'logout',
+            ]);
+        }
+
+        $unbannedAtMs = !empty($user->unbanned_at) ? strtotime($user->unbanned_at) * 1000 : null;
 
         return $this->response->setJSON([
             'status' => 'success',
@@ -179,6 +191,9 @@ class ExamApiController extends BaseController
                 'username' => session('username'),
                 'firstname' => session('firstname'),
                 'lastname' => session('lastname'),
+                'is_active' => (bool)$user->is_active,
+                'unbanned_at' => $user->unbanned_at,
+                'unbanned_at_ms' => $unbannedAtMs,
             ],
             'test' => [
                 'id' => (int)$test->id,
@@ -201,6 +216,7 @@ class ExamApiController extends BaseController
                 'max_strikes' => (int)$settingModel->getValue('max_cheat_strikes', 2),
                 'suspend_timer' => (int)$settingModel->getValue('suspend_timer_seconds', 30),
                 'current_strikes' => (int)($attempt->cheat_strikes ?? 0),
+                'unbanned_at_ms' => $unbannedAtMs,
                 'title' => $settingModel->getValue('anti_cheat_title', '⚠️ Peringatan Kecurangan!'),
                 'message' => $settingModel->getValue('anti_cheat_message', 'Sistem mendeteksi Anda meninggalkan halaman ujian.'),
                 'logo' => $settingModel->getValue('anti_cheat_logo', ''),

@@ -114,7 +114,14 @@ class SuspendController extends BaseController
             return redirect()->to('/admin/suspend')->with('error', 'User tidak ditemukan.');
         }
 
-        $this->userModel->update($userId, ['is_active' => 1]);
+        $this->userModel->update($userId, ['is_active' => 1, 'unbanned_at' => date('Y-m-d H:i:s')]);
+
+        // Reset cheat strikes so server state matches unban
+        $db = \Config\Database::connect();
+        $db->table('test_attempts')
+           ->where('user_id', $userId)
+           ->where('cheat_strikes >', 0)
+           ->update(['cheat_strikes' => 0]);
 
         // Clean up Redis ban keys so they don't interfere with next login
         try {
