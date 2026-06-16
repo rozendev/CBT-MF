@@ -1214,33 +1214,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     this.syncPendingAnswers();
                 }
 
-                // Periodic connectivity check — pings server to detect reconnection
-                // Browser 'online' event is unreliable for DNS/connection failures
-                this.connectivityCheck = setInterval(() => {
-                    if (this.isOnline || !ATTEMPT_ID) return;
-
-                    const fd = buildFormData({ attempt_id: ATTEMPT_ID });
-                    $.ajax({
-                        url: API + '/api/exam/auto-sync',
-                        type: 'POST',
-                        data: fd,
-                        processData: false,
-                        contentType: false,
-                        dataType: 'json',
-                        timeout: 5000,
-                        success: () => {
-                            console.log('Connectivity restored - syncing pending answers...');
-                            this.isOnline = true;
-                            this.consecutiveFailures = 0;
-                            if (this.pendingCount > 0) {
-                                this.syncPendingAnswers();
-                            } else {
-                                this.syncStatus = '';
-                            }
-                        }
-                    });
-                }, 10000);
-
                 this.syncInterval = setInterval(() => {
                     if (!ATTEMPT_ID) return;
                     const fd = buildFormData({ attempt_id: ATTEMPT_ID });
@@ -1289,6 +1262,18 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 this.ws.onopen = () => {
                     this.wsErrorCount = 0;
                     console.log('WebSocket connected');
+
+                    // Connection restored - sync pending answers
+                    if (!this.isOnline) {
+                        this.isOnline = true;
+                        this.consecutiveFailures = 0;
+                        console.log('Connection restored via WebSocket - syncing pending answers...');
+                        if (this.pendingCount > 0) {
+                            this.syncPendingAnswers();
+                        } else {
+                            this.syncStatus = '';
+                        }
+                    }
                 };
 
                 this.ws.onmessage = (e) => {
@@ -1348,6 +1333,15 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
                 this.ws.onclose = (e) => {
                     console.warn('WebSocket closed', e);
+
+                    // Mark as offline when WebSocket disconnects
+                    if (this.isOnline && !window.isSubmitting) {
+                        this.isOnline = false;
+                        this.syncStatus = 'offline';
+                        this.updatePendingCount();
+                        console.log('WebSocket disconnected - switched to offline mode');
+                    }
+
                     this.reconnectWebSocket(wsUrl);
                 };
 
