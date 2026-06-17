@@ -2188,7 +2188,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             const strikeData = addStrike(type);
 
             if (strikeData.banned) {
-                showBannedScreen(strikeData.strikes, 'Anda telah melebihi batas pelanggaran.');
+                showBannedScreen(strikeData.strikes, 'Anda telah melebihi batas pelanggaran.', type);
                 return;
             }
 
@@ -2207,7 +2207,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             reportCheatToServer('suspend_bypass');
 
             if (newStrikeData.banned) {
-                showBannedScreen(newStrikeData.strikes, 'Anda mencoba melewati hukuman suspend.');
+                showBannedScreen(newStrikeData.strikes, 'Anda mencoba melewati hukuman suspend.', 'suspend_bypass');
                 return;
             }
 
@@ -2239,7 +2239,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             maxStrikes: AC_CONFIG.max_strikes,
         };
 
-        function showBannedScreen(strikes, reason) {
+        function showBannedScreen(strikes, reason, violationType) {
             isLocked = true;
             clearSuspend();
             
@@ -2263,8 +2263,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 document.getElementById('bannedErrorStatus').style.display = 'none';
             }
 
-            // Immediately try to report (if not already reported)
-            reportCheatToServer('offline_ban_sync');
+            // Immediately try to report with the actual violation type
+            reportCheatToServer(violationType || 'tab_switch');
         }
 
         // ── Retry loop for pending reports (Background Sync) ──
@@ -2290,7 +2290,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (window.__examData && window.__examData.user) return;
             const offlineData = loadStrikeData();
             if (offlineData.banned) {
-                showBannedScreen(offlineData.strikes, 'Akun Anda telah dikunci karena pelanggaran berulang.');
+                showBannedScreen(offlineData.strikes, 'Akun Anda telah dikunci karena pelanggaran berulang.', offlineData.lastType || 'offline_ban');
                 return;
             }
             handleSuspendBypassOnLoad();
@@ -2307,8 +2307,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
             if (strikeData.banned) {
-                // Reached max strikes — lock and redirect immediately
-                showBannedScreen(strikeData.strikes, 'Anda terdeteksi membuka tab lain terlalu sering.');
+                // Reached max strikes — show persistent overlay
+                showBannedScreen(strikeData.strikes, 'Anda terdeteksi membuka tab lain terlalu sering.', 'tab_switch');
             } else {
                 // Warning only — stay in exam
                 Swal.fire({
