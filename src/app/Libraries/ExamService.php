@@ -305,6 +305,7 @@ class ExamService
 
     /**
      * Unified anti-cheat warnings, strikes logging, deactivations, and Redis ban signaling.
+     * REACTIVE APPROACH: Server only responds when client reports ban, not for warnings.
      */
     public function handleCheat(int $attemptId, int $userId, string $cheatType): array
     {
@@ -326,9 +327,19 @@ class ExamService
         }
 
         $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
-        $suspendTimer = (int) $settingModel->getValue('suspend_timer_seconds', 30);
         $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
-        
+
+        // REACTIVE: Client sudah determine ini ban, server hanya enforce
+        if ($cheatType === 'ban_report') {
+            $clientStrikes = (int)($this->request->getPost('client_strikes') ?? $maxStrikes);
+            $violationType = $this->request->getPost('violation_type') ?? 'unknown';
+            
+            // Trigger ban mechanism (sama seperti SuspendController::ban())
+            return $this->triggerBan($userId, $attemptId, $clientStrikes, $violationType, $forceLogout);
+        }
+
+        // Legacy: warning violations (should not be called in reactive approach)
+        // Kept for backward compatibility
         $currentStrikes = (int)($attempt->cheat_strikes ?? 0);
 
         // If already banned/locked, still increment to track total violations
@@ -338,14 +349,14 @@ class ExamService
                 'cheat_strikes' => $currentStrikes,
             ]);
 
-             $reason = $forceLogout
+            $reason = $forceLogout
                 ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
                 : 'melewati batas maksimal peringatan (' . $currentStrikes . '/' . $maxStrikes . ')';
 
-             $this->activityLog->log('exam_violation', $userId, 'test', $attempt->test_id,
+            $this->activityLog->log('exam_violation', $userId, 'test', $attempt->test_id,
                 "Additional violation while banned (Strike: $currentStrikes/$maxStrikes)");
 
-             return [
+            return [
                 'status' => 'success',
                 'action' => 'lock',
                 'message' => "Ujian dikunci karena Anda terdeteksi $reason.",
@@ -360,52 +371,8 @@ class ExamService
         $isBanned = ($currentStrikes >= $maxStrikes) || $forceLogout;
 
         if ($isBanned) {
-            // BAN: lock attempt and optionally deactivate account
-            $this->attemptModel->update($attemptId, [
-                'cheat_strikes' => $currentStrikes,
-                'status' => 2 // Paused — progress is saved
-            ]);
-
-            // Only deactivate account if force_logout is enabled
-            if ($forceLogout) {
-                $userModel = new \App\Models\UserModel();
-                $userModel->update($userId, ['is_active' => 0]);
-            }
-
-            // Redis: signal ban and publish kick event
-            try {
-                $redis = \App\Libraries\RedisClient::getInstance();
-                if ($redis) {
-                    $redis->setex("ban_signal:{$userId}", 120, '1');
-
-                    $reason = $forceLogout
-                        ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
-                        : 'melewati batas maksimal peringatan (' . $currentStrikes . '/' . $maxStrikes . ')';
-
-                    $redis->publish('exam_events', json_encode([
-                        'event' => 'kick',
-                        'user_id' => $userId,
-                        'message' => "Ujian dikunci karena Anda terdeteksi $reason. Akun Anda dikunci."
-                    ]));
-                }
-            } catch (\Exception $e) {
-                log_message('error', 'Redis error in handleCheat: ' . $e->getMessage());
-            }
-
-            $reason = $forceLogout
-                ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
-                : 'melewati batas maksimal peringatan (' . $currentStrikes . '/' . $maxStrikes . ')';
-
-            $this->activityLog->log('exam_locked', $userId, 'test', $attempt->test_id,
-                "BAN: Siswa $reason saat ujian (Strike: $currentStrikes/$maxStrikes)");
-
-            return [
-                'status' => 'success',
-                'action' => 'lock',
-                'message' => "Ujian dikunci karena Anda terdeteksi $reason.",
-                'current_strikes' => $currentStrikes,
-                'max_strikes' => $maxStrikes,
-            ];
+            // Trigger ban mechanism
+            return $this->triggerBan($userId, $attemptId, $currentStrikes, $cheatType, $forceLogout);
         } else {
             // WARNING: increment counter, suspend temporarily
             $this->attemptModel->update($attemptId, [
@@ -422,6 +389,8 @@ class ExamService
             $this->activityLog->log('exam_suspended', $userId, 'test', $attempt->test_id,
                 "WARNING: Siswa $label (Strike: $currentStrikes/$maxStrikes)");
 
+            $suspendTimer = (int) $settingModel->getValue('suspend_timer_seconds', 30);
+
             return [
                 'status' => 'success',
                 'action' => 'suspend',
@@ -431,5 +400,89 @@ class ExamService
                 'max_strikes' => $maxStrikes,
             ];
         }
+    }
+
+    /**
+     * Trigger ban mechanism (reuses SuspendController::ban() logic)
+     * This is called when client reports ban or when server detects ban condition
+     */
+    private function triggerBan(int $userId, int $attemptId, int $clientStrikes, string $violationType, bool $forceLogout): array
+    {
+        $db = \Config\Database::connect();
+        $userModel = new \App\Models\UserModel();
+        $maxStrikes = (int) (new \App\Models\SettingModel())->getValue('max_cheat_strikes', 2);
+        
+        $db->transStart();
+
+        // 1. Deactivate user (same as SuspendController::ban())
+        $userModel->update($userId, ['is_active' => 0]);
+
+        // 2. Lock attempt dan set cheat_strikes
+        $this->attemptModel->update($attemptId, [
+            'cheat_strikes' => $clientStrikes,
+            'status' => 2  // Paused
+        ]);
+
+        $db->transComplete();
+
+        // 3. Set Redis ban signals (same as SuspendController::ban())
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                // Signal for MultiLoginFilter
+                $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
+                
+                // Signal for SSE stream
+                $redis->setex("ban_signal:{$userId}", 120, '1');
+                
+                // Publish WebSocket event (akan trigger redirect di client)
+                $reason = $forceLogout
+                    ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
+                    : 'melewati batas maksimal peringatan (' . $clientStrikes . '/' . $maxStrikes . ')';
+                
+                $redis->publish('exam_events', json_encode([
+                    'event' => 'ban',
+                    'user_id' => $userId,
+                    'message' => "Akun Anda telah dikunci karena pelanggaran ($violationType: $clientStrikes strikes). $reason"
+                ]));
+                
+                // Scan Redis for active PHP session keys and destroy them
+                $iterator = null;
+                do {
+                    $keys = $redis->scan($iterator, 'ci_session:*', 100);
+                    if ($keys) {
+                        foreach ($keys as $key) {
+                            $data = $redis->get($key);
+                            if ($data && (strpos($data, "user_id|i:{$userId};") !== false || 
+                                          strpos($data, "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";") !== false)) {
+                                $redis->del($key);
+                            }
+                        }
+                    }
+                } while ($iterator > 0);
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error on ban: ' . $e->getMessage());
+        }
+
+        // 4. Delete CI sessions from database
+        $db->table('ci_sessions')
+           ->groupStart()
+               ->like('data', "user_id|i:{$userId};")
+               ->orLike('data', "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";")
+           ->groupEnd()
+           ->delete();
+
+        // 5. Log activity
+        $this->activityLog->log('exam_locked', $userId, 'test', $this->attemptModel->find($attemptId)->test_id,
+            "AUTO-BAN: Client reported $clientStrikes strikes (violation: $violationType)");
+
+        return [
+            'status' => 'success',
+            'action' => 'lock',
+            'message' => 'Ujian dikunci karena pelanggaran berulang.',
+            'current_strikes' => $clientStrikes,
+            'max_strikes' => $maxStrikes,
+        ];
     }
 }

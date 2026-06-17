@@ -2093,6 +2093,43 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
         }
 
+        async function reportBanToServer(clientStrikes, violationType) {
+            if (!ATTEMPT_ID) return;
+
+            try {
+                const fd = buildFormData({
+                    attempt_id: ATTEMPT_ID,
+                    type: 'ban_report',
+                    client_strikes: clientStrikes,
+                    violation_type: violationType
+                });
+
+                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
+                    method: 'POST',
+                    body: fd
+                }, 2, 5000);
+
+                const data = await res.json();
+                updateCsrf(data);
+                localStorage.removeItem(PENDING_REPORT_KEY);
+                localStorage.removeItem(PENDING_REPORT_KEY + '_type');
+                localStorage.removeItem(PENDING_REPORT_KEY + '_strikes');
+
+                // Server akan trigger ban mechanism dan kirim WebSocket event
+                // Client tidak perlu logout manual, WebSocket akan handle
+                if (data.action === 'lock') {
+                    console.log('Server confirmed ban, WebSocket will handle redirect');
+                }
+            } catch (err) {
+                // Offline: store di pending queue
+                localStorage.setItem(PENDING_REPORT_KEY, 'ban_report');
+                localStorage.setItem(PENDING_REPORT_KEY + '_strikes', clientStrikes);
+                localStorage.setItem(PENDING_REPORT_KEY + '_type', violationType);
+                
+                console.log('Failed to report ban to server, will retry via background sync');
+            }
+        }
+
         async function finalizeBan(strikes, reason) {
             await Swal.fire({
                 title: 'Ujian Dikunci Permanen',
@@ -2200,10 +2237,14 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             const strikeData = addStrike(type);
 
             if (strikeData.banned) {
+                // BANNED: report ke server untuk trigger ban mechanism
+                reportBanToServer(strikeData.strikes, type);
                 showBannedScreen(strikeData.strikes, 'Anda telah melebihi batas pelanggaran.', type);
                 return;
             }
 
+            // WARNING: handle locally, NO NETWORK CALL
+            // Server tidak perlu tahu tentang warning violations
             suspendWithPersistence(strikeData, type);
         }
 
@@ -2216,13 +2257,15 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (!activeSuspend || !activeSuspend.active || isLocked) return;
 
             const newStrikeData = addStrike('suspend_bypass');
-            reportCheatToServer('suspend_bypass');
 
             if (newStrikeData.banned) {
+                // BANNED: report ke server untuk trigger ban mechanism
+                reportBanToServer(newStrikeData.strikes, 'suspend_bypass');
                 showBannedScreen(newStrikeData.strikes, 'Anda mencoba melewati hukuman suspend.', 'suspend_bypass');
                 return;
             }
 
+            // WARNING: handle locally, NO NETWORK CALL
             const fullDuration = AC_CONFIG.suspend_timer || 30;
             try {
                 localStorage.setItem(SUSPEND_KEY, JSON.stringify({
@@ -2275,29 +2318,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 document.getElementById('bannedErrorStatus').style.display = 'none';
             }
 
-            // Try to report with 2-second timeout to wait for server response
-            const reportPromise = reportCheatToServer(violationType || 'tab_switch');
+            // TIDAK manual logout/redirect di sini
+            // WebSocket event 'ban' akan handle redirect secara otomatis
+            // setelah server trigger ban mechanism
             
-            // Wait up to 2 seconds for server response
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('timeout')), 2000)
-            );
-            
-            Promise.race([reportPromise, timeoutPromise])
-                .then(() => {
-                    // Server responded successfully (will be handled in reportCheatToServer)
-                    console.log('Server responded to ban report');
-                })
-                .catch((err) => {
-                    // Timeout or error - server didn't respond in time
-                    console.log('Server did not respond within 2 seconds, assuming offline');
-                    if (isLocked) {
-                        const syncStatus = document.getElementById('bannedSyncingStatus');
-                        const errorStatus = document.getElementById('bannedErrorStatus');
-                        if (syncStatus) syncStatus.style.display = 'none';
-                        if (errorStatus) errorStatus.style.display = 'block';
-                    }
-                });
+            console.log('Banned screen shown, waiting for WebSocket ban event...');
         }
 
         // ── Retry loop for pending reports (Background Sync) ──
@@ -2336,15 +2361,16 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (AC_CONFIG.enabled === false) return;
 
             const strikeData = addStrike('tab_switch');
-            reportCheatToServer('tab_switch');
 
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
             if (strikeData.banned) {
-                // Reached max strikes — show persistent overlay
+                // BANNED: report ke server untuk trigger ban mechanism
+                reportBanToServer(strikeData.strikes, 'tab_switch');
                 showBannedScreen(strikeData.strikes, 'Anda terdeteksi membuka tab lain terlalu sering.', 'tab_switch');
             } else {
-                // Warning only — stay in exam
+                // WARNING: show alert, NO NETWORK CALL
+                // Server tidak perlu tahu tentang warning violations
                 Swal.fire({
                     title: 'Peringatan!',
                     html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br><small class="text-muted">Jika mencapai batas maksimal, ujian akan dikunci.</small>',

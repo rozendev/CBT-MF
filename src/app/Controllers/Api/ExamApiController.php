@@ -446,6 +446,7 @@ class ExamApiController extends BaseController
     /**
      * Report cheating
      * POST /api/exam/report-cheat
+     * REACTIVE APPROACH: Server only responds when client reports ban, not for warnings.
      */
     public function reportCheat()
     {
@@ -460,10 +461,10 @@ class ExamApiController extends BaseController
         $examService = new \App\Libraries\ExamService();
         $result = $examService->handleCheat((int)$attemptId, (int)$userId, $cheatType);
 
-        if (isset($result['action']) && $result['action'] === 'lock') {
-            session()->destroy();
-        }
-
+        // TIDAK manual destroy session di sini
+        // triggerBan() sudah handle session cleanup via Redis scan + database delete
+        // WebSocket event 'ban' akan trigger redirect di client side
+        
         return $this->response->setJSON($result);
     }
 
