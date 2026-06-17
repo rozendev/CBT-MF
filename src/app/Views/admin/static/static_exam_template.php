@@ -2011,20 +2011,30 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             const serverMax = serverAntiCheat.max_strikes || AC_CONFIG.max_strikes;
             const serverBanned = serverAntiCheat.is_banned === true;
 
-            // Server is source of truth
+            // Server is source of truth, BUT with exception:
+            // If LocalStorage.banned=true but server says false, it means ban_report hasn't been sent yet
+            // Don't clear local ban state in this case, wait for ban_report to complete
+            
             if (!serverBanned) {
-                // Server says NOT banned — clear local ban state
-                if (localData.banned || localData.strikes > 0) {
+                // Server says NOT banned
+                if (localData.banned) {
+                    // Local says banned but server says not banned
+                    // This means ban_report is pending or in-flight
+                    // Don't clear, wait for ban_report to complete
+                    console.log('Server says NOT banned but local is banned — ban_report pending, not clearing');
+                    return { cleared: false, data: localData };
+                }
+                
+                // Both local and server say NOT banned
+                // Safe to sync strikes count
+                if (localData.strikes > 0) {
                     localData.strikes = serverStrikes !== null ? serverStrikes : 0;
-                    localData.banned = false;
-                    delete localData.cheat_flag_at;
                     localData.syncedAt = Date.now();
                     saveStrikeData(localData);
                     localStorage.removeItem(SUSPEND_KEY);
                     localStorage.removeItem(PENDING_REPORT_KEY);
-                    isLocked = false;
-                    console.log('Server says NOT banned — cleared local ban state');
-                    return { cleared: true, data: localData };
+                    console.log('Server says NOT banned — synced strikes count');
+                    return { cleared: false, data: localData };
                 }
             } else {
                 // Server says BANNED — update local state to match
