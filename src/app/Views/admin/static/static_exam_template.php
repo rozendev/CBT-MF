@@ -2046,19 +2046,15 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
         async function reportCheatToServer(type) {
             if (!ATTEMPT_ID) return;
-            if (isSyncingBanned) return;
-
-            if (isLocked) isSyncingBanned = true;
 
             try {
-                const online = await ensureOnline();
-                if (!online) throw new Error('offline');
-
                 const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
-                const res = await fetchWithRetry(API + '/api/exam/report-cheat', { method: 'POST', body: fd });
+                const res = await fetchWithRetry(API + '/api/exam/report-cheat', { 
+                    method: 'POST', 
+                    body: fd 
+                }, 2, 5000); // 2 retries, 5s timeout per attempt
+                
                 const data = await res.json();
-
-                isSyncingBanned = false;
                 updateCsrf(data);
                 localStorage.removeItem(PENDING_REPORT_KEY);
 
@@ -2074,11 +2070,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     await finalizeBan(strikeData.strikes, data.message || 'Ujian dikunci oleh server.');
                 }
             } catch (err) {
-                isSyncingBanned = false;
+                // Failed to send - keep in pending queue for retry
                 if (type !== 'banned_retry') {
                     localStorage.setItem(PENDING_REPORT_KEY, type);
                 }
-
+                
                 if (isLocked) {
                     const syncStatus = document.getElementById('bannedSyncingStatus');
                     const errorStatus = document.getElementById('bannedErrorStatus');
@@ -2268,11 +2264,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
 
         // ── Retry loop for pending reports (Background Sync) ──
-        setInterval(async () => {
+        setInterval(() => {
             const pendingType = localStorage.getItem(PENDING_REPORT_KEY);
             if (!pendingType) return;
-
-            if (!(await ensureOnline())) return;
 
             if (isLocked) {
                 const syncStatus = document.getElementById('bannedSyncingStatus');
