@@ -2098,6 +2098,13 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
 
         async function revalidateFromServer() {
+            // Skip if there's a pending cheat report — wait for it to be sent first
+            const pendingReport = localStorage.getItem(PENDING_REPORT_KEY);
+            if (pendingReport) {
+                console.log('Skipping revalidation — pending cheat report exists:', pendingReport);
+                return;
+            }
+
             if (!await ensureOnline()) return;
 
             try {
