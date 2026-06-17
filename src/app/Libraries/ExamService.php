@@ -331,11 +331,19 @@ class ExamService
         
         $currentStrikes = (int)($attempt->cheat_strikes ?? 0);
 
-        // If already banned/locked, just return the lock status without incrementing further
+        // If already banned/locked, still increment to track total violations
         if ($currentStrikes >= $maxStrikes || $attempt->status == 2) {
+            $currentStrikes++;
+            $this->attemptModel->update($attemptId, [
+                'cheat_strikes' => $currentStrikes,
+            ]);
+
              $reason = $forceLogout
                 ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
                 : 'melewati batas maksimal peringatan (' . $currentStrikes . '/' . $maxStrikes . ')';
+
+             $this->activityLog->log('exam_violation', $userId, 'test', $attempt->test_id,
+                "Additional violation while banned (Strike: $currentStrikes/$maxStrikes)");
 
              return [
                 'status' => 'success',

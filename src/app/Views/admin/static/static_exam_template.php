@@ -1868,6 +1868,14 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
             async submitFinish() {
                 if (await ensureOnline() && window.__antiCheat) {
+                    // Wait for pending cheat report to complete first
+                    const pendingReport = localStorage.getItem(PENDING_REPORT_KEY);
+                    if (pendingReport) {
+                        console.log('Waiting for pending cheat report to complete before submission...');
+                        const violationType = localStorage.getItem(PENDING_REPORT_KEY + '_type') || pendingReport;
+                        await window.__antiCheat.reportCheatToServer(violationType);
+                    }
+                    
                     await window.__antiCheat.revalidateFromServer();
                 }
 
@@ -2061,6 +2069,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     syncFromServer({
                         current_strikes: data.current_strikes,
                         max_strikes: data.max_strikes || AC_CONFIG.max_strikes,
+                        is_banned: data.action === 'lock' || data.current_strikes >= (data.max_strikes || AC_CONFIG.max_strikes),
                     }, null);
                 }
 
@@ -2072,6 +2081,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 // Failed to send - keep in pending queue for retry
                 if (type !== 'banned_retry') {
                     localStorage.setItem(PENDING_REPORT_KEY, type);
+                    localStorage.setItem(PENDING_REPORT_KEY + '_type', type);
                 }
                 
                 if (isLocked) {
@@ -2274,14 +2284,17 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             const pendingType = localStorage.getItem(PENDING_REPORT_KEY);
             if (!pendingType) return;
 
+            // Always send the actual violation type, not generic 'banned_retry'
+            const violationType = localStorage.getItem(PENDING_REPORT_KEY + '_type') || pendingType;
+            
             if (isLocked) {
                 const syncStatus = document.getElementById('bannedSyncingStatus');
                 const errorStatus = document.getElementById('bannedErrorStatus');
                 if (syncStatus) syncStatus.style.display = 'block';
                 if (errorStatus) errorStatus.style.display = 'none';
-                reportCheatToServer('banned_retry');
+                reportCheatToServer(violationType);
             } else {
-                reportCheatToServer(pendingType);
+                reportCheatToServer(violationType);
             }
         }, 5000);
 
