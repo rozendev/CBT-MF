@@ -2275,8 +2275,29 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 document.getElementById('bannedErrorStatus').style.display = 'none';
             }
 
-            // Immediately try to report with the actual violation type
-            reportCheatToServer(violationType || 'tab_switch');
+            // Try to report with 2-second timeout to wait for server response
+            const reportPromise = reportCheatToServer(violationType || 'tab_switch');
+            
+            // Wait up to 2 seconds for server response
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('timeout')), 2000)
+            );
+            
+            Promise.race([reportPromise, timeoutPromise])
+                .then(() => {
+                    // Server responded successfully (will be handled in reportCheatToServer)
+                    console.log('Server responded to ban report');
+                })
+                .catch((err) => {
+                    // Timeout or error - server didn't respond in time
+                    console.log('Server did not respond within 2 seconds, assuming offline');
+                    if (isLocked) {
+                        const syncStatus = document.getElementById('bannedSyncingStatus');
+                        const errorStatus = document.getElementById('bannedErrorStatus');
+                        if (syncStatus) syncStatus.style.display = 'none';
+                        if (errorStatus) errorStatus.style.display = 'block';
+                    }
+                });
         }
 
         // ── Retry loop for pending reports (Background Sync) ──
