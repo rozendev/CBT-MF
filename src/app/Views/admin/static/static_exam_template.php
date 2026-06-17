@@ -1995,45 +1995,44 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
 
         function syncFromServer(serverAntiCheat, serverUser) {
+            if (!serverAntiCheat) return { cleared: false, data: loadStrikeData() };
+
             const localData = loadStrikeData();
-            const serverStrikes = serverAntiCheat && serverAntiCheat.current_strikes !== undefined
+            const serverStrikes = serverAntiCheat.current_strikes !== undefined 
                 ? serverAntiCheat.current_strikes : null;
-            const serverMax = (serverAntiCheat && serverAntiCheat.max_strikes) || AC_CONFIG.max_strikes;
-            const unbannedAtMs = (serverAntiCheat && serverAntiCheat.unbanned_at_ms)
-                || (serverUser && serverUser.unbanned_at_ms)
-                || 0;
-            const cheatFlagAt = localData.cheat_flag_at || 0;
+            const serverMax = serverAntiCheat.max_strikes || AC_CONFIG.max_strikes;
+            const serverBanned = serverAntiCheat.is_banned === true;
 
-            if (unbannedAtMs > 0 && unbannedAtMs > cheatFlagAt) {
-                localData.strikes = serverStrikes !== null ? serverStrikes : 0;
-                localData.banned = false;
-                delete localData.cheat_flag_at;
-                localData.syncedAt = Date.now();
-                saveStrikeData(localData);
-                localStorage.removeItem(SUSPEND_KEY);
-                localStorage.removeItem(PENDING_REPORT_KEY);
-                isLocked = false;
-                console.log('Cheat flag cleared — admin unbanned after local flag');
-                return { cleared: true, data: localData };
-            }
-
-            if (serverStrikes !== null) {
-                if (serverStrikes < localData.strikes || (serverStrikes < serverMax && localData.banned)) {
-                    localData.strikes = serverStrikes;
-                    localData.banned = serverStrikes >= serverMax;
-                    if (!localData.banned) delete localData.cheat_flag_at;
+            // Server is source of truth
+            if (!serverBanned) {
+                // Server says NOT banned — clear local ban state
+                if (localData.banned || localData.strikes > 0) {
+                    localData.strikes = serverStrikes !== null ? serverStrikes : 0;
+                    localData.banned = false;
+                    delete localData.cheat_flag_at;
                     localData.syncedAt = Date.now();
                     saveStrikeData(localData);
-                    console.log(`Anti-cheat synced from server: ${serverStrikes}/${serverMax} strikes`);
-                } else if (serverStrikes >= serverMax) {
-                    localData.strikes = serverStrikes;
-                    localData.banned = true;
-                    if (!localData.cheat_flag_at) localData.cheat_flag_at = Date.now();
-                    saveStrikeData(localData);
+                    localStorage.removeItem(SUSPEND_KEY);
+                    localStorage.removeItem(PENDING_REPORT_KEY);
+                    isLocked = false;
+                    console.log('Server says NOT banned — cleared local ban state');
+                    return { cleared: true, data: localData };
+                }
+            } else {
+                // Server says BANNED — update local state to match
+                localData.strikes = serverStrikes !== null ? serverStrikes : serverMax;
+                localData.banned = true;
+                if (!localData.cheat_flag_at) localData.cheat_flag_at = Date.now();
+                localData.syncedAt = Date.now();
+                saveStrikeData(localData);
+                
+                if (!isLocked) {
+                    console.log('Server says BANNED — showing banned screen');
+                    showBannedScreen(localData.strikes, 'Ujian Anda dikunci oleh server.');
                 }
             }
 
-            return { cleared: false, data: loadStrikeData() };
+            return { cleared: false, data: localData };
         }
 
         function restoreExamAfterUnban() {

@@ -216,6 +216,7 @@ class ExamApiController extends BaseController
                 'max_strikes' => (int)$settingModel->getValue('max_cheat_strikes', 2),
                 'suspend_timer' => (int)$settingModel->getValue('suspend_timer_seconds', 30),
                 'current_strikes' => (int)($attempt->cheat_strikes ?? 0),
+                'is_banned' => (int)($attempt->cheat_strikes ?? 0) >= (int)$settingModel->getValue('max_cheat_strikes', 2),
                 'unbanned_at_ms' => $unbannedAtMs,
                 'title' => $settingModel->getValue('anti_cheat_title', '⚠️ Peringatan Kecurangan!'),
                 'message' => $settingModel->getValue('anti_cheat_message', 'Sistem mendeteksi Anda meninggalkan halaman ujian.'),
