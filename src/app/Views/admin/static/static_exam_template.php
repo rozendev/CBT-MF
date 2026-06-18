@@ -417,51 +417,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
         }
 
-        /* Offline notification banner */
-        .offline-banner {
-            position: fixed;
-            bottom: 80px;
-            left: 16px;
-            right: auto;
-            background: rgba(255, 243, 205, 0.95);
-            color: #856404;
-            border: 1px solid #ffc107;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 500;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            z-index: 1015;
-            max-width: calc(100% - 32px);
-            backdrop-filter: blur(4px);
-        }
-        .offline-banner.syncing {
-            background: rgba(209, 236, 241, 0.95);
-            color: #0c5460;
-            border-color: #17a2b8;
-        }
-        .offline-banner.synced {
-            background: rgba(212, 237, 218, 0.95);
-            color: #155724;
-            border-color: #28a745;
-        }
-        .offline-banner .close-btn {
-            background: none;
-            border: none;
-            color: inherit;
-            opacity: 0.6;
-            cursor: pointer;
-            padding: 0;
-            font-size: 16px;
-            line-height: 1;
-            margin-left: 4px;
-        }
-        .offline-banner .close-btn:hover {
-            opacity: 1;
-        }
 
         /* Image Lightbox Overlay */
         .image-lightbox {
@@ -547,31 +502,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         <p class="mb-2 text-warning">Pelanggaran: <span id="strikeCount" class="fw-bold fs-5">1</span> / <span id="maxStrikes" class="fw-bold fs-5"><?= $antiCheat['max_strikes'] ?></span></p>
     </div>
 
-    <!-- Banned Overlay (Persistent Offline Ban) -->
-    <div class="suspend-overlay" id="bannedOverlay" style="display:none; background: linear-gradient(135deg, #000 0%, #1a0000 100%); z-index: 99999;">
-        <i class="bi bi-shield-lock-fill text-danger mb-4" style="font-size: 8rem;"></i>
-        <h2 class="fw-bold text-danger mb-3">UJIAN DIKUNCI</h2>
-        <p class="fs-5 px-4 mb-4" style="max-width:600px;">
-            Sistem mendeteksi aktivitas mencurigakan atau pelanggaran aturan ujian yang berulang.<br><br>
-            <strong>Anda tidak dapat melanjutkan ujian ini.</strong>
-        </p>
-        
-        <div class="alert alert-danger mx-4 p-4 border-0 rounded-4" style="max-width:500px; background: rgba(220,53,69,0.15); color: #ff8e98;">
-            <div class="mb-2"><i class="bi bi-exclamation-triangle-fill me-2"></i> <strong>PELANGGARAN TERDETEKSI</strong></div>
-            <div class="fs-4 fw-bold mb-3"><span id="bannedStrikeCount">?</span> / <span id="bannedMaxStrikes">?</span></div>
-            <p class="small mb-0 text-white-50">Silakan hubungi pengawas ujian untuk informasi lebih lanjut.</p>
-        </div>
-
-        <div id="bannedSyncingStatus" class="mt-5 text-white-50">
-             <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-             Sinkronisasi status pemblokiran ke server...
-        </div>
-        <div id="bannedErrorStatus" class="mt-5 text-warning" style="display:none;">
-             <i class="bi bi-wifi-off me-2"></i>
-             Koneksi internet terputus. Menunggu koneksi untuk mengunci permanen...
-        </div>
-    </div>
-
     <!-- EXAM CONTENT -->
     <div id="examContent" style="display:none;" x-data="examApp()">
     <div class="exam-layout">
@@ -608,21 +538,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             <span class="spinner-border spinner-border-sm text-primary" role="status" style="width: 1rem; height: 1rem;"></span> Menyimpan...
         </div>
 
-        <!-- Offline/Sync Notification Banner -->
-        <div class="offline-banner" x-show="syncStatus === 'offline' && !bannerDismissed" x-transition.opacity.duration.300ms style="display: none;">
-            <i class="bi bi-wifi-off"></i>
-            <span>Offline. Jawaban disimpan di perangkat.</span>
-            <span x-show="pendingCount > 0" class="badge bg-warning text-dark" x-text="pendingCount + ' pending'"></span>
-            <button class="close-btn" @click="bannerDismissed = true" title="Tutup">&times;</button>
-        </div>
-        <div class="offline-banner syncing" x-show="syncStatus === 'syncing'" x-transition.opacity.duration.300ms style="display: none;">
-            <span class="spinner-border spinner-border-sm" role="status" style="width: 1rem; height: 1rem;"></span>
-            <span>Sync...</span>
-        </div>
-        <div class="offline-banner synced" x-show="syncStatus === 'synced'" x-transition.opacity.duration.300ms style="display: none;">
-            <i class="bi bi-check-circle-fill"></i>
-            <span>Tersinkronkan!</span>
-        </div>
 
         <!-- Main Content -->
         <div class="question-container">
@@ -924,8 +839,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
     const FETCH_TIMEOUT_MS = 15000;
     const FETCH_MAX_RETRIES = 3;
-    const PING_TIMEOUT_MS = 5000;
-    const PING_URL = API + '/health';
 
     function redirectReplace(url) {
         window.location.replace(url);
@@ -954,20 +867,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
         }
         throw lastError;
-    }
-
-    async function pingServer() {
-        const res = await fetchWithTimeout(PING_URL, { method: 'GET', cache: 'no-store' }, PING_TIMEOUT_MS);
-        return res.ok;
-    }
-
-    async function ensureOnline() {
-        if (!navigator.onLine) return false;
-        try {
-            return await pingServer();
-        } catch (e) {
-            return false;
-        }
     }
 
     async function logoutAndRedirect(loginUrl) {
@@ -1025,14 +924,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 START_TIME   = (res.test && res.test.started_at_ms) ? res.test.started_at_ms : Date.now();
                 const serverNow = (res.test && res.test.server_now_ms) ? res.test.server_now_ms : Date.now();
                 const timeOffset = serverNow - Date.now();
-
-                // Save to sessionStorage for offline recovery
-                try {
-                    sessionStorage.setItem(`exam_attempt_${EXAM_CONFIG.testId}`, ATTEMPT_ID);
-                    sessionStorage.setItem(`exam_student_${EXAM_CONFIG.testId}`, STUDENT_NAME);
-                } catch (e) {
-                    console.warn('Failed to save to sessionStorage:', e);
-                }
 
                 const mergedQuestions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData));
                 const mergedAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData));
@@ -1093,74 +984,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 examStarted = true;
             }
         } catch (err) {
-            // Offline fallback: if network fails, try to load from baked-in data + LocalStorage
-            if (!navigator.onLine || err.readyState === 0 || err.status === 0) {
-                console.log('Offline detected - loading from baked-in data and LocalStorage');
-
-                // Use baked-in questions and answers from EXAM_CONFIG
-                const mergedQuestions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData));
-                const mergedAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData));
-
-                // Restore answers from LocalStorage if available
-                try {
-                    const storageKey = `exam_offline_static_${EXAM_CONFIG.testId}`;
-                    const storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
-                    const pending = storage.pending || {};
-
-                    for (const [questionId, answerData] of Object.entries(pending)) {
-                        const q = mergedQuestions.find(q => q.question_id == questionId);
-                        if (!q) continue;
-
-                        if (q.question_type == 3) {
-                            q.answer_text = answerData.data.answer_text || '';
-                        } else if (q.question_type == 4 || q.question_type == 5) {
-                            q.answer_text = answerData.data.matching_answers_json || '{}';
-                        } else {
-                            const selectedIds = answerData.data.selected_answers || [];
-                            if (mergedAnswers[questionId]) {
-                                mergedAnswers[questionId].forEach(ans => {
-                                    ans.is_selected = selectedIds.includes(ans.answer_id) ? 1 : 0;
-                                });
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.error('Failed to restore from LocalStorage:', e);
-                }
-
-                // Try to restore attempt_id from session storage or use placeholder
-                ATTEMPT_ID = sessionStorage.getItem(`exam_attempt_${EXAM_CONFIG.testId}`) || null;
-                STUDENT_NAME = sessionStorage.getItem(`exam_student_${EXAM_CONFIG.testId}`) || '';
-
-                window.__examData = {
-                    questions: mergedQuestions,
-                    answers: mergedAnswers,
-                    attemptId: ATTEMPT_ID,
-                    studentName: STUDENT_NAME,
-                    beginTimeMs: Date.now(),
-                    timeOffset: 0,
-                };
-
-                document.dispatchEvent(new CustomEvent('exam-data-loaded'));
-
-                loading.style.display = 'none';
-                document.getElementById('examContent').style.display = 'block';
-                examStarted = true;
-
-                Swal.fire({
-                    title: 'Mode Offline',
-                    text: 'Anda sedang offline. Jawaban akan disimpan di perangkat dan disinkronkan saat koneksi kembali.',
-                    icon: 'info',
-                    toast: true,
-                    position: 'top',
-                    timer: 4000,
-                    showConfirmButton: false
-                });
-            } else {
-                loading.style.display = 'none';
-                const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : 'Gagal menghubungi server. Periksa koneksi Anda.';
-                Swal.fire('Error', msg, 'error');
-            }
+            loading.style.display = 'none';
+            const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : 'Gagal menghubungi server. Periksa koneksi Anda.';
+            Swal.fire('Error', msg, 'error');
         }
     }
 
@@ -1193,13 +1019,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             sseSource: null,
             sseErrorCount: 0,
             syncInterval: null,
-
-            // Offline mode properties
-            isOnline: navigator.onLine,
-            syncStatus: '',
-            pendingCount: 0,
-            consecutiveFailures: 0,
-            bannerDismissed: false,
 
             parseMatching() {
                 this.questions.forEach(q => {
@@ -1239,25 +1058,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
                     this.initWebSocket();
 
-                    // ═══ ANTI-CHEAT: Server-authoritative sync ═══
-                    if (window.__antiCheat) {
-                        const syncResult = window.__antiCheat.syncFromServer(data.antiCheat, data.user);
-                        if (syncResult.cleared) {
-                            window.__antiCheat.restoreExamAfterUnban();
-                        } else if (syncResult.data && syncResult.data.banned) {
-                            window.__antiCheat.showBannedScreen(syncResult.data.strikes, 'Ujian Anda dikunci oleh server.');
-                            return;
-                        }
-                        window.__antiCheat.handleSuspendBypassOnLoad();
-                    }
-
-                    // Check for pending answers after ATTEMPT_ID is set
-                    this.updatePendingCount();
-                    if (this.pendingCount > 0 && this.isOnline) {
-                        console.log(`Found ${this.pendingCount} pending answers after init - syncing...`);
-                        this.syncPendingAnswers();
-                    }
-
                     if (this.durationMinutes > 0) {
                         const beginTimeMs = data.beginTimeMs || Date.now();
                         const timeOffset = data.timeOffset || 0;
@@ -1292,36 +1092,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         }, 1000);
                     }
                 });
-
-                // ═══ OFFLINE MODE: Event Listeners ═══
-                window.addEventListener('online', async () => {
-                    const ready = await ensureOnline();
-                    if (!ready) return;
-
-                    this.isOnline = true;
-                    this.consecutiveFailures = 0;
-                    console.log('Back online - validating status and syncing...');
-
-                    if (window.__antiCheat) {
-                        await window.__antiCheat.revalidateFromServer();
-                    }
-
-                    this.syncPendingAnswers();
-                });
-
-                window.addEventListener('offline', () => {
-                    this.isOnline = false;
-                    this.syncStatus = 'offline';
-                    this.updatePendingCount();
-                    console.log('Went offline - answers will be saved locally');
-                });
-
-                // Check for pending answers on page load (only if ATTEMPT_ID is already set)
-                this.updatePendingCount();
-                if (this.pendingCount > 0 && this.isOnline && ATTEMPT_ID) {
-                    console.log(`Found ${this.pendingCount} pending answers - syncing...`);
-                    this.syncPendingAnswers();
-                }
 
                 this.syncInterval = setInterval(() => {
                     if (!ATTEMPT_ID) return;
@@ -1371,18 +1141,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 this.ws.onopen = () => {
                     this.wsErrorCount = 0;
                     console.log('WebSocket connected');
-
-                    // Connection restored - sync pending answers
-                    if (!this.isOnline) {
-                        this.isOnline = true;
-                        this.consecutiveFailures = 0;
-                        console.log('Connection restored via WebSocket - syncing pending answers...');
-                        if (this.pendingCount > 0) {
-                            this.syncPendingAnswers();
-                        } else {
-                            this.syncStatus = '';
-                        }
-                    }
                 };
 
                 this.ws.onmessage = (e) => {
@@ -1408,9 +1166,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     else if (eventName === 'extend_time') {
                         if (d.test_id == EXAM_CONFIG.testId) {
                             this.durationMinutes = d.duration_minutes;
-                            const data = window.__examData || {};
-                            const beginTimeMs = data.beginTimeMs || Date.now();
-                            this.endTimeMs = beginTimeMs + (this.durationMinutes * 60 * 1000);
+                            this.endTimeMs = Date.now() + (this.durationMinutes * 60 * 1000);
                             this.warningShown = false;
                             
                             Swal.fire({
@@ -1442,15 +1198,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
                 this.ws.onclose = (e) => {
                     console.warn('WebSocket closed', e);
-
-                    // Mark as offline when WebSocket disconnects
-                    if (this.isOnline && !window.isSubmitting) {
-                        this.isOnline = false;
-                        this.syncStatus = 'offline';
-                        this.updatePendingCount();
-                        console.log('WebSocket disconnected - switched to offline mode');
-                    }
-
                     this.reconnectWebSocket(wsUrl);
                 };
 
@@ -1573,196 +1320,41 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     data.selected_answers = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
                 }
 
-                // Always save to LocalStorage first
-                this.saveToLocalStorage(questionId, type, data);
-                this.updatePendingCount();
+                this.isSaving = true;
+                const fd = buildFormData(data);
 
-                // If online, send to server immediately
-                if (this.isOnline) {
-                    this.isSaving = true;
-                    const fd = buildFormData(data);
-
-                    $.ajax({
-                        url: API + '/api/exam/autosave',
-                        type: 'POST',
-                        data: fd,
-                        processData: false,
-                        contentType: false,
-                        dataType: 'json'
-                    })
-                    .done((res) => {
-                        this.isSaving = false;
-                        this.consecutiveFailures = 0;
-                        updateCsrf(res);
-                        this.showSavedToast = true;
-                        setTimeout(() => { this.showSavedToast = false; }, 2000);
-
-                        // Remove from pending queue on success
-                        this.clearPendingAnswer(questionId);
-                        this.updatePendingCount();
-
-                        if (res.status === 'kicked') {
-                            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                            Swal.fire('Informasi', res.message, 'info').then(() => {
-                                redirectReplace(API + '/login');
-                            });
-                        }
-                    })
-                    .fail((err) => {
-                        this.isSaving = false;
-                        console.error("Gagal menyimpan jawaban, akan dicoba lagi saat online", err);
-
-                        // Detect network errors (DNS failure, connection refused, etc.)
-                        // readyState 0 = request never sent, status 0 = no response received
-                        if (err.readyState === 0 || err.status === 0) {
-                            this.consecutiveFailures++;
-                            if (this.consecutiveFailures >= 2) {
-                                this.isOnline = false;
-                                this.syncStatus = 'offline';
-                                console.log('Network unreachable - switched to offline mode');
-                            }
-                        }
-
-                        if (err.status === 401 || err.status === 403) {
-                            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                            Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                redirectReplace(API + '/login');
-                            });
-                        }
-                        // Otherwise, answer is already in LocalStorage, will sync later
-                    });
-                } else {
-                    // Offline - show saved locally indicator
+                $.ajax({
+                    url: API + '/api/exam/autosave',
+                    type: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json'
+                })
+                .done((res) => {
+                    this.isSaving = false;
+                    updateCsrf(res);
                     this.showSavedToast = true;
                     setTimeout(() => { this.showSavedToast = false; }, 2000);
-                }
-            },
 
-            saveToLocalStorage(questionId, questionType, data) {
-                try {
-                    const storageKey = `exam_offline_static_${EXAM_CONFIG.testId}`;
-                    let storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
-
-                    storage.pending[questionId] = {
-                        question_type: questionType,
-                        data: data,
-                        timestamp: Date.now()
-                    };
-
-                    localStorage.setItem(storageKey, JSON.stringify(storage));
-                } catch (e) {
-                    console.error('Failed to save to LocalStorage:', e);
-                }
-            },
-
-            loadPendingAnswers() {
-                try {
-                    const storageKey = `exam_offline_static_${EXAM_CONFIG.testId}`;
-                    const storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
-                    return storage.pending || {};
-                } catch (e) {
-                    console.error('Failed to load from LocalStorage:', e);
-                    return {};
-                }
-            },
-
-            clearPendingAnswer(questionId) {
-                try {
-                    const storageKey = `exam_offline_static_${EXAM_CONFIG.testId}`;
-                    let storage = JSON.parse(localStorage.getItem(storageKey) || '{"pending":{}}');
-                    delete storage.pending[questionId];
-                    localStorage.setItem(storageKey, JSON.stringify(storage));
-                } catch (e) {
-                    console.error('Failed to clear from LocalStorage:', e);
-                }
-            },
-
-            updatePendingCount() {
-                const pending = this.loadPendingAnswers();
-                this.pendingCount = Object.keys(pending).length;
-            },
-
-            async syncPendingAnswers() {
-                const pending = this.loadPendingAnswers();
-                const pendingIds = Object.keys(pending);
-
-                if (pendingIds.length === 0) {
-                    this.syncStatus = '';
-                    return;
-                }
-
-                this.syncStatus = 'syncing';
-                this.bannerDismissed = false;
-                console.log(`Syncing ${pendingIds.length} pending answers...`);
-
-                let successCount = 0;
-                let failCount = 0;
-
-                for (const questionId of pendingIds) {
-                    const answerData = pending[questionId];
-
-                    try {
-                        await new Promise((resolve, reject) => {
-                            const fd = buildFormData(answerData.data);
-                            $.ajax({
-                                url: API + '/api/exam/autosave',
-                                type: 'POST',
-                                data: fd,
-                                processData: false,
-                                contentType: false,
-                                dataType: 'json'
-                            })
-                            .done((res) => {
-                                updateCsrf(res);
-                                if (res.status === 'kicked') {
-                                    reject(new Error('kicked'));
-                                } else {
-                                    this.clearPendingAnswer(questionId);
-                                    successCount++;
-                                    resolve();
-                                }
-                            })
-                            .fail((err) => {
-                                if (err.status === 401 || err.status === 403) {
-                                    reject(new Error('auth'));
-                                } else {
-                                    failCount++;
-                                    resolve();
-                                }
-                            });
+                    if (res.status === 'kicked') {
+                        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                        Swal.fire('Informasi', res.message, 'info').then(() => {
+                            redirectReplace(API + '/login');
                         });
-                    } catch (err) {
-                        if (err.message === 'kicked' || err.message === 'auth') {
-                            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                            Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                redirectReplace(API + '/login');
-                            });
-                            return;
-                        }
                     }
+                })
+                .fail((err) => {
+                    this.isSaving = false;
+                    console.error("Gagal menyimpan jawaban", err);
 
-                    // Small delay between requests to avoid overwhelming server
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
-
-                this.updatePendingCount();
-
-                if (successCount > 0) {
-                    this.isOnline = true;
-                    this.consecutiveFailures = 0;
-                    this.bannerDismissed = false;
-                    this.syncStatus = 'synced';
-                    setTimeout(() => {
-                        this.syncStatus = this.pendingCount > 0 ? 'offline' : '';
-                        this.bannerDismissed = false;
-                    }, 3000);
-                    console.log(`Synced ${successCount} answers successfully`);
-                }
-
-                if (failCount > 0) {
-                    console.warn(`${failCount} answers failed to sync, will retry later`);
-                    this.syncStatus = this.pendingCount > 0 ? 'offline' : '';
-                }
+                    if (err.status === 401 || err.status === 403) {
+                        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                        Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
+                            redirectReplace(API + '/login');
+                        });
+                    }
+                });
             },
 
             countAnswered() {
@@ -1867,65 +1459,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             },
 
             async submitFinish() {
-                if (await ensureOnline() && window.__antiCheat) {
-                    // Wait for pending cheat report to complete first
-                    const pendingReport = localStorage.getItem(PENDING_REPORT_KEY);
-                    if (pendingReport) {
-                        console.log('Waiting for pending cheat report to complete before submission...');
-                        const violationType = localStorage.getItem(PENDING_REPORT_KEY + '_type') || pendingReport;
-                        await window.__antiCheat.reportCheatToServer(violationType);
-                    }
-                    
-                    await window.__antiCheat.revalidateFromServer();
-                }
-
-                // Check if banned due to anti-cheat violations (cache only — server validated above when online)
-                try {
-                    const acData = JSON.parse(localStorage.getItem(`exam_anticheat_${EXAM_CONFIG.testId}`) || '{"banned":false}');
-                    if (acData.banned) {
-                        Swal.fire({
-                            title: 'Ujian Dikunci',
-                            html: 'Anda tidak dapat mengakhiri ujian karena akun Anda dikunci akibat pelanggaran (<strong>' + acData.strikes + '/' + EXAM_CONFIG.antiCheat.max_strikes + '</strong>).<br><br>Hubungi <strong>pengawas ujian</strong> untuk membuka kunci.',
-                            icon: 'error',
-                            confirmButtonText: 'OK'
-                        });
-                        return;
-                    }
-                } catch(e) {}
-
-                // If offline with pending answers, block submission
-                if (!this.isOnline && this.pendingCount > 0) {
-                    Swal.fire({
-                        title: 'Tidak Ada Koneksi',
-                        text: `Anda memiliki ${this.pendingCount} jawaban yang belum tersinkronisasi. Harap sambungkan ke internet sebelum mengakhiri ujian.`,
-                        icon: 'warning',
-                        confirmButtonText: 'OK'
-                    });
-                    return;
-                }
-
-                // Sync any remaining pending answers first
-                if (this.pendingCount > 0) {
-                    this.syncStatus = 'syncing';
-                    await this.syncPendingAnswers();
-
-                    // If still have pending after sync (failed), warn user
-                    if (this.pendingCount > 0) {
-                        const proceed = await Swal.fire({
-                            title: 'Sinkronisasi Gagal',
-                            text: `Masih ada ${this.pendingCount} jawaban yang gagal disinkronisasi. Tetap akhiri ujian?`,
-                            icon: 'warning',
-                            showCancelButton: true,
-                            confirmButtonText: 'Ya, Akhiri',
-                            cancelButtonText: 'Lanjut Mengerjakan'
-                        });
-                        if (!proceed.isConfirmed) {
-                            this.syncStatus = 'offline';
-                            return;
-                        }
-                    }
-                }
-
                 window.isSubmitting = true;
                 if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
@@ -1940,11 +1473,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     dataType: 'json'
                 })
                 .done((res) => {
-                    // Clear offline answers LocalStorage on successful finish
-                    try {
-                        localStorage.removeItem(`exam_offline_static_${EXAM_CONFIG.testId}`);
-                    } catch(e) {}
-
                     updateCsrf(res);
                     if (res.redirect) {
                         window.location.href = res.redirect;
@@ -1962,236 +1490,16 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }));
     });
 
-    // ═══ ANTI-CHEAT ENGINE (OFFLINE-FIRST) ═══
+    // ═══ ANTI-CHEAT ENGINE (SERVER-AUTHORITATIVE) ═══
     (function() {
         let isSuspended = false;
         let isLocked    = false;
-        let isSyncingBanned = false;
         let suspendTimerInterval = null;
+        let strikes = 0;
 
         const AC_CONFIG = EXAM_CONFIG.antiCheat || {};
-        const STORAGE_KEY = `exam_anticheat_${EXAM_CONFIG.testId}`;
-        const SUSPEND_KEY = `exam_suspend_${EXAM_CONFIG.testId}`;
-        const PENDING_REPORT_KEY = `exam_pending_cheat_${EXAM_CONFIG.testId}`;
-
-        function loadStrikeData() {
-            try {
-                return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{"strikes":0,"banned":false}');
-            } catch(e) {
-                return { strikes: 0, banned: false };
-            }
-        }
-
-        function saveStrikeData(data) {
-            try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-            } catch(e) {}
-        }
-
-        function addStrike(type) {
-            const data = loadStrikeData();
-            data.strikes++;
-            data.lastStrikeAt = Date.now();
-            data.lastType = type;
-
-            if (data.strikes >= AC_CONFIG.max_strikes) {
-                data.banned = true;
-                data.cheat_flag_at = Date.now();
-            }
-            saveStrikeData(data);
-            return data;
-        }
-
-        function syncFromServer(serverAntiCheat, serverUser) {
-            if (!serverAntiCheat) return { cleared: false, data: loadStrikeData() };
-
-            const localData = loadStrikeData();
-            const serverStrikes = serverAntiCheat.current_strikes !== undefined 
-                ? serverAntiCheat.current_strikes : null;
-            const serverMax = serverAntiCheat.max_strikes || AC_CONFIG.max_strikes;
-            const serverBanned = serverAntiCheat.is_banned === true;
-
-            // Server is source of truth, BUT with exception:
-            // If LocalStorage.banned=true but server says false, it means ban_report hasn't been sent yet
-            // Don't clear local ban state in this case, wait for ban_report to complete
-            
-            if (!serverBanned) {
-                // Server says NOT banned
-                if (localData.banned) {
-                    // Local says banned but server says not banned
-                    // This means ban_report is pending or in-flight
-                    // Don't clear, wait for ban_report to complete
-                    console.log('Server says NOT banned but local is banned — ban_report pending, not clearing');
-                    return { cleared: false, data: localData };
-                }
-                
-                // Both local and server say NOT banned
-                // Safe to sync strikes count
-                if (localData.strikes > 0) {
-                    localData.strikes = serverStrikes !== null ? serverStrikes : 0;
-                    localData.syncedAt = Date.now();
-                    saveStrikeData(localData);
-                    localStorage.removeItem(SUSPEND_KEY);
-                    localStorage.removeItem(PENDING_REPORT_KEY);
-                    console.log('Server says NOT banned — synced strikes count');
-                    return { cleared: false, data: localData };
-                }
-            } else {
-                // Server says BANNED — update local state to match
-                localData.strikes = serverStrikes !== null ? serverStrikes : serverMax;
-                localData.banned = true;
-                if (!localData.cheat_flag_at) localData.cheat_flag_at = Date.now();
-                localData.syncedAt = Date.now();
-                saveStrikeData(localData);
-                
-                if (!isLocked) {
-                    console.log('Server says BANNED — showing banned screen');
-                    showBannedScreen(localData.strikes, 'Ujian Anda dikunci oleh server.');
-                }
-            }
-
-            return { cleared: false, data: localData };
-        }
-
-        function restoreExamAfterUnban() {
-            isLocked = false;
-            const bannedOverlay = document.getElementById('bannedOverlay');
-            if (bannedOverlay) bannedOverlay.style.display = 'none';
-            const examContent = document.getElementById('examContent');
-            if (examContent) examContent.style.display = 'block';
-        }
-
-        async function reportCheatToServer(type) {
-            if (!ATTEMPT_ID) return;
-
-            try {
-                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
-                const res = await fetchWithRetry(API + '/api/exam/report-cheat', { 
-                    method: 'POST', 
-                    body: fd 
-                }, 2, 5000); // 2 retries, 5s timeout per attempt
-                
-                const data = await res.json();
-                updateCsrf(data);
-                localStorage.removeItem(PENDING_REPORT_KEY);
-
-                if (data.current_strikes !== undefined) {
-                    syncFromServer({
-                        current_strikes: data.current_strikes,
-                        max_strikes: data.max_strikes || AC_CONFIG.max_strikes,
-                        is_banned: data.action === 'lock' || data.current_strikes >= (data.max_strikes || AC_CONFIG.max_strikes),
-                    }, null);
-                }
-
-                if (data.action === 'lock') {
-                    const strikeData = loadStrikeData();
-                    await finalizeBan(strikeData.strikes, data.message || 'Ujian dikunci oleh server.');
-                }
-            } catch (err) {
-                // Failed to send - keep in pending queue for retry
-                if (type !== 'banned_retry') {
-                    localStorage.setItem(PENDING_REPORT_KEY, type);
-                    localStorage.setItem(PENDING_REPORT_KEY + '_type', type);
-                }
-                
-                if (isLocked) {
-                    const syncStatus = document.getElementById('bannedSyncingStatus');
-                    const errorStatus = document.getElementById('bannedErrorStatus');
-                    if (syncStatus) syncStatus.style.display = 'none';
-                    if (errorStatus) errorStatus.style.display = 'block';
-                }
-            }
-        }
-
-        async function reportBanToServer(clientStrikes, violationType) {
-            if (!ATTEMPT_ID) return;
-
-            try {
-                const fd = buildFormData({
-                    attempt_id: ATTEMPT_ID,
-                    type: 'ban_report',
-                    client_strikes: clientStrikes,
-                    violation_type: violationType
-                });
-
-                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
-                    method: 'POST',
-                    body: fd
-                }, 2, 5000);
-
-                const data = await res.json();
-                updateCsrf(data);
-                localStorage.removeItem(PENDING_REPORT_KEY);
-                localStorage.removeItem(PENDING_REPORT_KEY + '_type');
-                localStorage.removeItem(PENDING_REPORT_KEY + '_strikes');
-
-                // Server akan trigger ban mechanism dan kirim WebSocket event
-                // Client tidak perlu logout manual, WebSocket akan handle
-                if (data.action === 'lock') {
-                    console.log('Server confirmed ban, WebSocket will handle redirect');
-                }
-            } catch (err) {
-                // Offline: store di pending queue
-                localStorage.setItem(PENDING_REPORT_KEY, 'ban_report');
-                localStorage.setItem(PENDING_REPORT_KEY + '_strikes', clientStrikes);
-                localStorage.setItem(PENDING_REPORT_KEY + '_type', violationType);
-                
-                console.log('Failed to report ban to server, will retry via background sync');
-            }
-        }
-
-        async function finalizeBan(strikes, reason) {
-            await Swal.fire({
-                title: 'Ujian Dikunci Permanen',
-                html: reason + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
-                icon: 'error',
-                allowOutsideClick: false,
-                allowEscapeKey: false,
-                showConfirmButton: false,
-                timer: 5000,
-                timerProgressBar: true
-            });
-            await logoutAndRedirect(API + '/login');
-        }
-
-        async function revalidateFromServer() {
-            // Skip if there's a pending cheat report — wait for it to be sent first
-            const pendingReport = localStorage.getItem(PENDING_REPORT_KEY);
-            if (pendingReport) {
-                console.log('Skipping revalidation — pending cheat report exists:', pendingReport);
-                return;
-            }
-
-            if (!await ensureOnline()) return;
-
-            try {
-                const fd = buildFormData({ test_id: EXAM_CONFIG.testId });
-                const res = await fetchWithRetry(API + '/api/exam/init', { method: 'POST', body: fd });
-                const data = await res.json();
-                updateCsrf(data);
-
-                if (data.action === 'logout' || (data.user && data.user.is_active === false)) {
-                    await logoutAndRedirect(API + '/login');
-                    return;
-                }
-
-                if (data.status === 'success') {
-                    const syncResult = syncFromServer(data.anti_cheat, data.user);
-                    if (syncResult.cleared) {
-                        restoreExamAfterUnban();
-                    } else if (syncResult.data && syncResult.data.banned && !isLocked) {
-                        showBannedScreen(syncResult.data.strikes, 'Ujian Anda dikunci oleh server.');
-                    }
-                }
-            } catch (e) {
-                console.warn('Failed to revalidate status from server:', e);
-            }
-        }
 
         function clearSuspend() {
-            try {
-                localStorage.removeItem(SUSPEND_KEY);
-            } catch(e) {}
             isSuspended = false;
             if (suspendTimerInterval) {
                 clearInterval(suspendTimerInterval);
@@ -2199,13 +1507,13 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
         }
 
-        function startSuspendOverlay(strikeData, remainingSec) {
+        function showSuspendOverlay(currentStrikes, remainingSec) {
             isSuspended = true;
             document.getElementById('examContent').style.display = 'none';
             var overlay = document.getElementById('suspendOverlay');
             overlay.style.display = 'flex';
 
-            document.getElementById('strikeCount').innerText = strikeData.strikes;
+            document.getElementById('strikeCount').innerText = currentStrikes;
             document.getElementById('maxStrikes').innerText = AC_CONFIG.max_strikes;
 
             var sec = remainingSec;
@@ -2228,162 +1536,110 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }, 1000);
         }
 
-        function suspendWithPersistence(strikeData, type) {
-            // Store suspend state in LocalStorage
-            const suspendDuration = AC_CONFIG.suspend_timer || 30;
-            try {
-                localStorage.setItem(SUSPEND_KEY, JSON.stringify({
-                    active: true,
-                    startedAt: Date.now(),
-                    duration: suspendDuration,
-                    type: type
-                }));
-            } catch(e) {}
+        async function reportCheat(type) {
+            if (!ATTEMPT_ID) return;
 
-            startSuspendOverlay(strikeData, suspendDuration);
+            try {
+                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
+                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
+                    method: 'POST',
+                    body: fd
+                }, 2, 5000);
+
+                const data = await res.json();
+                updateCsrf(data);
+
+                if (data.current_strikes !== undefined) {
+                    strikes = data.current_strikes;
+                }
+
+                if (data.action === 'lock') {
+                    isLocked = true;
+                    clearSuspend();
+                    document.getElementById('examContent').style.display = 'none';
+                    await Swal.fire({
+                        title: 'Ujian Dikunci Permanen',
+                        html: (data.message || 'Ujian dikunci oleh server.') + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
+                        icon: 'error',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        showConfirmButton: false,
+                        timer: 5000,
+                        timerProgressBar: true
+                    });
+                    await logoutAndRedirect(API + '/login');
+                } else if (data.action === 'suspend') {
+                    showSuspendOverlay(data.current_strikes || data.strike || strikes, data.timer || 30);
+                }
+            } catch (err) {
+                console.error('Failed to report cheat to server:', err);
+            }
+        }
+
+        async function reportBan(clientStrikes, violationType) {
+            if (!ATTEMPT_ID) return;
+
+            try {
+                const fd = buildFormData({
+                    attempt_id: ATTEMPT_ID,
+                    type: 'ban_report',
+                    client_strikes: clientStrikes,
+                    violation_type: violationType
+                });
+
+                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
+                    method: 'POST',
+                    body: fd
+                }, 2, 5000);
+
+                const data = await res.json();
+                updateCsrf(data);
+
+                if (data.action === 'lock') {
+                    console.log('Server confirmed ban, WebSocket will handle redirect');
+                }
+            } catch (err) {
+                console.error('Failed to report ban to server:', err);
+            }
         }
 
         function handleViolation(type) {
-            const strikeData = addStrike(type);
+            strikes++;
 
-            if (strikeData.banned) {
-                // BANNED: report ke server untuk trigger ban mechanism
-                reportBanToServer(strikeData.strikes, type);
-                showBannedScreen(strikeData.strikes, 'Anda telah melebihi batas pelanggaran.', type);
+            if (strikes >= AC_CONFIG.max_strikes) {
+                reportBan(strikes, type);
+                isLocked = true;
+                clearSuspend();
+                document.getElementById('examContent').style.display = 'none';
+                console.log('Banned: waiting for WebSocket ban event...');
                 return;
             }
 
-            // WARNING: handle locally, NO NETWORK CALL
-            // Server tidak perlu tahu tentang warning violations
-            suspendWithPersistence(strikeData, type);
+            const suspendDuration = AC_CONFIG.suspend_timer || 30;
+            showSuspendOverlay(strikes, suspendDuration);
         }
 
-        function handleSuspendBypassOnLoad() {
-            let activeSuspend = null;
-            try {
-                activeSuspend = JSON.parse(localStorage.getItem(SUSPEND_KEY) || 'null');
-            } catch(e) {}
-
-            if (!activeSuspend || !activeSuspend.active || isLocked) return;
-
-            const newStrikeData = addStrike('suspend_bypass');
-
-            if (newStrikeData.banned) {
-                // BANNED: report ke server untuk trigger ban mechanism
-                reportBanToServer(newStrikeData.strikes, 'suspend_bypass');
-                showBannedScreen(newStrikeData.strikes, 'Anda mencoba melewati hukuman suspend.', 'suspend_bypass');
-                return;
-            }
-
-            // WARNING: handle locally, NO NETWORK CALL
-            const fullDuration = AC_CONFIG.suspend_timer || 30;
-            try {
-                localStorage.setItem(SUSPEND_KEY, JSON.stringify({
-                    active: true,
-                    startedAt: Date.now(),
-                    duration: fullDuration,
-                    type: 'suspend_bypass'
-                }));
-            } catch(e) {}
-
-            setTimeout(function() {
-                startSuspendOverlay(newStrikeData, fullDuration);
-            }, 300);
-        }
-
-        // ── Expose functions for server-authoritative sync ──
         window.__antiCheat = {
-            showBannedScreen: showBannedScreen,
-            loadStrikeData: loadStrikeData,
-            addStrike: addStrike,
-            reportCheatToServer: reportCheatToServer,
-            syncFromServer: syncFromServer,
-            revalidateFromServer: revalidateFromServer,
-            restoreExamAfterUnban: restoreExamAfterUnban,
-            handleSuspendBypassOnLoad: handleSuspendBypassOnLoad,
             maxStrikes: AC_CONFIG.max_strikes,
         };
-
-        function showBannedScreen(strikes, reason, violationType) {
-            isLocked = true;
-            clearSuspend();
-            
-            // Immediately hide exam and show lock screen
-            var examContent = document.getElementById('examContent');
-            if (examContent) examContent.style.display = 'none';
-            var loading = document.getElementById('loadingScreen');
-            if (loading) loading.style.display = 'none';
-            var suspendOverlay = document.getElementById('suspendOverlay');
-            if (suspendOverlay) suspendOverlay.style.display = 'none';
-
-            // Show persistent banned overlay
-            var bannedOverlay = document.getElementById('bannedOverlay');
-            if (bannedOverlay) {
-                bannedOverlay.style.display = 'flex';
-                document.getElementById('bannedStrikeCount').innerText = strikes;
-                document.getElementById('bannedMaxStrikes').innerText = AC_CONFIG.max_strikes;
-                
-                // Reset status display
-                document.getElementById('bannedSyncingStatus').style.display = 'block';
-                document.getElementById('bannedErrorStatus').style.display = 'none';
-            }
-
-            // TIDAK manual logout/redirect di sini
-            // WebSocket event 'ban' akan handle redirect secara otomatis
-            // setelah server trigger ban mechanism
-            
-            console.log('Banned screen shown, waiting for WebSocket ban event...');
-        }
-
-        // ── Retry loop for pending reports (Background Sync) ──
-        setInterval(() => {
-            const pendingType = localStorage.getItem(PENDING_REPORT_KEY);
-            if (!pendingType) return;
-
-            // Always send the actual violation type, not generic 'banned_retry'
-            const violationType = localStorage.getItem(PENDING_REPORT_KEY + '_type') || pendingType;
-            
-            if (isLocked) {
-                const syncStatus = document.getElementById('bannedSyncingStatus');
-                const errorStatus = document.getElementById('bannedErrorStatus');
-                if (syncStatus) syncStatus.style.display = 'block';
-                if (errorStatus) errorStatus.style.display = 'none';
-                reportCheatToServer(violationType);
-            } else {
-                reportCheatToServer(violationType);
-            }
-        }, 5000);
-
-        // Offline-only: apply cached ban when server validation is unavailable
-        document.addEventListener('exam-data-loaded', () => {
-            if (window.__examData && window.__examData.user) return;
-            const offlineData = loadStrikeData();
-            if (offlineData.banned) {
-                showBannedScreen(offlineData.strikes, 'Akun Anda telah dikunci karena pelanggaran berulang.', offlineData.lastType || 'offline_ban');
-                return;
-            }
-            handleSuspendBypassOnLoad();
-        }, { once: true });
 
         // ── Tab Switch Detection ──
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
             if (AC_CONFIG.enabled === false) return;
 
-            const strikeData = addStrike('tab_switch');
-
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
-            if (strikeData.banned) {
-                // BANNED: report ke server untuk trigger ban mechanism
-                reportBanToServer(strikeData.strikes, 'tab_switch');
-                showBannedScreen(strikeData.strikes, 'Anda terdeteksi membuka tab lain terlalu sering.', 'tab_switch');
+            strikes++;
+            if (strikes >= AC_CONFIG.max_strikes) {
+                reportBan(strikes, 'tab_switch');
+                isLocked = true;
+                clearSuspend();
+                document.getElementById('examContent').style.display = 'none';
             } else {
-                // WARNING: show alert, NO NETWORK CALL
-                // Server tidak perlu tahu tentang warning violations
                 Swal.fire({
                     title: 'Peringatan!',
-                    html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikeData.strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br><small class="text-muted">Jika mencapai batas maksimal, ujian akan dikunci.</small>',
+                    html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br><small class="text-muted">Jika mencapai batas maksimal, ujian akan dikunci.</small>',
                     icon: 'warning',
                     confirmButtonText: 'Saya Mengerti'
                 });
@@ -2395,11 +1651,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
 
             if (AC_CONFIG.enabled === false) {
-                reportCheatToServer('fullscreen_exit');
+                reportCheat('fullscreen_exit');
                 return;
             }
 
-            reportCheatToServer('fullscreen_exit');
             handleViolation('fullscreen_exit');
         });
     })();
