@@ -24,7 +24,6 @@ $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     $routes->post('exam/auto-sync', 'Api\ExamApiController::autoSync');
     $routes->post('exam/finish', 'Api\ExamApiController::finish');
     $routes->post('exam/check-score', 'Api\ExamApiController::checkScore');
-    $routes->post('exam/report-cheat', 'Api\ExamApiController::reportCheat');
     $routes->get('exam/stream/(:num)', 'Api\ExamApiController::stream/$1');
 });
 
@@ -150,7 +149,6 @@ $routes->group('student', ['filter' => 'role:siswa'], static function ($routes) 
         $routes->post('autosave', 'Student\ExamController::saveAnswer');
         $routes->post('auto-sync', 'Student\ExamController::autoSync');
     });
-    $routes->post('exam/report-cheat', 'Student\ExamController::reportCheat');
 
     $routes->post('exam/check-score', 'Student\ExamController::checkCurrentScore');
     $routes->post('exam/finish/(:num)', 'Student\ExamController::finish/$1');

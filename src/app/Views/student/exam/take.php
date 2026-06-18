@@ -5,9 +5,6 @@ $secondaryColor = $settingModel->getValue('secondary_color', '#f4f6f9');
 $textColor = $settingModel->getValue('text_color', '#212529');
 $appLogo = $settingModel->getValue('app_logo', '');
 $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
-$antiCheatTitle = $settingModel->getValue('anti_cheat_title', '⚠️ Peringatan Kecurangan!');
-$antiCheatMessage = $settingModel->getValue('anti_cheat_message', 'Sistem mendeteksi Anda meninggalkan halaman ujian.');
-$antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -102,14 +99,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         }
         
         .noselect { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
-
-        /* Anti Cheat Overlay */
-        .suspend-overlay {
-            position: fixed; inset: 0; z-index: 99998;
-            background: #000000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: white; text-align: center;
-        }
 
         /* Top Navigation */
         .exam-topbar {
@@ -436,22 +425,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         <img src="" id="imageLightboxImg" alt="Preview">
     </div>
 
-    <!-- ▼ SUSPEND OVERLAY (Anti-Cheat) ▼ -->
-    <div class="suspend-overlay" id="suspendOverlay" style="display:none;">
-        <?php if ($antiCheatLogo): ?>
-            <img src="<?= base_url($antiCheatLogo) ?>" alt="Warning Logo" class="mb-4" style="max-height: 120px;">
-        <?php endif; ?>
-        
-        <h2 class="fw-bold text-danger mb-3"><?= esc($antiCheatTitle) ?></h2>
-        <p class="fs-5 px-4 mb-4" style="max-width: 600px;"><?= esc($antiCheatMessage) ?></p>
-        
-        <div class="mb-4">
-            <span class="fs-1 fw-bold text-white" id="suspendTimerDisplay" style="font-size: 5rem !important;">30</span>
-        </div>
-        
-        <p class="mb-2 text-warning">Pelanggaran: <span id="strikeCount" class="fw-bold fs-5">1</span> / <span id="maxStrikes" class="fw-bold fs-5">2</span></p>
-    </div>
-
     <!-- ▼ EXAM CONTENT ▼ -->
     <div id="examContent" style="display:block;" x-data="examApp()">
     <div class="exam-layout">
@@ -733,7 +706,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         const RAW_QUESTIONS = <?= json_encode($questions) ?>;
         const RAW_ANSWERS = <?= json_encode($answers) ?>;
         const SAVE_URL = '<?= base_url('/student/exam/save-answer') ?>';
-        const REPORT_CHEAT_URL = '<?= base_url('/student/exam/report-cheat') ?>';
         const DASHBOARD_URL = "<?= base_url('/student/dashboard') ?>";
         const FINISH_URL = '<?= base_url('/student/exam/finish/' . $test->id) ?>';
         const ATTEMPT_ID = <?= (int) $attempt->id ?>;
@@ -805,25 +777,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 });
             }
         });
-
-        // ═══════════════════════════════════════════════════════
-        //  1. AUTO FULLSCREEN ON INTERACTION
-        // ═══════════════════════════════════════════════════════
-        let examStarted = true;
-        let isSuspended = false;
-        let isLocked = false;
-        
-        <?php if ($isAntiCheatEnabled): ?>
-        ['click', 'touchstart', 'keydown'].forEach(evt => {
-            document.addEventListener(evt, function() {
-                if (!document.fullscreenElement && !isLocked && !isSuspended) {
-                    const el = document.documentElement;
-                    const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-                    if (rfs) rfs.call(el).catch(()=>{});
-                }
-            });
-        });
-        <?php endif; ?>
 
         // ═══════════════════════════════════════════════════════
         //  2. ALPINE.JS EXAM APP
@@ -1228,108 +1181,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         });
 
         // ═══════════════════════════════════════════════════════
-        //  3. ANTI-CHEAT ENGINE
-        // ═══════════════════════════════════════════════════════
-        
-        (function() {
-            // ── TAB SWITCH → INSTANT BAN ──
-            document.addEventListener('visibilitychange', function() {
-                if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
-                <?php if (!$isAntiCheatEnabled): ?>return;<?php endif; ?>
-
-                $.ajax({
-                    url: REPORT_CHEAT_URL,
-                    type: 'POST',
-                    data: { attempt_id: ATTEMPT_ID, type: 'tab_switch' },
-                    dataType: 'json',
-                    success: function(res) {
-                        if (res.action !== 'lock' && res.status !== 'success' && res.status !== 'suspended') return;
-
-                        isLocked = true;
-                        if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-
-                        if (res.status === 'success') {
-                            Swal.fire('Peringatan', res.message || 'Anda terdeteksi membuka tab lain. Ujian dikunci.', 'warning').then(() => {
-                                redirectReplace(DASHBOARD_URL);
-                            });
-                        } else if (res.status === 'suspended') {
-                            Swal.fire('Dihentikan', 'Sesi Anda telah dihentikan oleh Admin.', 'error').then(() => {
-                                redirectReplace(DASHBOARD_URL);
-                            });
-                        } else if (res.action === 'lock') {
-                            logoutAndRedirect(LOGIN_URL);
-                        }
-                    },
-                    error: function() {
-                        isLocked = true;
-                        Swal.fire('Error', 'Kecurangan terdeteksi. Ujian dikunci.', 'error').then(() => {
-                            redirectReplace(DASHBOARD_URL);
-                        });
-                    }
-                });
-            });
-
-            // ── FULLSCREEN EXIT → WARNING OVERLAY ──
-            document.addEventListener('fullscreenchange', function() {
-                if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
-                
-                <?php if (!$isAntiCheatEnabled): ?>
-                // We still report the exit asynchronously, but do not interrupt the UI
-                $.post(REPORT_CHEAT_URL, { attempt_id: ATTEMPT_ID, type: 'fullscreen_exit' });
-                return;
-                <?php endif; ?>
-
-                // User exited fullscreen
-                isSuspended = true;
-
-                // Hide exam, show overlay
-                document.getElementById('examContent').style.display = 'none';
-                var overlay = document.getElementById('suspendOverlay');
-                overlay.style.display = 'flex';
-
-                $.ajax({
-                    url: REPORT_CHEAT_URL,
-                    type: 'POST',
-                    data: { attempt_id: ATTEMPT_ID, type: 'fullscreen_exit' },
-                    dataType: 'json',
-                    success: function(res) {
-                        if (res.action === 'lock') {
-                            isLocked = true;
-                            logoutAndRedirect(LOGIN_URL);
-                        } else if (res.action === 'suspend') {
-                            document.getElementById('strikeCount').innerText = res.strike;
-                            var sec = parseInt(res.timer);
-                            var timerEl = document.getElementById('suspendTimerDisplay');
-                            timerEl.innerText = sec;
-
-                            var cd = setInterval(function() {
-                                sec--;
-                                timerEl.innerText = sec;
-                                if (sec <= 0) {
-                                    clearInterval(cd);
-                                    document.getElementById('suspendOverlay').style.display = 'none';
-                                    isSuspended = false;
-                                    document.getElementById('examContent').style.display = 'block';
-                                }
-                            }, 1000);
-                        } else if (res.action === 'none') {
-                            // Anti-cheat disabled
-                            overlay.style.display = 'none';
-                            isSuspended = false;
-                            document.getElementById('examContent').style.display = 'block';
-                        }
-                    },
-                    error: function() {
-                        overlay.style.display = 'none';
-                        isSuspended = false;
-                        document.getElementById('examContent').style.display = 'block';
-                    }
-                });
-            });
-        })();
-
-        // ═══════════════════════════════════════════════════════
-        //  4. IMAGE LIGHTBOX PREVIEW
+        //  3. IMAGE LIGHTBOX PREVIEW
         // ═══════════════════════════════════════════════════════
         (function() {
             const lightbox = document.getElementById('imageLightbox');

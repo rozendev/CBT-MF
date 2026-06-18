@@ -4,7 +4,6 @@ namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
 use App\Models\TestModel;
-use App\Models\SettingModel;
 
 class StaticExamController extends BaseController
 {
@@ -25,17 +24,6 @@ class StaticExamController extends BaseController
         if (!$test) {
             return redirect()->back()->with('error', 'Ujian tidak ditemukan.');
         }
-
-        // Load settings for anti-cheat config
-        $settingModel = new SettingModel();
-        $antiCheat = [
-            'enabled' => (bool)$settingModel->getValue('anti_cheat_enabled', false),
-            'max_strikes' => (int)$settingModel->getValue('max_cheat_strikes', 2),
-            'suspend_timer' => (int)$settingModel->getValue('suspend_timer_seconds', 30),
-            'title' => $settingModel->getValue('anti_cheat_title', '⚠️ Peringatan Kecurangan!'),
-            'message' => $settingModel->getValue('anti_cheat_message', 'Sistem mendeteksi Anda meninggalkan halaman ujian.'),
-            'logo' => $settingModel->getValue('anti_cheat_logo', ''),
-        ];
 
         // Determine the base URL for API calls
         $baseUrl = rtrim(base_url(), '/');
@@ -112,7 +100,6 @@ class StaticExamController extends BaseController
         // Render the static template
         $html = view('admin/static/static_exam_template', [
             'test' => $test,
-            'antiCheat' => $antiCheat,
             'apiBaseUrl' => $baseUrl,
             'questionsData' => $questionsData,
             'answersData' => $answersData,

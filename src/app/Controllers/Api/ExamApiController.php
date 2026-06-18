@@ -168,8 +168,7 @@ class ExamApiController extends BaseController
             }
         }
 
-        // Load anti-cheat settings
-        $settingModel = new \App\Models\SettingModel();
+        // Load user to check active status
         $userModel = new \App\Models\UserModel();
         $user = $userModel->find($userId);
 
@@ -210,17 +209,6 @@ class ExamApiController extends BaseController
                 'server_now_ms' => time() * 1000,
                 'exam_mode' => $test->exam_mode,
                 'static_page_path' => $test->static_page_path,
-            ],
-            'anti_cheat' => [
-                'enabled' => (bool)$settingModel->getValue('anti_cheat_enabled', false),
-                'max_strikes' => (int)$settingModel->getValue('max_cheat_strikes', 2),
-                'suspend_timer' => (int)$settingModel->getValue('suspend_timer_seconds', 30),
-                'current_strikes' => (int)($attempt->cheat_strikes ?? 0),
-                'is_banned' => (int)($attempt->cheat_strikes ?? 0) >= (int)$settingModel->getValue('max_cheat_strikes', 2),
-                'unbanned_at_ms' => $unbannedAtMs,
-                'title' => $settingModel->getValue('anti_cheat_title', '⚠️ Peringatan Kecurangan!'),
-                'message' => $settingModel->getValue('anti_cheat_message', 'Sistem mendeteksi Anda meninggalkan halaman ujian.'),
-                'logo' => $settingModel->getValue('anti_cheat_logo', ''),
             ],
             'questions' => $questionsData,
             'answers' => $answersData,
@@ -441,31 +429,6 @@ class ExamApiController extends BaseController
         $score = $scorer->calculateScorePreview($attemptId);
 
         return $this->response->setJSON(['status' => 'success', 'score' => $score]);
-    }
-
-    /**
-     * Report cheating
-     * POST /api/exam/report-cheat
-     * REACTIVE APPROACH: Server only responds when client reports ban, not for warnings.
-     */
-    public function reportCheat()
-    {
-        $userId = session('user_id');
-        if (!$userId) {
-            return $this->response->setStatusCode(401)->setJSON(['status' => 'error']);
-        }
-
-        $attemptId = $this->request->getPost('attempt_id');
-        $cheatType = $this->request->getPost('type') ?? 'unknown';
-
-        $examService = new \App\Libraries\ExamService();
-        $result = $examService->handleCheat((int)$attemptId, (int)$userId, $cheatType);
-
-        // TIDAK manual destroy session di sini
-        // triggerBan() sudah handle session cleanup via Redis scan + database delete
-        // WebSocket event 'ban' akan trigger redirect di client side
-        
-        return $this->response->setJSON($result);
     }
 
 
