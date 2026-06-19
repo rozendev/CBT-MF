@@ -191,11 +191,15 @@ class ExamController extends BaseController
             // If Redis fails, gracefully fall back to DB only
         }
 
+        $settingModel = new \App\Models\SettingModel();
+        $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
+
         return view('student/exam/take', [
             'test' => $test,
             'attempt' => $attempt,
             'questions' => $questions,
             'answers' => $answers,
+            'isAntiCheatEnabled' => $isAntiCheatEnabled
         ]);
     }
 
@@ -303,6 +307,22 @@ class ExamController extends BaseController
         }
 
         return redirect()->to('/student/results/view/' . $id);
+    }
+
+    public function reportCheat()
+    {
+        $userId = session('user_id');
+        $attemptId = $this->request->getPost('attempt_id') ?? $this->request->getGet('attempt_id');
+        $cheatType = $this->request->getPost('type') ?? 'unknown';
+
+        $examService = new \App\Libraries\ExamService();
+        $result = $examService->handleCheat((int)$attemptId, (int)$userId, $cheatType);
+
+        if (isset($result['action']) && $result['action'] === 'lock') {
+            session()->destroy();
+        }
+
+        return $this->response->setJSON($result);
     }
 
 

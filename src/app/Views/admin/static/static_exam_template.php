@@ -7,6 +7,7 @@
  *
  * Required PHP variables at generation time:
  *   $test        — test object (id, name, duration_minutes, passing_score, max_score, show_menu, allow_noanswer, auto_logout_on_timeout, password)
+ *   $antiCheat   — anti-cheat config array
  *   $apiBaseUrl   — base URL for the API endpoints
  */
 $settingModel = new \App\Models\SettingModel();
@@ -110,11 +111,17 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         
         .noselect { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
 
-        /* Loading Screen */
+        /* Loading & Anti Cheat */
         .loading-screen {
             position:fixed; inset:0; z-index:100001;
             background:var(--color-background); display:flex; flex-direction:column; align-items:center; justify-content:center;
             color: var(--color-text);
+        }
+        .suspend-overlay {
+            position: fixed; inset: 0; z-index: 99998;
+            background: #000000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: white; text-align: center;
         }
 
         /* Top Navigation */
@@ -444,6 +451,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             allowNoanswer: <?= (int)$test->allow_noanswer ?>,
             autoLogoutOnTimeout: <?= (int)$test->auto_logout_on_timeout ?>,
             hasPassword: <?= !empty($test->password) ? 'true' : 'false' ?>,
+            antiCheat: <?= json_encode($antiCheat) ?>,
             apiBaseUrl: <?= json_encode($apiBaseUrl) ?>,
             questionsData: <?= json_encode($questionsData ?? []) ?>,
             answersData: <?= json_encode($answersData ?? []) ?>,
@@ -474,6 +482,24 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     <div class="image-lightbox" id="imageLightbox">
         <div class="image-lightbox-close" id="imageLightboxClose">&times;</div>
         <img src="" id="imageLightboxImg" alt="Preview">
+    </div>
+
+    <!-- Suspend Overlay (Anti-Cheat) -->
+    <div class="suspend-overlay" id="suspendOverlay" style="display:none;">
+        <?php if (!empty($antiCheat['logo'])): ?>
+            <img src="<?= base_url($antiCheat['logo']) ?>" alt="Warning Logo" class="mb-4" id="antiCheatLogoImg" style="max-height: 120px;">
+        <?php else: ?>
+            <img src="" alt="Warning Logo" class="mb-4" id="antiCheatLogoImg" style="max-height: 120px; display: none;">
+        <?php endif; ?>
+        
+        <h2 class="fw-bold text-danger mb-3" id="antiCheatTitle"><?= esc($antiCheat['title']) ?></h2>
+        <p class="fs-5 px-4 mb-4" style="max-width:600px;" id="antiCheatMessage"><?= esc($antiCheat['message']) ?></p>
+        
+        <div class="mb-4">
+            <span class="fs-1 fw-bold text-white" id="suspendTimerDisplay" style="font-size:5rem !important;"><?= $antiCheat['suspend_timer'] ?></span>
+        </div>
+        
+        <p class="mb-2 text-warning">Pelanggaran: <span id="strikeCount" class="fw-bold fs-5">1</span> / <span id="maxStrikes" class="fw-bold fs-5"><?= $antiCheat['max_strikes'] ?></span></p>
     </div>
 
     <!-- EXAM CONTENT -->
@@ -931,10 +957,27 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     studentName: STUDENT_NAME,
                     beginTimeMs: res.test.begin_time_ms,
                     timeOffset: timeOffset,
+                    antiCheat: res.anti_cheat || null,
                     user: res.user || null,
                 };
 
                 document.dispatchEvent(new CustomEvent('exam-data-loaded'));
+
+                if (res.anti_cheat) {
+                    EXAM_CONFIG.antiCheat = res.anti_cheat;
+                    document.getElementById('antiCheatTitle').textContent = res.anti_cheat.title || 'Peringatan Kecurangan!';
+                    document.getElementById('antiCheatMessage').textContent = res.anti_cheat.message || 'Sistem mendeteksi Anda meninggalkan halaman ujian.';
+                    if (res.anti_cheat.suspend_timer) document.getElementById('suspendTimerDisplay').textContent = res.anti_cheat.suspend_timer;
+                    if (res.anti_cheat.max_strikes) document.getElementById('maxStrikes').textContent = res.anti_cheat.max_strikes;
+                    
+                    const logoImg = document.getElementById('antiCheatLogoImg');
+                    if (res.anti_cheat.logo) {
+                        logoImg.src = '<?= base_url() ?>' + res.anti_cheat.logo;
+                        logoImg.style.display = 'inline-block';
+                    } else {
+                        logoImg.style.display = 'none';
+                    }
+                }
 
                 loading.style.display = 'none';
                 document.getElementById('examContent').style.display = 'block';
@@ -947,6 +990,17 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
     }
 
+    // ═══ AUTO FULLSCREEN ═══
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+        document.addEventListener(evt, function() {
+            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) return;
+            if (!document.fullscreenElement && examStarted && !window.isSubmitting) {
+                const el = document.documentElement;
+                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                if (rfs) rfs.call(el).catch(()=>{});
+            }
+        });
+    });
 
     // ═══ ALPINE.JS EXAM APP ═══
     document.addEventListener('alpine:init', () => {
@@ -1435,6 +1489,175 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
         }));
     });
+
+    // ═══ ANTI-CHEAT ENGINE (SERVER-AUTHORITATIVE) ═══
+    (function() {
+        let isSuspended = false;
+        let isLocked    = false;
+        let suspendTimerInterval = null;
+        let strikes = 0;
+
+        const AC_CONFIG = EXAM_CONFIG.antiCheat || {};
+
+        function clearSuspend() {
+            isSuspended = false;
+            if (suspendTimerInterval) {
+                clearInterval(suspendTimerInterval);
+                suspendTimerInterval = null;
+            }
+        }
+
+        function showSuspendOverlay(currentStrikes, remainingSec) {
+            isSuspended = true;
+            document.getElementById('examContent').style.display = 'none';
+            var overlay = document.getElementById('suspendOverlay');
+            overlay.style.display = 'flex';
+
+            document.getElementById('strikeCount').innerText = currentStrikes;
+            document.getElementById('maxStrikes').innerText = AC_CONFIG.max_strikes;
+
+            var sec = remainingSec;
+            var timerEl = document.getElementById('suspendTimerDisplay');
+            timerEl.innerText = sec;
+
+            if (suspendTimerInterval) clearInterval(suspendTimerInterval);
+
+            suspendTimerInterval = setInterval(function() {
+                sec--;
+                timerEl.innerText = sec;
+                if (sec <= 0) {
+                    clearInterval(suspendTimerInterval);
+                    suspendTimerInterval = null;
+                    overlay.style.display = 'none';
+                    isSuspended = false;
+                    document.getElementById('examContent').style.display = 'block';
+                    clearSuspend();
+                }
+            }, 1000);
+        }
+
+        async function reportCheat(type) {
+            if (!ATTEMPT_ID) return;
+
+            try {
+                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
+                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
+                    method: 'POST',
+                    body: fd
+                }, 2, 5000);
+
+                const data = await res.json();
+                updateCsrf(data);
+
+                if (data.current_strikes !== undefined) {
+                    strikes = data.current_strikes;
+                }
+
+                if (data.action === 'lock') {
+                    isLocked = true;
+                    clearSuspend();
+                    document.getElementById('examContent').style.display = 'none';
+                    await Swal.fire({
+                        title: 'Ujian Dikunci Permanen',
+                        html: (data.message || 'Ujian dikunci oleh server.') + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
+                        icon: 'error',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        showConfirmButton: false,
+                        timer: 5000,
+                        timerProgressBar: true
+                    });
+                    await logoutAndRedirect(API + '/login');
+                } else if (data.action === 'suspend') {
+                    showSuspendOverlay(data.current_strikes || data.strike || strikes, data.timer || 30);
+                }
+            } catch (err) {
+                console.error('Failed to report cheat to server:', err);
+            }
+        }
+
+        async function reportBan(clientStrikes, violationType) {
+            if (!ATTEMPT_ID) return;
+
+            try {
+                const fd = buildFormData({
+                    attempt_id: ATTEMPT_ID,
+                    type: 'ban_report',
+                    client_strikes: clientStrikes,
+                    violation_type: violationType
+                });
+
+                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
+                    method: 'POST',
+                    body: fd
+                }, 2, 5000);
+
+                const data = await res.json();
+                updateCsrf(data);
+
+                if (data.action === 'lock') {
+                    console.log('Server confirmed ban, WebSocket will handle redirect');
+                }
+            } catch (err) {
+                console.error('Failed to report ban to server:', err);
+            }
+        }
+
+        function handleViolation(type) {
+            strikes++;
+
+            if (strikes >= AC_CONFIG.max_strikes) {
+                reportBan(strikes, type);
+                isLocked = true;
+                clearSuspend();
+                document.getElementById('examContent').style.display = 'none';
+                console.log('Banned: waiting for WebSocket ban event...');
+                return;
+            }
+
+            const suspendDuration = AC_CONFIG.suspend_timer || 30;
+            showSuspendOverlay(strikes, suspendDuration);
+        }
+
+        window.__antiCheat = {
+            maxStrikes: AC_CONFIG.max_strikes,
+        };
+
+        // ── Tab Switch Detection ──
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
+            if (AC_CONFIG.enabled === false) return;
+
+            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+
+            strikes++;
+            if (strikes >= AC_CONFIG.max_strikes) {
+                reportBan(strikes, 'tab_switch');
+                isLocked = true;
+                clearSuspend();
+                document.getElementById('examContent').style.display = 'none';
+            } else {
+                Swal.fire({
+                    title: 'Peringatan!',
+                    html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br><small class="text-muted">Jika mencapai batas maksimal, ujian akan dikunci.</small>',
+                    icon: 'warning',
+                    confirmButtonText: 'Saya Mengerti'
+                });
+            }
+        });
+
+        // ── Fullscreen Exit Detection ──
+        document.addEventListener('fullscreenchange', function() {
+            if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
+
+            if (AC_CONFIG.enabled === false) {
+                reportCheat('fullscreen_exit');
+                return;
+            }
+
+            handleViolation('fullscreen_exit');
+        });
+    })();
 
     // ═══ BOOT ═══
     document.addEventListener('DOMContentLoaded', function() {
