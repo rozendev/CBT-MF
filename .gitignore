@@ -1,39 +1,94 @@
-# Sistem Ujian - Dependencies
-/vendor/
-node_modules/
+```
+# Dependencies
+vendor/
+composer.lock
 
 # Environment
 .env
 .env.local
-.env.*.local
+.env.*
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
 
 # IDE
-.idea/
 .vscode/
-*.swp
-*.swo
-*~
+.idea/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Docker volumes (persisted data)
-docker/mariadb/data/
+# Build artifacts
+dist/
+build/
+target/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
 
-# Backups
-/backups/
+# Python (if any Python files exist in the project)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.egg-info/
+.mypy_cache/
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
 
-# Logs
-*.log
+# Node.js (if any JS files exist in the project)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.nyc_output/
+coverage/
 
-# Cache
-/src/storage/cache/*
-/src/storage/logs/*
-/src/storage/sessions/*
+# Java (if any Java files exist in the project)
+*.class
+*.jar
+*.war
+*.ear
+.gradle/
+build/
+!gradle/
+gradle-app.setting
+.settings/
+bin/
+gen/
+out/
 
-# Graphify Ignores
-/src/vendor/
-/src/writable/
-/src/public/static/
-/src/graphify-out/
+# Docker (specific to your setup)
+docker/php-fpm/*.log
+docker/nginx/*.log
+
+# Runtime data
+logs/
+*.pid
+*.seed
+*.db
+
+# Local configuration
+config/local.*
+!config/local.example.php
+
+# Backup files
+*.bak
+*.backup
+*~
+```

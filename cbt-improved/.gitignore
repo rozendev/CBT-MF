@@ -1,0 +1,50 @@
+# CBT-Improved Project Files
+
+# Dependencies
+/vendor/
+/composer.lock
+
+# Environment files
+.env
+src/.env
+
+# Logs
+*.log
+writable/logs/*
+!writable/logs/.gitkeep
+
+# Cache
+writable/cache/*
+!writable/cache/.gitkeep
+
+# Sessions
+writable/sessions/*
+!writable/sessions/.gitkeep
+
+# Uploads (keep directory, ignore files)
+public/uploads/*
+!public/uploads/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.phpunit.result.cache
+coverage/
+.phpunit.cache/
+
+# Build artifacts
+build/
+dist/
+
+# Temporary files
+tmp/
+temp/
