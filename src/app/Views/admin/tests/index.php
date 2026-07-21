@@ -114,15 +114,26 @@
     </div>
     <div class="offcanvas-body p-3">
         <div class="row g-2" style="max-width: 600px; margin: 0 auto;">
-            <!-- Edit -->
-            <div class="col-12">
-                <a id="actionEdit" href="#" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3">
+            <!-- Edit & Proctor -->
+            <div class="col-6">
+                <a id="actionEdit" href="#" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3 h-100">
                     <span class="d-flex align-items-center justify-content-center rounded-3 bg-primary bg-opacity-10 text-primary" style="width:44px;height:44px;flex-shrink:0;">
                         <i class="bi bi-pencil-square fs-5"></i>
                     </span>
                     <div class="text-start">
-                        <div class="fw-semibold">Edit Pengaturan Dasar</div>
-                        <small class="text-muted">Ubah nama, waktu, password, dll</small>
+                        <div class="fw-semibold">Edit Dasar</div>
+                        <small class="text-muted">Pengaturan ujian</small>
+                    </div>
+                </a>
+            </div>
+            <div class="col-6">
+                <a id="actionProctor" href="#" target="_blank" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3 h-100">
+                    <span class="d-flex align-items-center justify-content-center rounded-3 bg-danger bg-opacity-10 text-danger" style="width:44px;height:44px;flex-shrink:0;">
+                        <i class="bi bi-broadcast fs-5"></i>
+                    </span>
+                    <div class="text-start">
+                        <div class="fw-semibold">Live Proctor</div>
+                        <small class="text-muted">Pantau real-time</small>
                     </div>
                 </a>
             </div>
@@ -241,7 +252,8 @@
         ctx.staticUrl = btn.dataset.staticUrl;
 
         document.getElementById('actionSheetTitle').textContent = ctx.name;
-        document.getElementById('actionEdit').href = '<?= base_url('/admin/tests/edit/') ?>/' + ctx.id;
+        document.getElementById('actionEdit').href = '<?= base_url('/admin/tests/edit') ?>/' + ctx.id;
+        document.getElementById('actionProctor').href = '<?= base_url('/proctor/live') ?>/' + ctx.id;
 
         const isStatic = ctx.mode === 'static';
         document.getElementById('actionStaticOpen').style.display = isStatic ? '' : 'none';
@@ -268,15 +280,43 @@
         bootstrap.Offcanvas.getInstance(actionSheet)?.hide();
     }
 
-    function doStaticAction(action) {
+    async function doStaticAction(action) {
         closeSheet();
         const url = action === 'generate'
-            ? '<?= base_url('/admin/tests/static/generate/') ?>/' + ctx.id
-            : '<?= base_url('/admin/tests/static/delete/') ?>/' + ctx.id;
+            ? '<?= base_url('/admin/tests/static/generate') ?>/' + ctx.id
+            : '<?= base_url('/admin/tests/static/delete') ?>/' + ctx.id;
+            
         Swal.fire({ title: 'Memproses...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-        const formId = action === 'generate' ? 'generateStaticForm' : 'deleteStaticForm';
-        document.getElementById(formId).action = url;
-        document.getElementById(formId).submit();
+        
+        try {
+            const formData = new FormData();
+            formData.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+            
+            const res = await fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            const data = await res.json();
+            
+            if (data.status === 'success') {
+                Swal.fire({
+                    title: 'Berhasil', 
+                    text: data.message, 
+                    icon: 'success',
+                    timer: 1500,
+                    showConfirmButton: false
+                }).then(() => {
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire('Gagal', data.message || 'Terjadi kesalahan', 'error');
+            }
+        } catch (e) {
+            Swal.fire('Error', 'Gagal menghubungi server', 'error');
+        }
     }
 
     function doExtendTime() {
@@ -308,7 +348,7 @@
             if (result.isConfirmed) {
                 document.getElementById('extendTimeMinutes').value = document.getElementById('swalExtendTime').value;
                 const form = document.getElementById('extendTimeForm');
-                form.action = '<?= base_url('/admin/tests/extend-time/') ?>/' + id;
+                form.action = '<?= base_url('/admin/tests/extend-time') ?>/' + id;
                 form.submit();
             }
         });
@@ -316,7 +356,7 @@
 
     function confirmDelete(id, name) {
         document.getElementById('deleteTestName').textContent = name;
-        document.getElementById('deleteForm').action = '<?= base_url('/admin/tests/delete/') ?>/' + id;
+        document.getElementById('deleteForm').action = '<?= base_url('/admin/tests/delete') ?>/' + id;
         new bootstrap.Modal(document.getElementById('deleteModal')).show();
     }
 

@@ -328,8 +328,9 @@ class ExamService
         $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
 
         if ($cheatType === 'ban_report') {
-            $clientStrikes = (int)($this->request->getPost('client_strikes') ?? $maxStrikes);
-            $violationType = $this->request->getPost('violation_type') ?? 'unknown';
+            $request = \Config\Services::request();
+            $clientStrikes = (int)($request->getPost('client_strikes') ?? $maxStrikes);
+            $violationType = $request->getPost('violation_type') ?? 'unknown';
             return $this->triggerBan($userId, $attemptId, $clientStrikes, $violationType, $forceLogout);
         }
 
@@ -425,11 +426,18 @@ class ExamService
                     'message' => "Akun Anda telah dikunci karena pelanggaran ($violationType: $clientStrikes strikes). $reason"
                 ]));
 
+                $currentSessionKey = 'ci_session:' . session_id();
                 $iterator = null;
                 do {
                     $keys = $redis->scan($iterator, 'ci_session:*', 100);
                     if ($keys) {
                         foreach ($keys as $key) {
+                            // Do not manually delete the current request's session key!
+                            // Doing so will crash CodeIgniter's shutdown handler and orphan the lock.
+                            if ($key === $currentSessionKey) {
+                                continue;
+                            }
+                            
                             $data = $redis->get($key);
                             if ($data && (strpos($data, "user_id|i:{$userId};") !== false ||
                                           strpos($data, "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";") !== false)) {
@@ -438,6 +446,11 @@ class ExamService
                         }
                     }
                 } while ($iterator > 0);
+                
+                // Gracefully destroy the session if the banned user is the current user
+                if (session('user_id') == $userId) {
+                    session()->destroy();
+                }
             }
         } catch (\Exception $e) {
             log_message('error', 'Redis error on ban: ' . $e->getMessage());

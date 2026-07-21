@@ -174,6 +174,9 @@ class ResultController extends BaseController
         $attempt = $db->table('test_attempts')->where('id', $attemptId)->get()->getRow();
         
         if (!$attempt) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Data ujian tidak ditemukan.']);
+            }
             return redirect()->back()->with('error', 'Data ujian tidak ditemukan.');
         }
 
@@ -201,15 +204,36 @@ class ResultController extends BaseController
             log_message('error', 'Redis error on delete attempt: ' . $e->getMessage());
         }
 
+        // Publish a kick event so the student is kicked instantly if they are currently taking the exam
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $kickPayload = json_encode([
+                    'event' => 'kick',
+                    'user_id' => $attempt->user_id,
+                    'message' => 'Ujian Anda telah di-reset oleh pengawas/admin. Silakan mulai ulang.'
+                ]);
+                $redis->publish('exam_events', $kickPayload);
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis publish error on delete attempt: ' . $e->getMessage());
+        }
+
         // Delete attempt
         $db->table('test_attempts')->where('id', $attemptId)->delete();
 
         $db->transComplete();
 
         if ($db->transStatus() === false) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal menghapus hasil ujian.']);
+            }
             return redirect()->back()->with('error', 'Gagal menghapus hasil ujian.');
         }
 
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['status' => 'success', 'message' => 'Hasil ujian berhasil dihapus.']);
+        }
         return redirect()->back()->with('success', 'Hasil ujian berhasil dihapus.');
     }
 }

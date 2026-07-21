@@ -194,12 +194,27 @@ class ExamController extends BaseController
         $settingModel = new \App\Models\SettingModel();
         $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
 
+        $wsToken = bin2hex(random_bytes(16));
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $redis->setex("ws_student_token:{$wsToken}", 14400, json_encode([
+                    'user_id' => (int)$userId,
+                    'attempt_id' => (int)$attempt->id,
+                    'test_id' => (int)$id
+                ]));
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error generating ws_student_token: ' . $e->getMessage());
+        }
+
         return view('student/exam/take', [
             'test' => $test,
             'attempt' => $attempt,
             'questions' => $questions,
             'answers' => $answers,
-            'isAntiCheatEnabled' => $isAntiCheatEnabled
+            'isAntiCheatEnabled' => $isAntiCheatEnabled,
+            'wsToken' => $wsToken
         ]);
     }
 
@@ -232,6 +247,16 @@ class ExamController extends BaseController
         }
         if ($attempt->status == 4) {
             return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian Anda telah dikunci karena melanggar aturan.']);
+        }
+
+        // Server-side time validation: reject saves after duration expires
+        $test = $this->testModel->findCached($attempt->test_id);
+        if ($test && $test->duration_minutes > 0 && $attempt->started_at) {
+            $elapsedSeconds = time() - strtotime($attempt->started_at);
+            $allowedSeconds = ($test->duration_minutes * 60) + 60; // 60 seconds grace period
+            if ($elapsedSeconds > $allowedSeconds) {
+                return $this->response->setJSON(['status' => 'kicked', 'message' => 'Waktu ujian Anda telah habis.']);
+            }
         }
 
         // Release session lock early to prevent Redis bottleneck and CSRF token loss on concurrent AJAX

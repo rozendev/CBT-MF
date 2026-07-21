@@ -119,3 +119,17 @@ exit
 - `docker/` - Dockerfiles (Nginx, PHP-FPM, MariaDB init scripts)
 - `scripts/` - Script eksekusi Docker `cmd.sh` dan utilitas lainnya
 - `docker-compose.yml` - Orkestrasi Container
+
+## 🔒 Keamanan & Deployment Produksi
+
+Sebelum merilis aplikasi ini ke lingkungan produksi (production), pastikan Anda melakukan langkah-langkah keamanan berikut:
+
+1. **Hapus Folder Installer**: Setelah proses instalasi selesai, hapus atau pindahkan folder `src/public/install/` untuk mencegah penyalahgunaan installer secara berkala.
+2. **Hapus Berkas Pengujian**: Hapus berkas pengujian `src/public/install/test.php` dan `src/test_api.php` jika masih ada.
+3. **Konfigurasi phpMyAdmin**:
+   - Di file `docker-compose.yml`, matikan service `phpmyadmin` atau hapus konfigurasi `PMA_USER` dan `PMA_PASSWORD` yang melakukan auto-login.
+   - Jangan pernah mengekspos port phpMyAdmin (`8081`) ke internet publik.
+4. **Batasi Akses Port Nginx**: Pastikan port Nginx (`8080`) di `docker-compose.yml` hanya mendengarkan ke localhost (`127.0.0.1:8080:80`) jika Anda menggunakan Cloudflare Tunnel atau reverse proxy terpisah untuk menangani lalu lintas HTTPS eksternal.
+5. **Ganti Kredensial Default**: Segera ganti password default admin (`admin123`) di menu administrator setelah login pertama kali.
+6. **Set Environment**: Pastikan `CI_ENVIRONMENT` pada `src/.env` diatur ke `production` agar fitur debugging dinonaktifkan.
+

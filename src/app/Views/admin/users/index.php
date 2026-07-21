@@ -42,6 +42,9 @@
                 <a href="<?= base_url('/admin/users/create') ?>" class="btn btn-primary btn-sm rounded-pill">
                     <i class="bi bi-person-plus me-1"></i> Tambah Pengguna
                 </a>
+                <a href="<?= base_url('/admin/users/print-cards') ?>" class="btn btn-outline-primary btn-sm rounded-pill">
+                    <i class="bi bi-printer me-1"></i> Cetak Kartu
+                </a>
                 <button type="button" class="btn btn-outline-success btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#importModal">
                     <i class="bi bi-file-earmark-excel me-1"></i> Import
                 </button>

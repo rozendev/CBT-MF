@@ -4,6 +4,7 @@
 
 <?= $this->section('styles') ?>
 <link href="<?= base_url('vendor/quill/quill.snow.css') ?>" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <style>
     .answer-row { transition: all 0.2s ease; }
     .answer-row:hover { background-color: #f8f9fa; }
@@ -144,6 +145,7 @@
 
 <?= $this->section('scripts') ?>
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <script src="<?= base_url('vendor/quill/quill.js') ?>"></script>
 <script>
     $(document).ready(function() {
@@ -155,7 +157,7 @@
             [{ 'script': 'sub'}, { 'script': 'super' }],
             [{ 'list': 'ordered'}, { 'list': 'bullet' }],
             [{ 'indent': '-1'}, { 'indent': '+1' }],
-            ['link', 'image', 'video'],
+            ['link', 'image', 'video', 'formula'],
             ['clean']
         ];
 
@@ -174,92 +176,113 @@
             }
         });
 
+        // Reusable upload function
+        async function uploadImageFile(file, quill) {
+            const maxSizeMB = 5;
+            const fileSizeMB = file.size / (1024 * 1024);
+            
+            if (fileSizeMB > maxSizeMB) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'File Terlalu Besar',
+                    text: `Ukuran file ${fileSizeMB.toFixed(1)} MB melebihi batas maksimal ${maxSizeMB} MB. Silakan kompres gambar terlebih dahulu.`,
+                    confirmButtonText: 'OK'
+                });
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            const csrfName = '<?= csrf_token() ?>';
+            let csrfHash = '<?= csrf_hash() ?>';
+            formData.append(csrfName, csrfHash);
+
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000,
+                timerProgressBar: true
+            });
+            
+            Toast.fire({ icon: 'info', title: 'Mengunggah gambar...' });
+
+            try {
+                const res = await $.ajax({
+                    url: '<?= base_url('/admin/questions/upload-image') ?>',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json'
+                });
+
+                if (res.status === 'success' && res.url) {
+                    const range = quill.getSelection(true);
+                    quill.insertEmbed(range.index, 'image', res.url);
+                    quill.setSelection(range.index + 1);
+                    Toast.fire({ icon: 'success', title: 'Gambar berhasil diunggah' });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Gagal Mengunggah',
+                        text: res.message || 'Terjadi kesalahan saat mengunggah gambar.',
+                        confirmButtonText: 'OK'
+                    });
+                }
+            } catch (err) {
+                console.error(err);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: 'Terjadi kesalahan saat mengunggah gambar. Pastikan koneksi internet stabil.',
+                    confirmButtonText: 'OK'
+                });
+            }
+        }
+
         // Setup image upload handler for Quill (server-side URL uploads)
         function setupImageUpload(quill) {
             const toolbar = quill.getModule('toolbar');
+            
+            // 1. Toolbar button handler
             toolbar.addHandler('image', function() {
                 const input = document.createElement('input');
                 input.setAttribute('type', 'file');
                 input.setAttribute('accept', 'image/*');
                 input.click();
-
-                input.onchange = async () => {
+                input.onchange = () => {
                     const file = input.files[0];
-                    if (!file) return;
+                    if (file) uploadImageFile(file, quill);
+                };
+            });
 
-                    // Client-side validation
-                    const maxSizeMB = 5;
-                    const fileSizeMB = file.size / (1024 * 1024);
-                    
-                    if (fileSizeMB > maxSizeMB) {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'File Terlalu Besar',
-                            text: `Ukuran file ${fileSizeMB.toFixed(1)} MB melebihi batas maksimal ${maxSizeMB} MB. Silakan kompres gambar terlebih dahulu.`,
-                            confirmButtonText: 'OK'
-                        });
+            // 2. Intercept Paste (Ctrl+V)
+            quill.root.addEventListener('paste', function(e) {
+                if (e.clipboardData && e.clipboardData.items) {
+                    const items = e.clipboardData.items;
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) {
+                            e.preventDefault();
+                            const file = items[i].getAsFile();
+                            uploadImageFile(file, quill);
+                            return;
+                        }
+                    }
+                }
+            });
+
+            // 3. Intercept Drop
+            quill.root.addEventListener('drop', function(e) {
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+                    const file = e.dataTransfer.files[0];
+                    if (file.type.indexOf('image') !== -1) {
+                        e.preventDefault();
+                        uploadImageFile(file, quill);
                         return;
                     }
-
-                    const formData = new FormData();
-                    formData.append('image', file);
-                    
-                    // Add CSRF Token
-                    const csrfName = '<?= csrf_token() ?>';
-                    let csrfHash = '<?= csrf_hash() ?>';
-                    formData.append(csrfName, csrfHash);
-
-                    // Show loading toast
-                    const Toast = Swal.mixin({
-                        toast: true,
-                        position: 'top-end',
-                        showConfirmButton: false,
-                        timer: 3000,
-                        timerProgressBar: true
-                    });
-                    
-                    Toast.fire({
-                        icon: 'info',
-                        title: 'Mengunggah gambar...'
-                    });
-
-                    try {
-                        const res = await $.ajax({
-                            url: '<?= base_url('/admin/questions/upload-image') ?>',
-                            type: 'POST',
-                            data: formData,
-                            processData: false,
-                            contentType: false,
-                            dataType: 'json'
-                        });
-
-                        if (res.status === 'success' && res.url) {
-                            const range = quill.getSelection();
-                            quill.insertEmbed(range.index, 'image', res.url);
-                            quill.setSelection(range.index + 1);
-                            
-                            Toast.fire({
-                                icon: 'success',
-                                title: 'Gambar berhasil diunggah'
-                            });
-                        } else {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Gagal Mengunggah',
-                                text: res.message || 'Terjadi kesalahan saat mengunggah gambar.',
-                                confirmButtonText: 'OK'
-                            });
-                        }
-                    } catch (err) {
-                        console.error(err);
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Error',
-                            text: 'Terjadi kesalahan saat mengunggah gambar. Pastikan koneksi internet stabil.',
-                            confirmButtonText: 'OK'
-                        });
-                    }
-                };
+                }
             });
         }
 

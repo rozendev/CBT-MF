@@ -181,18 +181,34 @@ class ExamApiController extends BaseController
             ]);
         }
 
-        $unbannedAtMs = !empty($user->unbanned_at) ? strtotime($user->unbanned_at) * 1000 : null;
+        $unbannedAt = $user->unbanned_at ?? null;
+        $unbannedAtMs = !empty($unbannedAt) ? strtotime($unbannedAt) * 1000 : null;
+
+        $wsToken = bin2hex(random_bytes(16));
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $redis->setex("ws_student_token:{$wsToken}", 14400, json_encode([
+                    'user_id' => (int)$userId,
+                    'attempt_id' => (int)$attempt->id,
+                    'test_id' => (int)$test->id
+                ]));
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error generating ws_student_token in API: ' . $e->getMessage());
+        }
 
         return $this->response->setJSON([
             'status' => 'success',
             'attempt_id' => (int)$attempt->id,
+            'ws_token' => $wsToken,
             'user' => [
                 'id' => (int)$userId,
                 'username' => session('username'),
                 'firstname' => session('firstname'),
                 'lastname' => session('lastname'),
                 'is_active' => (bool)$user->is_active,
-                'unbanned_at' => $user->unbanned_at,
+                'unbanned_at' => $unbannedAt,
                 'unbanned_at_ms' => $unbannedAtMs,
             ],
             'test' => [
@@ -287,6 +303,16 @@ class ExamApiController extends BaseController
         }
         if ($attempt->status == 4) {
             return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian telah dikunci.']);
+        }
+
+        // Server-side time validation: reject saves after duration expires
+        $test = $this->testModel->findCached($attempt->test_id);
+        if ($test && $test->duration_minutes > 0 && $attempt->started_at) {
+            $elapsedSeconds = time() - strtotime($attempt->started_at);
+            $allowedSeconds = ($test->duration_minutes * 60) + 60; // 60 seconds grace period
+            if ($elapsedSeconds > $allowedSeconds) {
+                return $this->response->setJSON(['status' => 'kicked', 'message' => 'Waktu ujian telah habis.']);
+            }
         }
 
         // Validate generated_at timestamp for static exams (offline mode protection)
@@ -449,19 +475,33 @@ class ExamApiController extends BaseController
      */
     public function reportCheat()
     {
-        $userId = session('user_id');
-        if (!$userId) {
-            return $this->response->setStatusCode(401)->setJSON(['status' => 'error']);
+        try {
+            $userId = session('user_id');
+            if (!$userId) {
+                return $this->response->setStatusCode(401)->setJSON(['status' => 'error']);
+            }
+
+            $attemptId = $this->request->getPost('attempt_id');
+            $cheatType = $this->request->getPost('type') ?? 'unknown';
+
+            $examService = new \App\Libraries\ExamService();
+            $result = $examService->handleCheat((int)$attemptId, (int)$userId, $cheatType);
+
+            return $this->response->setJSON($result);
+        } catch (\Throwable $e) {
+            log_message('error', 'reportCheat ERROR: ' . $e->getMessage());
+            return $this->response->setStatusCode(500)->setJSON([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
         }
-
-        $attemptId = $this->request->getPost('attempt_id');
-        $cheatType = $this->request->getPost('type') ?? 'unknown';
-
-        $examService = new \App\Libraries\ExamService();
-        $result = $examService->handleCheat((int)$attemptId, (int)$userId, $cheatType);
-
-        return $this->response->setJSON($result);
     }
+
+
+
+
 
     /**
      * Flush Redis answers to DB (same as ExamController)

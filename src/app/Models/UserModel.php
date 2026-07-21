@@ -25,9 +25,9 @@ class UserModel extends Model
     ];
 
     protected $validationRules = [
-        'username' => 'required|min_length[3]|max_length[100]|is_unique[users.username,id,{id}]',
+        'username' => 'required|min_length[3]|max_length[100]|is_unique[users.active_username,id,{id}]',
         'password' => 'required|min_length[6]',
-        'role'     => 'required|in_list[admin,guru,siswa]',
+        'role'     => 'required|in_list[admin,guru,siswa,proctor]',
     ];
 
     protected $validationMessages = [
@@ -44,6 +44,54 @@ class UserModel extends Model
 
     protected $beforeInsert = ['hashPassword'];
     protected $beforeUpdate = ['hashPassword'];
+
+    /**
+     * Find soft-deleted user by username
+     */
+    public function findDeletedByUsername(string $username): ?object
+    {
+        return $this->onlyDeleted()->where('username', $username)->first();
+    }
+
+    /**
+     * Hash password manually using Argon2ID
+     */
+    public function hashPasswordManually(string $password): string
+    {
+        $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_DEFAULT;
+        $options = $algo === PASSWORD_ARGON2ID 
+            ? ['memory_cost' => 65536, 'time_cost' => 4, 'threads' => 2]
+            : ['cost' => 12];
+        return password_hash($password, $algo, $options);
+    }
+
+    /**
+     * Restore and reuse a soft-deleted user row
+     */
+    public function reuseDeletedUser(int $id, array $data): bool
+    {
+        if (isset($data['password'])) {
+            $data['password'] = $this->hashPasswordManually($data['password']);
+        }
+        $data['deleted_at'] = null;
+        $data['updated_at'] = date('Y-m-d H:i:s');
+        
+        return $this->builder()->where('id', $id)->update($data);
+    }
+
+    /**
+     * Clean up all pointers/relations for a user to allow safe reuse
+     */
+    public function cleanPointers(int $userId): void
+    {
+        $db = \Config\Database::connect();
+        
+        // 1. Delete user group memberships
+        $db->table('user_groups')->where('user_id', $userId)->delete();
+        
+        // 2. Delete test attempts (this cascades to test_logs and test_log_answers)
+        $db->table('test_attempts')->where('user_id', $userId)->delete();
+    }
 
     /**
      * Hash password before insert/update using Argon2ID

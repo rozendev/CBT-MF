@@ -16,6 +16,7 @@ $routes->post('queue/ping', 'Auth\QueueController::ping');
 $routes->get('maintenance', 'Auth\AuthController::maintenance');
 
 $routes->group('api', ['filter' => 'auth'], static function ($routes) {
+    $routes->get('test-scan', 'Api\TestCheatController::test');
     $routes->post('keep-alive', 'Api\SyncController::keepAlive');
     
     // Static Exam API
@@ -46,6 +47,9 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->post('users/unlock/(:num)', 'Admin\UserController::unlock/$1');
         $routes->get('users/template', 'Admin\UserController::template');
         $routes->post('users/import', 'Admin\UserController::import');
+        
+        $routes->get('users/print-cards', 'Admin\UserController::printCardsIndex');
+        $routes->post('users/print-cards/process', 'Admin\UserController::printCardsProcess');
         
         // Suspend & Lock
         $routes->get('suspend', 'Admin\SuspendController::index');
@@ -158,6 +162,14 @@ $routes->group('student', ['filter' => 'role:siswa'], static function ($routes) 
     // Results / Feedback
     $routes->get('results/view/(:num)', 'Student\ResultController::view/$1');
     $routes->get('results/review/(:num)', 'Student\ResultController::review/$1');
+});
+
+// ── Proctor Routes (role-protected: proctor, admin) ───
+$routes->group('proctor', ['filter' => 'role:proctor,admin'], static function ($routes) {
+    $routes->get('/', 'Proctor\DashboardController::index');
+    $routes->get('dashboard', 'Proctor\DashboardController::index');
+    $routes->get('live/(:num)', 'Proctor\LiveController::monitor/$1');
+    $routes->post('live/lock-attempt', 'Proctor\LiveController::lockAttempt');
 });
 
 // ── Default Route ───────────────────────────────────

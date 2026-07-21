@@ -1,5 +1,44 @@
 <?php
+session_start();
 header('Content-Type: application/json');
+
+$envPath = __DIR__ . '/../../.env';
+if (!function_exists('getEnvVars')) {
+    function getEnvVars($path) {
+        if (!file_exists($path)) return [];
+        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $vars = [];
+        foreach ($lines as $line) {
+            if (strpos(trim($line), '#') === 0) continue;
+            if (strpos($line, '=') !== false) {
+                list($key, $val) = explode('=', $line, 2);
+                $vars[trim($key)] = trim($val);
+            }
+        }
+        return $vars;
+    }
+}
+
+$envVars = getEnvVars($envPath);
+$installerLocked = isset($envVars['INSTALLER_LOCKED']) && $envVars['INSTALLER_LOCKED'] === 'true';
+$isInstalled = false;
+if (isset($envVars['database.default.hostname']) && isset($envVars['database.default.username'])) {
+    $isInstalled = true;
+}
+
+// 1. Block access completely if installer is locked
+if ($isInstalled && $installerLocked) {
+    header("HTTP/1.0 404 Not Found");
+    echo json_encode(['status' => 'error', 'message' => 'Installer is locked.']);
+    exit;
+}
+
+// 2. Block access if database is configured but admin session is not active
+if ($isInstalled && !isset($_SESSION['installer_logged_in'])) {
+    header("HTTP/1.0 403 Forbidden");
+    echo json_encode(['status' => 'error', 'message' => 'Akses ditolak: Diperlukan login admin.']);
+    exit;
+}
 
 $action = $_POST['action'] ?? '';
 

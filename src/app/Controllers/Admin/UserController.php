@@ -105,17 +105,37 @@ class UserController extends BaseController
             unset($data['password']);
         }
 
-        if ($this->userModel->skipValidation(true)->insert($data)) {
-            $userId = $this->userModel->getInsertID();
+        // Check if there is a soft-deleted user with the same username to reuse
+        $deletedUser = $this->userModel->findDeletedByUsername($data['username']);
+        if ($deletedUser) {
+            if ($this->userModel->reuseDeletedUser($deletedUser->id, $data)) {
+                $userId = $deletedUser->id;
 
-            // Handle groups
-            $groups = $this->request->getPost('groups') ?? [];
-            foreach ($groups as $groupId) {
-                $this->groupModel->addUserToGroup($userId, $groupId);
+                // Clear old groups, then add new
+                $db = \Config\Database::connect();
+                $db->table('user_groups')->where('user_id', $userId)->delete();
+
+                $groups = $this->request->getPost('groups') ?? [];
+                foreach ($groups as $groupId) {
+                    $this->groupModel->addUserToGroup($userId, $groupId);
+                }
+
+                $this->activityLog->log('create', session('user_id'), 'user', $userId, "Membuat pengguna (reuse): {$data['username']}");
+                return redirect()->to('/admin/users')->with('success', 'Pengguna berhasil ditambahkan (mengaktifkan kembali data lama).');
             }
+        } else {
+            if ($this->userModel->skipValidation(true)->insert($data)) {
+                $userId = $this->userModel->getInsertID();
 
-            $this->activityLog->log('create', session('user_id'), 'user', $userId, "Membuat pengguna: {$data['username']}");
-            return redirect()->to('/admin/users')->with('success', 'Pengguna berhasil ditambahkan.');
+                // Handle groups
+                $groups = $this->request->getPost('groups') ?? [];
+                foreach ($groups as $groupId) {
+                    $this->groupModel->addUserToGroup($userId, $groupId);
+                }
+
+                $this->activityLog->log('create', session('user_id'), 'user', $userId, "Membuat pengguna: {$data['username']}");
+                return redirect()->to('/admin/users')->with('success', 'Pengguna berhasil ditambahkan.');
+            }
         }
 
         return redirect()->back()->withInput()->with('error', 'Gagal menambahkan pengguna.');
@@ -146,7 +166,7 @@ class UserController extends BaseController
         }
 
         $rules = $this->userModel->getValidationRules();
-        $rules['username'] = "required|min_length[3]|max_length[100]|is_unique[users.username,id,{$id}]";
+        $rules['username'] = "required|min_length[3]|max_length[100]|is_unique[users.active_username,id,{$id}]";
         
         // Password is optional on update
         if ($this->request->getPost('password')) {
@@ -210,6 +230,9 @@ class UserController extends BaseController
             return redirect()->back()->with('error', 'Anda tidak dapat menghapus akun ini.');
         }
 
+        // Clean up user pointers/relations before soft deleting
+        $this->userModel->cleanPointers($id);
+
         if ($this->userModel->delete($id)) {
             $this->activityLog->log('delete', session('user_id'), 'user', $id, "Menghapus pengguna: {$user->username}");
             return redirect()->to('/admin/users')->with('success', 'Pengguna berhasil dihapus.');
@@ -240,6 +263,9 @@ class UserController extends BaseController
                 $skipCount++;
                 continue;
             }
+
+            // Clean up user pointers/relations before soft deleting
+            $this->userModel->cleanPointers($id);
 
             if ($this->userModel->delete($id)) {
                 $this->activityLog->log('delete', session('user_id'), 'user', $id, "Menghapus pengguna (bulk): {$user->username}");
@@ -370,21 +396,12 @@ class UserController extends BaseController
                     continue; // Skip invalid row
                 }
 
-                // Check duplicate username (termasuk yang sudah di-soft delete)
-                if ($this->userModel->withDeleted()->where('username', $username)->first()) {
-                    $duplicateCount++;
-                    continue;
-                }
+                // Check duplicate username (including soft deleted)
+                $existingUser = $this->userModel->withDeleted()->where('username', $username)->first();
                 
-                // Check duplicate email if provided (termasuk yang sudah di-soft delete)
-                if (!empty($email) && $this->userModel->withDeleted()->where('email', $email)->first()) {
-                    $duplicateCount++;
-                    continue;
-                }
-
                 $userData = [
                     'username'  => $username,
-                    'password'  => $password, // Model will hash it
+                    'password'  => $password, // reuseDeletedUser will hash it
                     'firstname' => $firstname,
                     'lastname'  => $lastname,
                     'email'     => empty($email) ? null : $email,
@@ -392,6 +409,29 @@ class UserController extends BaseController
                     'is_active' => 1
                 ];
 
+                if ($existingUser) {
+                    if (empty($existingUser->deleted_at)) {
+                        // User is active: real duplicate
+                        $duplicateCount++;
+                        continue;
+                    } else {
+                        // User is soft deleted: reuse/override this row!
+                        try {
+                            if ($this->userModel->reuseDeletedUser($existingUser->id, $userData)) {
+                                if (!empty($groupId)) {
+                                    $db->table('user_groups')->where('user_id', $existingUser->id)->delete();
+                                    $this->groupModel->addUserToGroup($existingUser->id, $groupId);
+                                }
+                                $successCount++;
+                            }
+                        } catch (\Exception $e) {
+                            // Ignore exception for this specific row and continue
+                        }
+                        continue;
+                    }
+                }
+
+                // If not exists at all, insert new user
                 try {
                     if ($this->userModel->skipValidation(true)->insert($userData)) {
                         $userId = $this->userModel->getInsertID();
@@ -401,8 +441,7 @@ class UserController extends BaseController
                         $successCount++;
                     }
                 } catch (\Exception $e) {
-                    // Ignore DB exception for this specific row (e.g. constraints) and let it continue
-                    // You could log it here if necessary
+                    // Ignore exception for this specific row and continue
                 }
             }
 
@@ -422,6 +461,83 @@ class UserController extends BaseController
 
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal memproses file Excel: ' . $e->getMessage());
+        }
+    }
+    public function printCardsIndex()
+    {
+        $data = [
+            'title' => 'Cetak Kartu Ujian (Excel)',
+            'groups' => $this->groupModel->findAll()
+        ];
+        return view('admin/users/print_cards_form', $data);
+    }
+
+    public function printCardsProcess()
+    {
+        $file = $this->request->getFile('excel_file');
+
+        if (!$file || !$file->isValid() || $file->hasMoved()) {
+            return redirect()->back()->with('error', 'File tidak valid atau gagal diunggah.');
+        }
+
+        $fileMime = $file->getMimeType();
+        $allowedMimes = [
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/wps-office.xls',
+            'application/wps-office.xlsx'
+        ];
+        
+        $ext = strtolower($file->getClientExtension());
+        if (!in_array($ext, ['xls', 'xlsx']) || !in_array($fileMime, $allowedMimes)) {
+            return redirect()->back()->with('error', 'Format file harus .xls atau .xlsx');
+        }
+
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getTempName());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            // Skip header (row 0)
+            array_shift($rows);
+
+            $students = [];
+            foreach ($rows as $row) {
+                $username  = trim((string)($row[0] ?? ''));
+                $password  = trim((string)($row[1] ?? ''));
+                $firstname = trim((string)($row[2] ?? ''));
+                $lastname  = trim((string)($row[3] ?? ''));
+                $groupName = trim((string)($row[5] ?? '')); // Group column if they added it, but not strictly necessary for print
+
+                if (empty($username) || empty($password) || empty($firstname)) {
+                    continue; // Skip invalid row
+                }
+
+                $students[] = [
+                    'username' => $username,
+                    'password' => $password,
+                    'name'     => trim($firstname . ' ' . $lastname)
+                ];
+            }
+
+            if (empty($students)) {
+                return redirect()->back()->with('error', 'Tidak ada data siswa yang valid di dalam file Excel.');
+            }
+
+            $settingModel = new \App\Models\SettingModel();
+            
+            $data = [
+                'students'   => $students,
+                'appName'    => $settingModel->getValue('app_name', 'Sistem Ujian'),
+                'schoolName' => $settingModel->getValue('school_name', 'Sekolah Kita'),
+                'appLogo'    => $settingModel->getValue('app_logo', '')
+            ];
+
+            return view('admin/users/print_cards_layout', $data);
+
+        } catch (\Exception $e) {
+            log_message('error', '[PrintCards] ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Terjadi kesalahan saat membaca file Excel.');
         }
     }
 }

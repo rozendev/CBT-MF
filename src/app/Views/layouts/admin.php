@@ -303,6 +303,7 @@ else $greeting = 'Malam';
             $mainNav = [
                 ['url' => '/admin/dashboard', 'icon' => 'bi-house-door', 'label' => 'Dashboard'],
                 ['url' => '/admin/tests',     'icon' => 'bi-file-earmark-text', 'label' => 'Ujian'],
+                ['url' => '/proctor',         'icon' => 'bi-broadcast text-danger', 'label' => 'Live Proctoring'],
             ];
             foreach ($mainNav as $item):
                 $active = str_contains($currentUrl, $item['url']) ? 'active' : '';

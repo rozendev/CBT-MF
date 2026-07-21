@@ -64,7 +64,7 @@ class StaticExamController extends BaseController
             foreach ($questions as $q) {
                 $questionsData[] = [
                     'question_id' => (int)$q->id,
-                    'question_text' => $q->description,
+                    'question_text' => $this->extractBase64Images($q->description),
                     'question_type' => (int)$q->type,
                     'display_order' => $displayOrder,
                     'num_answers' => (int)$set->num_answers ?: 0,
@@ -84,7 +84,7 @@ class StaticExamController extends BaseController
                 foreach ($answers as $ans) {
                     $aData[] = [
                         'answer_id' => (int)$ans->id,
-                        'answer_text' => $ans->description,
+                        'answer_text' => $this->extractBase64Images($ans->description),
                         'display_order' => $ansOrder,
                         'is_selected' => 0,
                     ];
@@ -157,6 +157,10 @@ class StaticExamController extends BaseController
             log_message('error', 'Redis error publishing sync_mode: ' . $e->getMessage());
         }
 
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['status' => 'success', 'message' => "Halaman statis berhasil di-generate: /{$relativePath}"]);
+        }
+
         return redirect()->back()->with('success', "Halaman statis berhasil di-generate: /{$relativePath}");
     }
 
@@ -214,6 +218,51 @@ class StaticExamController extends BaseController
             log_message('error', 'Redis error publishing sync_mode: ' . $e->getMessage());
         }
 
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['status' => 'success', 'message' => 'Halaman statis berhasil dihapus. Mode dikembalikan ke Normal.']);
+        }
+
         return redirect()->back()->with('success', 'Halaman statis berhasil dihapus. Mode dikembalikan ke Normal.');
+    }
+
+    /**
+     * Extract base64 images from HTML, save to physical assets, and return updated HTML
+     */
+    private function extractBase64Images($html)
+    {
+        if (empty($html)) return $html;
+
+        // Find all img tags with data:image src
+        return preg_replace_callback('/<img\s+[^>]*src=["\'](data:image\/([^;]+);base64,([^"\']+)?)["\'][^>]*>/i', function($matches) {
+            $fullMatch = $matches[0];
+            $ext = $matches[2]; // e.g., png, jpeg
+            $base64Data = $matches[3];
+
+            // Decode base64
+            $imageData = base64_decode($base64Data);
+            if ($imageData === false) return $fullMatch;
+
+            // Generate deterministic filename based on content hash to avoid duplicates
+            $hash = md5($imageData);
+            $filename = "extracted_{$hash}.{$ext}";
+            $uploadPath = FCPATH . 'uploads/questions/';
+            $filePath = $uploadPath . $filename;
+
+            // Create dir if not exists
+            if (!is_dir($uploadPath)) {
+                @mkdir($uploadPath, 0755, true);
+            }
+
+            // Save file if it doesn't already exist
+            if (!file_exists($filePath)) {
+                @file_put_contents($filePath, $imageData);
+            }
+
+            // Generate new URL (relative to root so it works across hostnames)
+            $newUrl = '/uploads/questions/' . $filename;
+
+            // Replace the base64 src with the new URL
+            return str_replace($matches[1], $newUrl, $fullMatch);
+        }, $html);
     }
 }

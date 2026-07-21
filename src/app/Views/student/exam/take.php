@@ -17,6 +17,44 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
     <title>Ujian: <?= esc($test->name) ?> - <?= esc($appName) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const renderMath = () => {
+                // 1. Render Quill Editor Formulas
+                document.querySelectorAll('.ql-formula').forEach(function(el) {
+                    if (!el.hasAttribute('data-rendered')) {
+                        var math = el.getAttribute('data-value');
+                        if(math) {
+                            try { katex.render(math, el, { throwOnError: false }); } catch(e){}
+                        }
+                        el.setAttribute('data-rendered', 'true');
+                    }
+                });
+                
+                // 2. Auto-Render Text Formulas (for Word Imports via $$)
+                if (typeof renderMathInElement !== 'undefined') {
+                    renderMathInElement(document.body, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '\\(', right: '\\)', display: false},
+                            {left: '\\[', right: '\\]', display: true}
+                        ],
+                        throwOnError: false
+                    });
+                }
+            };
+            const observer = new MutationObserver((mutations) => {
+                renderMath();
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+            
+            // Initial render delay to ensure auto-render is loaded
+            setTimeout(renderMath, 500);
+        });
+    </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
     <style>
         :root {
@@ -454,6 +492,25 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
     <!-- ▼ EXAM CONTENT ▼ -->
     <div id="examContent" style="display:block;" x-data="examApp()">
+        <!-- Offline Overlay -->
+        <div x-show="isOffline" style="display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; flex-direction: column;" :class="{'d-flex': isOffline}">
+            <div class="bg-white rounded-4 shadow-lg p-5 text-center" style="max-width: 450px; width: 90%;">
+                <div class="mb-4 d-flex justify-content-center">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; background: rgba(220, 53, 69, 0.1);">
+                        <i class="bi bi-wifi-off text-danger" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+                <h3 class="fw-bold text-dark mb-3">Koneksi Terputus!</h3>
+                <p class="text-secondary mb-4">Sistem mendeteksi Anda sedang offline. Ujian dihentikan sementara hingga koneksi internet Anda kembali. Harap segera sambungkan ulang perangkat Anda ke jaringan.</p>
+                <div class="alert alert-success border-success-subtle py-3 text-start d-flex align-items-center">
+                    <i class="bi bi-shield-check text-success fs-3 me-3"></i>
+                    <div>
+                        <strong class="text-success d-block">Jangan Khawatir!</strong>
+                        <span class="text-success small">Jawaban Anda sebelumnya sudah tersimpan dengan aman di dalam perangkat.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     <div class="exam-layout">
     <div class="exam-main">
         
@@ -838,8 +895,11 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 timeLeft: 0,
                 timerInterval: null,
                 warningShown: false,
+                isOffline: !navigator.onLine,
 
                 init() {
+                    window.addEventListener('offline', () => this.isOffline = true);
+                    window.addEventListener('online', () => this.isOffline = false);
                     // Parse Matching Options for Type 4 and Type 5
                     this.questions.forEach(q => {
                         q.is_flagged = false;
@@ -917,7 +977,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 initWebSocket() {
                     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                     const wsHost = window.location.host;
-                    const wsUrl = `${protocol}//${wsHost}/ws/?user_id=<?= session('user_id') ?>&attempt_id=${ATTEMPT_ID}`;
+                    const wsUrl = `${protocol}//${wsHost}/ws/?ws_token=<?= esc($wsToken) ?>`;
                     
                     this.connectWebSocket(wsUrl);
                 },

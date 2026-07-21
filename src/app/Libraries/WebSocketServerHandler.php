@@ -9,11 +9,13 @@ class WebSocketServerHandler implements MessageComponentInterface
 {
     protected $clients;
     protected $userConnections;
+    protected $proctorRooms;
 
     public function __construct()
     {
         $this->clients = new \SplObjectStorage;
         $this->userConnections = [];
+        $this->proctorRooms = [];
     }
 
     public function onOpen(ConnectionInterface $conn)
@@ -24,26 +26,75 @@ class WebSocketServerHandler implements MessageComponentInterface
         $querystring = $conn->httpRequest->getUri()->getQuery();
         parse_str($querystring, $query);
 
-        if (isset($query['user_id']) && isset($query['attempt_id'])) {
-            $userId = (int) $query['user_id'];
-            $attemptId = (int) $query['attempt_id'];
-            
-            $conn->userId = $userId;
-            $conn->attemptId = $attemptId;
-            
-            if (!isset($this->userConnections[$userId])) {
-                $this->userConnections[$userId] = [];
+        if (isset($query['proctor_token'])) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $tokenData = $redis->get("ws_proctor_token:{$query['proctor_token']}");
+                if ($tokenData) {
+                    $tokenData = json_decode($tokenData, true);
+                    $testId = $tokenData['test_id'] ?? 0;
+                    
+                    $conn->role = 'proctor';
+                    $conn->testId = $testId;
+                    
+                    if (!isset($this->proctorRooms[$testId])) {
+                        $this->proctorRooms[$testId] = [];
+                    }
+                    $this->proctorRooms[$testId][] = $conn;
+                    
+                    $conn->send(json_encode([
+                        'event' => 'connected',
+                        'data' => ['message' => 'Proctor WebSocket connected to test ' . $testId]
+                    ]));
+                    return;
+                }
             }
-            $this->userConnections[$userId][] = $conn;
-            
-            // Send connected event
-            $conn->send(json_encode([
-                'event' => 'connected',
-                'data' => [
-                    'message' => 'WebSocket connected',
-                    'attempt_id' => $attemptId
-                ]
-            ]));
+            // Invalid token
+            $conn->close();
+            return;
+        } elseif (isset($query['ws_token'])) {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $tokenData = $redis->get("ws_student_token:{$query['ws_token']}");
+                if ($tokenData) {
+                    $tokenData = json_decode($tokenData, true);
+                    $userId = (int)($tokenData['user_id'] ?? 0);
+                    $attemptId = (int)($tokenData['attempt_id'] ?? 0);
+                    $testId = (int)($tokenData['test_id'] ?? 0);
+
+                    if ($userId && $attemptId && $testId) {
+                        $conn->userId = $userId;
+                        $conn->attemptId = $attemptId;
+                        $conn->testId = $testId;
+                        
+                        if (!isset($this->userConnections[$userId])) {
+                            $this->userConnections[$userId] = [];
+                        }
+                        $this->userConnections[$userId][] = $conn;
+                        
+                        // Send connected event
+                        $conn->send(json_encode([
+                            'event' => 'connected',
+                            'data' => [
+                                'message' => 'WebSocket connected',
+                                'attempt_id' => $attemptId
+                            ]
+                        ]));
+
+                        // Notify proctors that a student connected
+                        $this->broadcastToProctors([
+                            'event' => 'student_connected',
+                            'user_id' => $userId,
+                            'attempt_id' => $attemptId,
+                            'test_id' => $testId
+                        ], $testId);
+                        return;
+                    }
+                }
+            }
+            // Invalid token
+            $conn->close();
+            return;
         } else {
             // Reject connection
             $conn->close();
@@ -59,8 +110,19 @@ class WebSocketServerHandler implements MessageComponentInterface
     {
         $this->clients->detach($conn);
         
-        if (isset($conn->userId)) {
+        if (isset($conn->role) && $conn->role === 'proctor') {
+            $testId = $conn->testId ?? 0;
+            if (isset($this->proctorRooms[$testId])) {
+                foreach ($this->proctorRooms[$testId] as $key => $proctorConn) {
+                    if ($proctorConn === $conn) {
+                        unset($this->proctorRooms[$testId][$key]);
+                    }
+                }
+                $this->proctorRooms[$testId] = array_values($this->proctorRooms[$testId]);
+            }
+        } elseif (isset($conn->userId)) {
             $userId = $conn->userId;
+            $attemptId = $conn->attemptId ?? null;
             if (isset($this->userConnections[$userId])) {
                 foreach ($this->userConnections[$userId] as $key => $userConn) {
                     if ($userConn === $conn) {
@@ -69,6 +131,17 @@ class WebSocketServerHandler implements MessageComponentInterface
                 }
                 // Reindex array
                 $this->userConnections[$userId] = array_values($this->userConnections[$userId]);
+            }
+
+            // Notify proctors that a student disconnected
+            $testId = $conn->testId ?? 0;
+            if ($testId > 0) {
+                $this->broadcastToProctors([
+                    'event' => 'student_disconnected',
+                    'user_id' => $userId,
+                    'attempt_id' => $attemptId,
+                    'test_id' => $testId
+                ], $testId);
             }
         }
     }
@@ -95,9 +168,6 @@ class WebSocketServerHandler implements MessageComponentInterface
             if (isset($this->userConnections[$userId])) {
                 foreach ($this->userConnections[$userId] as $conn) {
                     $conn->send($message);
-                    if ($event === 'ban' || $event === 'kick' || $event === 'finished') {
-                        $conn->close();
-                    }
                 }
             }
         } elseif ($attemptId) {
@@ -105,15 +175,40 @@ class WebSocketServerHandler implements MessageComponentInterface
             foreach ($this->clients as $conn) {
                 if (isset($conn->attemptId) && $conn->attemptId == $attemptId) {
                     $conn->send($message);
-                    if ($event === 'ban' || $event === 'kick' || $event === 'finished') {
-                        $conn->close();
-                    }
                 }
             }
         } else {
             // Broadcast to all (e.g. for sync_mode or extend_time)
             foreach ($this->clients as $conn) {
                 $conn->send($message);
+            }
+        }
+
+        // Always broadcast exam events to proctors too!
+        if (!in_array($event, ['connected', 'heartbeat', 'student_connected', 'student_disconnected'])) {
+            $tId = $eventData['test_id'] ?? null;
+            $this->broadcastToProctors($eventData, $tId);
+        }
+    }
+
+    public function broadcastToProctors(array $eventData, $testId = null)
+    {
+        $message = json_encode([
+            'event' => 'proctor_alert',
+            'data' => $eventData
+        ]);
+
+        if ($testId && isset($this->proctorRooms[$testId])) {
+            // Broadcast only to proctors monitoring this test
+            foreach ($this->proctorRooms[$testId] as $conn) {
+                $conn->send($message);
+            }
+        } elseif (!$testId) {
+            // Broadcast to all proctors (fallback if testId is missing)
+            foreach ($this->proctorRooms as $room) {
+                foreach ($room as $conn) {
+                    $conn->send($message);
+                }
             }
         }
     }

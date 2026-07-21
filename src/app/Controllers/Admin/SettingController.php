@@ -272,8 +272,42 @@ class SettingController extends BaseController
         }
 
         $newName = $file->getRandomName();
+        $targetPath = FCPATH . 'uploads/' . $newName;
         $file->move(FCPATH . 'uploads', $newName);
+
+        // Sanitize SVG to prevent Stored XSS
+        if (strtolower($file->getClientExtension()) === 'svg' || $file->getClientMimeType() === 'image/svg+xml') {
+            $this->sanitizeSvg($targetPath);
+        }
+
         $this->settingModel->setValue($fieldName, 'uploads/' . $newName, 'string', $group);
+    }
+
+    private function sanitizeSvg(string $filePath)
+    {
+        if (!file_exists($filePath)) {
+            return;
+        }
+        $content = file_get_contents($filePath);
+        
+        // Remove <script> elements
+        $content = preg_replace('/<\s*script[^>]*>.*?<\s*\/\s*script\s*>/is', '', $content);
+        $content = preg_replace('/<\s*script[^>]*\/>/is', '', $content);
+        
+        // Remove XML/HTML comments containing potential scripts
+        $content = preg_replace('/<!--.*?-->/s', '', $content);
+        
+        // Remove event handlers (onload, onerror, etc.)
+        $content = preg_replace('/\s+on[a-zA-Z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]*)/i', '', $content);
+        
+        // Remove javascript: URIs
+        $content = preg_replace('/\s+href\s*=\s*("javascript:[^"]*"|\'javascript:[^\']*\'|javascript:[^\s>]*)/i', ' href="#"', $content);
+        $content = preg_replace('/\s+xlink:href\s*=\s*("javascript:[^"]*"|\'javascript:[^\']*\'|javascript:[^\s>]*)/i', ' xlink:href="#"', $content);
+
+        // Remove foreignObject tags
+        $content = preg_replace('/<\s*foreignObject[^>]*>.*?<\s*\/\s*foreignObject\s*>/is', '', $content);
+        
+        file_put_contents($filePath, $content);
     }
 
     private function updateEnv($key, $value)

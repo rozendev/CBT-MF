@@ -24,6 +24,44 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     <title>Ujian: <?= esc($test->name) ?> - <?= esc($appName) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const renderMath = () => {
+                // 1. Render Quill Editor Formulas
+                document.querySelectorAll('.ql-formula').forEach(function(el) {
+                    if (!el.hasAttribute('data-rendered')) {
+                        var math = el.getAttribute('data-value');
+                        if(math) {
+                            try { katex.render(math, el, { throwOnError: false }); } catch(e){}
+                        }
+                        el.setAttribute('data-rendered', 'true');
+                    }
+                });
+                
+                // 2. Auto-Render Text Formulas (for Word Imports via $$)
+                if (typeof renderMathInElement !== 'undefined') {
+                    renderMathInElement(document.body, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '\\(', right: '\\)', display: false},
+                            {left: '\\[', right: '\\]', display: true}
+                        ],
+                        throwOnError: false
+                    });
+                }
+            };
+            const observer = new MutationObserver((mutations) => {
+                renderMath();
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+            
+            // Initial render delay to ensure auto-render is loaded
+            setTimeout(renderMath, 500);
+        });
+    </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
@@ -452,7 +490,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             autoLogoutOnTimeout: <?= (int)$test->auto_logout_on_timeout ?>,
             hasPassword: <?= !empty($test->password) ? 'true' : 'false' ?>,
             antiCheat: <?= json_encode($antiCheat) ?>,
-            apiBaseUrl: <?= json_encode($apiBaseUrl) ?>,
+            apiBaseUrl: (window.location.protocol === 'file:') ? <?= json_encode($apiBaseUrl) ?> : window.location.origin,
             questionsData: <?= json_encode($questionsData ?? []) ?>,
             answersData: <?= json_encode($answersData ?? []) ?>,
             randomQuestions: <?= $test->random_questions ? 'true' : 'false' ?>,
@@ -504,6 +542,25 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
     <!-- EXAM CONTENT -->
     <div id="examContent" style="display:none;" x-data="examApp()">
+        <!-- Offline Overlay -->
+        <div x-show="isOffline" style="display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; flex-direction: column;" :class="{'d-flex': isOffline}">
+            <div class="bg-white rounded-4 shadow-lg p-5 text-center" style="max-width: 450px; width: 90%;">
+                <div class="mb-4 d-flex justify-content-center">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; background: rgba(220, 53, 69, 0.1);">
+                        <i class="bi bi-wifi-off text-danger" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+                <h3 class="fw-bold text-dark mb-3">Koneksi Terputus!</h3>
+                <p class="text-secondary mb-4">Sistem mendeteksi Anda sedang offline. Ujian dihentikan sementara hingga koneksi internet Anda kembali. Harap segera sambungkan ulang perangkat Anda ke jaringan.</p>
+                <div class="alert alert-success border-success-subtle py-3 text-start d-flex align-items-center">
+                    <i class="bi bi-shield-check text-success fs-3 me-3"></i>
+                    <div>
+                        <strong class="text-success d-block">Jangan Khawatir!</strong>
+                        <span class="text-success small">Jawaban Anda sebelumnya sudah tersimpan dengan aman di dalam perangkat.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     <div class="exam-layout">
     <div class="exam-main">
         
@@ -959,6 +1016,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     timeOffset: timeOffset,
                     antiCheat: res.anti_cheat || null,
                     user: res.user || null,
+                    wsToken: res.ws_token || null,
                 };
 
                 document.dispatchEvent(new CustomEvent('exam-data-loaded'));
@@ -1019,6 +1077,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             sseSource: null,
             sseErrorCount: 0,
             syncInterval: null,
+            isOffline: !navigator.onLine,
 
             parseMatching() {
                 this.questions.forEach(q => {
@@ -1045,6 +1104,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             },
 
             init() {
+                window.addEventListener('offline', () => this.isOffline = true);
+                window.addEventListener('online', () => this.isOffline = false);
                 this.questions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData || []));
                 this.allAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData || {}));
                 this.parseMatching();
@@ -1130,7 +1191,12 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 const urlObj = new URL(API);
                 const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsHost = urlObj.host;
-                const wsUrl = `${protocol}//${wsHost}/ws/?user_id=${USER_ID}&attempt_id=${ATTEMPT_ID}`;
+                const wsToken = window.__examData ? window.__examData.wsToken : null;
+                if (!wsToken) {
+                    console.error('No WebSocket token available');
+                    return;
+                }
+                const wsUrl = `${protocol}//${wsHost}/ws/?ws_token=${wsToken}`;
                 
                 this.connectWebSocket(wsUrl);
             },
@@ -1576,48 +1642,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             }
         }
 
-        async function reportBan(clientStrikes, violationType) {
-            if (!ATTEMPT_ID) return;
 
-            try {
-                const fd = buildFormData({
-                    attempt_id: ATTEMPT_ID,
-                    type: 'ban_report',
-                    client_strikes: clientStrikes,
-                    violation_type: violationType
-                });
-
-                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
-                    method: 'POST',
-                    body: fd
-                }, 2, 5000);
-
-                const data = await res.json();
-                updateCsrf(data);
-
-                if (data.action === 'lock') {
-                    console.log('Server confirmed ban, WebSocket will handle redirect');
-                }
-            } catch (err) {
-                console.error('Failed to report ban to server:', err);
-            }
-        }
-
-        function handleViolation(type) {
-            strikes++;
-
-            if (strikes >= AC_CONFIG.max_strikes) {
-                reportBan(strikes, type);
-                isLocked = true;
-                clearSuspend();
-                document.getElementById('examContent').style.display = 'none';
-                console.log('Banned: waiting for WebSocket ban event...');
-                return;
-            }
-
-            const suspendDuration = AC_CONFIG.suspend_timer || 30;
-            showSuspendOverlay(strikes, suspendDuration);
-        }
 
         window.__antiCheat = {
             maxStrikes: AC_CONFIG.max_strikes,
@@ -1630,20 +1655,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
-            strikes++;
-            if (strikes >= AC_CONFIG.max_strikes) {
-                reportBan(strikes, 'tab_switch');
-                isLocked = true;
-                clearSuspend();
-                document.getElementById('examContent').style.display = 'none';
-            } else {
-                Swal.fire({
-                    title: 'Peringatan!',
-                    html: 'Anda terdeteksi membuka tab lain.<br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br><small class="text-muted">Jika mencapai batas maksimal, ujian akan dikunci.</small>',
-                    icon: 'warning',
-                    confirmButtonText: 'Saya Mengerti'
-                });
-            }
+            // Lapor ke server agar server yang mengkalkulasi strike dan menentukan action (suspend/lock)
+            reportCheat('tab_switch');
         });
 
         // ── Fullscreen Exit Detection ──
@@ -1655,7 +1668,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 return;
             }
 
-            handleViolation('fullscreen_exit');
+            // Lapor ke server
+            reportCheat('fullscreen_exit');
         });
     })();
 
