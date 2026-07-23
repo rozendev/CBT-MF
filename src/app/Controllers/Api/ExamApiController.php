@@ -220,6 +220,7 @@ class ExamApiController extends BaseController
                 'show_menu' => (int)$test->show_menu,
                 'allow_noanswer' => (int)$test->allow_noanswer,
                 'auto_logout_on_timeout' => (int)$test->auto_logout_on_timeout,
+                'auto_submit_on_cheat' => (int)($test->auto_submit_on_cheat ?? 0),
                 'started_at' => $attempt->started_at,
                 'started_at_ms' => strtotime($attempt->started_at) * 1000,
                 'begin_time_ms' => strtotime($test->begin_time) * 1000,

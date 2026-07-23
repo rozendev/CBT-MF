@@ -153,6 +153,16 @@
                                    <?= old('is_repeatable', $test->is_repeatable ?? '0') == '1' ? 'checked' : '' ?>>
                             <label class="form-check-label text-danger">Boleh Diulang</label>
                         </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input bg-danger border-danger" type="checkbox" name="auto_submit_on_cheat" value="1" 
+                                   <?= old('auto_submit_on_cheat', $test->auto_submit_on_cheat ?? '0') == '1' ? 'checked' : '' ?>>
+                            <label class="form-check-label text-danger fw-bold">
+                                <i class="bi bi-shield-exclamation me-1"></i>Auto-Submit saat Kecurangan
+                            </label>
+                        </div>
+                        <div class="form-text text-danger-emphasis small mb-2" style="margin-top:-4px;">
+                            Jika aktif, ujian akan langsung dikumpulkan dan dinilai otomatis saat siswa terdeteksi curang (1 kali saja). Siswa akan melihat peringatan sebelum memulai ujian.
+                        </div>
                     </div>
 
                     <hr>

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"env\\\\\\(\" /home/rozen/Documents/Sistem-Ujian/src/app/Controllers/ 2>/dev/null | grep -E \"\\(password|secret|key|token\\)\" | head -5)",
+      "Bash(chmod:*)",
+      "Bash(docker exec ujian_php grep -A 10 \"public function __construct\" /var/www/html/app/Config/Cache.php 2>&1)",
+      "Bash(docker exec ujian_php ps aux | grep php-fpm 2>&1)",
+      "Bash(curl -s http://localhost:8080/login 2>&1 | head -20)",
+      "Bash(docker compose logs --tail=50 php 2>&1)",
+      "Bash(cd /home/rozen/Documents/Sistem-Ujian && git --no-pager status --short)",
+      "Bash(cd /home/rozen/Documents/Sistem-Ujian && git --no-pager diff)",
+      "Bash(cd /home/rozen/Documents/Sistem-Ujian && git --no-pager diff --staged)",
+      "Bash(for f in /home/rozen/Documents/Sistem-Ujian/src/app/Database/Migrations/*.php; do echo \"=== $\\(basename $f\\) ===\"; head -60 \"$f\" | grep -A 30 \"public function up\"; echo \"\"; done)",
+      "Bash(cd /home/rozen/Documents/Sistem-Ujian && git --no-pager log --oneline -10)",
+      "Bash(cd /home/rozen/Documents/Sistem-Ujian && git --no-pager diff --stat)",
+      "Bash(cd /home/rozen/Documents/Sistem-Ujian && git add .gitignore docker-compose.yml src/app/Config/Cache.php src/app/Config/Exceptions.php src/app/Config/Filters.php src/app/Config/Routes.php src/app/Config/Session.php src/app/Libraries/RedisClient.php src/app/Views/student/exam/take.php src/env src/public/index.php src/public/install/actions.php src/public/install/steps/step1.php src/public/install/steps/step3.php src/public/uploads/questions/img_6a22fa71a3fb0.jpg src/public/uploads/questions/img_6a22fbb3d895a.jpg src/writable/cache/index.html src/writable/session/index.html scripts/backup.sh scripts/log-rotate.sh src/app/Controllers/HealthController.php)",
+      "Bash(cd /home/rozen/Documents/Sistem-Ujian && git add .gitignore docker-compose.yml src/app/Config/Cache.php src/app/Config/Exceptions.php src/app/Config/Filters.php src/app/Config/Routes.php src/app/Config/Session.php src/app/Libraries/RedisClient.php src/app/Views/student/exam/take.php src/env src/public/index.php src/public/install/actions.php src/public/install/steps/step1.php src/public/install/steps/step3.php src/public/uploads/questions/img_6a22fa71a3fb0.jpg src/public/uploads/questions/img_6a22fbb3d895a.jpg scripts/backup.sh scripts/log-rotate.sh src/app/Controllers/HealthController.php)",
+      "Bash(cd /home/rozen/Documents/Sistem-Ujian && git add -u && git add scripts/backup.sh scripts/log-rotate.sh src/app/Controllers/HealthController.php)"
+    ]
+  }
+}

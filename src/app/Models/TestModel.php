@@ -23,7 +23,7 @@ class TestModel extends Model
         'score_right', 'score_wrong', 'score_unanswered', 'max_score',
         'passing_score', 'random_questions', 'random_answers', 'show_menu',
         'allow_noanswer', 'mcma_partial_score', 'is_repeatable',
-        'auto_logout_on_timeout', 'is_enabled', 'user_id',
+        'auto_logout_on_timeout', 'auto_submit_on_cheat', 'is_enabled', 'user_id',
         'exam_mode', 'static_page_path', 'static_generated_at'
     ];
 

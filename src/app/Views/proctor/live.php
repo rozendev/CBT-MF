@@ -63,7 +63,7 @@
                     </thead>
                     <tbody>
                         <template x-for="student in students" :key="student.user_id">
-                            <tr :class="{ 'table-danger': student.flashing, 'table-warning': student.banned }">
+                            <tr :class="{ 'table-danger': student.flashing, 'table-warning': student.banned, 'table-success': student.status === 3 }">
                                 <td class="ps-4">
                                     <div class="fw-bold" x-text="student.name"></div>
                                     <div class="text-muted small" x-text="student.username"></div>
@@ -71,12 +71,13 @@
                                 <td>
                                     <span class="badge" 
                                           :class="{
-                                            'bg-success': student.is_online && !student.banned, 
-                                            'bg-secondary': !student.is_online && !student.banned,
-                                            'bg-danger': student.banned
+                                            'bg-success': student.is_online && !student.banned && student.status !== 3, 
+                                            'bg-secondary': !student.is_online && !student.banned && student.status !== 3,
+                                            'bg-danger': student.banned,
+                                            'bg-info': student.status === 3
                                           }">
-                                        <i class="bi" :class="student.is_online ? 'bi-wifi' : 'bi-wifi-off'"></i> 
-                                        <span x-text="student.banned ? 'Terkunci' : (student.is_online ? 'Online' : 'Offline')"></span>
+                                        <i class="bi" :class="student.status === 3 ? 'bi-check-circle-fill' : (student.is_online ? 'bi-wifi' : 'bi-wifi-off')"></i> 
+                                        <span x-text="student.banned ? 'Terkunci' : (student.status === 3 ? 'Selesai (Auto-Submit)' : (student.is_online ? 'Online' : 'Offline'))"></span>
                                     </span>
                                 </td>
                                 <td>
@@ -105,6 +106,7 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 function proctorLiveDashboard() {
     return {
@@ -135,6 +137,7 @@ function proctorLiveDashboard() {
                 is_online: Boolean(a.is_online), // Hydrated from backend
                 strikes: parseInt(a.cheat_strikes),
                 banned: parseInt(a.status) === 2, // 2 = locked/banned
+                status: parseInt(a.status),
                 flashing: false
             }));
 
@@ -183,6 +186,8 @@ function proctorLiveDashboard() {
                 const realEvent = data.event;
                 if (realEvent === 'ban') {
                     this.triggerCheatAlert(data.user_id);
+                } else if (realEvent === 'auto_submit') {
+                    this.triggerAutoSubmitAlert(data.user_id, data.reason);
                 }
             }
         },
@@ -206,6 +211,31 @@ function proctorLiveDashboard() {
                 setTimeout(() => {
                     student.flashing = false;
                 }, 3000); // Stop flashing after 3s (remains banned color)
+            }
+        },
+
+        triggerAutoSubmitAlert(userId, reason) {
+            const student = this.students.find(s => s.user_id === userId);
+            if (student) {
+                student.strikes++;
+                student.status = 3; // 3 = finished
+                student.is_online = false;
+                
+                Swal.fire({
+                    title: 'Auto-Submit Terdeteksi!',
+                    text: `Siswa ${student.name} (${student.username}) terdeteksi ${reason || 'melakukan pelanggaran'} dan ujiannya telah otomatis dikumpulkan.`,
+                    icon: 'warning',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 8000,
+                    timerProgressBar: true
+                });
+
+                student.flashing = true;
+                setTimeout(() => {
+                    student.flashing = false;
+                }, 4000);
             }
         },
 

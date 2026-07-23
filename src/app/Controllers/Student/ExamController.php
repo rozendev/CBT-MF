@@ -53,7 +53,10 @@ class ExamController extends BaseController
             return redirect()->to('/student/dashboard')->with('error', 'Waktu ujian ini telah berakhir.');
         }
 
-        return view('student/exam/prepare', ['test' => $test]);
+        return view('student/exam/prepare', [
+            'test' => $test,
+            'isAntiCheatEnabled' => (new \App\Models\SettingModel())->getValue('anti_cheat_enabled', false),
+        ]);
     }
 
     /**

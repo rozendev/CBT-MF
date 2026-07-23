@@ -488,8 +488,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         </div>
         
         <p class="mb-2 text-warning">Pelanggaran: <span id="strikeCount" class="fw-bold fs-5">1</span> / <span id="maxStrikes" class="fw-bold fs-5">2</span></p>
-    </div>
-
     <!-- ▼ EXAM CONTENT ▼ -->
     <div id="examContent" style="display:block;" x-data="examApp()">
         <!-- Offline Overlay -->
@@ -927,6 +925,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         }
                     });
 
+                    // Restore offline progress from localStorage if any
+                    this.restoreLocalBackup();
+
                     // Auto Sync to DB every 60 seconds (Write-Behind Hybrid)
                     setInterval(() => {
                         $.post('<?= base_url('/student/exam/auto-sync') ?>', { attempt_id: ATTEMPT_ID });
@@ -1122,6 +1123,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
 
                 saveAnswer() {
+                    // Save progress to localStorage as offline safety backup
+                    this.saveLocalBackup();
+
                     const logId = this.currentQuestion.log_id;
                     const type = this.currentQuestion.question_type;
                     let data = { log_id: logId, question_type: type };
@@ -1283,6 +1287,96 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                          window.isSubmitting = false;
                          Swal.fire('Error', 'Gagal menyelesaikan ujian. Silakan coba lagi.', 'error');
                      });
+                },
+
+                saveLocalBackup() {
+                    if (!ATTEMPT_ID) return;
+                    const backupData = {
+                        questions: this.questions.map(q => ({
+                            question_id: q.question_id || null,
+                            log_id: q.log_id || q.id || null,
+                            answer_text: q.answer_text || '',
+                            is_flagged: q.is_flagged || false,
+                            matchingPairs: q.matchingPairs ? q.matchingPairs.map(p => ({ left: p.left, selected: p.selected })) : null
+                        })),
+                        answers: this.allAnswers
+                    };
+                    localStorage.setItem("cbt_backup_attempt_" + ATTEMPT_ID, JSON.stringify(backupData));
+                },
+
+                restoreLocalBackup() {
+                    if (!ATTEMPT_ID) return;
+                    const raw = localStorage.getItem("cbt_backup_attempt_" + ATTEMPT_ID);
+                    if (!raw) return;
+                    try {
+                        const backup = JSON.parse(raw);
+                        if (backup && backup.questions && backup.answers) {
+                            let needsSaveIds = [];
+
+                            this.questions.forEach((q, idx) => {
+                                const bq = backup.questions.find(x => (x.log_id || x.question_id) === (q.log_id || q.question_id || q.id));
+                                if (!bq) return;
+
+                                q.is_flagged = bq.is_flagged || q.is_flagged;
+
+                                if (q.question_type == 3) {
+                                    if (bq.answer_text && (!q.answer_text || q.answer_text.trim() === '')) {
+                                        q.answer_text = bq.answer_text;
+                                        needsSaveIds.push(idx);
+                                    }
+                                } else if (q.question_type == 4 || q.question_type == 5) {
+                                    let backupMatching = {};
+                                    bq.matchingPairs.forEach(p => { backupMatching[p.left] = p.selected; });
+
+                                    let changed = false;
+                                    q.matchingPairs.forEach(p => {
+                                        if (backupMatching[p.left] && !p.selected) {
+                                            p.selected = backupMatching[p.left];
+                                            changed = true;
+                                        }
+                                    });
+                                    if (changed) {
+                                        needsSaveIds.push(idx);
+                                    }
+                                } else {
+                                    const serverAnswers = this.allAnswers[q.question_id || q.log_id] || [];
+                                    const backupAnswers = backup.answers[q.question_id || q.log_id] || [];
+
+                                    let changed = false;
+                                    serverAnswers.forEach(sa => {
+                                        const ba = backupAnswers.find(x => x.answer_id === sa.answer_id);
+                                        if (ba && ba.is_selected == 1 && sa.is_selected == 0) {
+                                            sa.is_selected = 1;
+                                            changed = true;
+                                        }
+                                    });
+                                    if (changed) {
+                                        needsSaveIds.push(idx);
+                                    }
+                                }
+                            });
+
+                            // Sequentially sync any unsaved offline answers back to the server
+                            if (needsSaveIds.length > 0) {
+                                let saveSequence = Promise.resolve();
+                                needsSaveIds.forEach(idx => {
+                                    saveSequence = saveSequence.then(() => {
+                                        return new Promise((resolve) => {
+                                            const prevIndex = this.currentIndex;
+                                            this.currentIndex = idx;
+                                            this.saveAnswer();
+                                            setTimeout(() => {
+                                                this.currentIndex = prevIndex;
+                                                resolve();
+                                            }, 250);
+                                        });
+                                    });
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Failed to restore local backup", e);
+                    }
                 }
             }));
         });
@@ -1292,10 +1386,10 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         // ═══════════════════════════════════════════════════════
         
         (function() {
-            // ── TAB SWITCH → INSTANT BAN ──
+            // ── TAB SWITCH ──
             document.addEventListener('visibilitychange', function() {
                 if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
-                <?php if (!$isAntiCheatEnabled): ?>return;<?php endif; ?>
+                <?php if (!$isAntiCheatEnabled && empty($test->auto_submit_on_cheat)): ?>return;<?php endif; ?>
 
                 $.ajax({
                     url: REPORT_CHEAT_URL,
@@ -1303,6 +1397,24 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     data: { attempt_id: ATTEMPT_ID, type: 'tab_switch' },
                     dataType: 'json',
                     success: function(res) {
+                        if (res.action === 'auto_submitted') {
+                            window.isSubmitting = true;
+                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                            
+                            Swal.fire({
+                                title: 'Ujian Dikumpulkan Otomatis',
+                                html: '<div class="text-center"><p>' + (res.message || 'Terdeteksi kecurangan. Ujian Anda telah otomatis dikumpulkan dan dinilai.') + '</p></div>',
+                                icon: 'warning',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                confirmButtonText: 'Lihat Hasil Ujian',
+                                confirmButtonColor: '#dc3545'
+                            }).then(() => {
+                                redirectReplace(res.redirect || DASHBOARD_URL);
+                            });
+                            return;
+                        }
+
                         if (res.action !== 'lock' && res.status !== 'success' && res.status !== 'suspended') return;
 
                         isLocked = true;
@@ -1329,11 +1441,52 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 });
             });
 
-            // ── FULLSCREEN EXIT → WARNING OVERLAY ──
+            // ── WINDOW BLUR (Alt-Tab / Multi-Window / Focus Loss) ──
+            window.addEventListener('blur', function() {
+                if (!examStarted || isLocked || isSuspended || window.isSubmitting) return;
+                <?php if (!$isAntiCheatEnabled && empty($test->auto_submit_on_cheat)): ?>return;<?php endif; ?>
+
+                $.ajax({
+                    url: REPORT_CHEAT_URL,
+                    type: 'POST',
+                    data: { attempt_id: ATTEMPT_ID, type: 'tab_switch' }, // Treat focus loss as tab_switch
+                    dataType: 'json',
+                    success: function(res) {
+                        if (res.action === 'auto_submitted') {
+                            window.isSubmitting = true;
+                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                            
+                            Swal.fire({
+                                title: 'Ujian Dikumpulkan Otomatis',
+                                html: '<div class="text-center"><p>' + (res.message || 'Terdeteksi kehilangan fokus layar. Ujian Anda telah otomatis dikumpulkan dan dinilai.') + '</p></div>',
+                                icon: 'warning',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                confirmButtonText: 'Lihat Hasil Ujian',
+                                confirmButtonColor: '#dc3545'
+                            }).then(() => {
+                                redirectReplace(res.redirect || DASHBOARD_URL);
+                            });
+                        } else if (res.action === 'lock') {
+                            isLocked = true;
+                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                            logoutAndRedirect(LOGIN_URL);
+                        } else if (res.status === 'suspended') {
+                            isLocked = true;
+                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                            Swal.fire('Dihentikan', 'Sesi Anda telah dihentikan oleh Admin.', 'error').then(() => {
+                                redirectReplace(DASHBOARD_URL);
+                            });
+                        }
+                    }
+                });
+            });
+
+            // ── FULLSCREEN EXIT ──
             document.addEventListener('fullscreenchange', function() {
                 if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
                 
-                <?php if (!$isAntiCheatEnabled): ?>
+                <?php if (!$isAntiCheatEnabled && empty($test->auto_submit_on_cheat)): ?>
                 $.post(REPORT_CHEAT_URL, { attempt_id: ATTEMPT_ID, type: 'fullscreen_exit' });
                 return;
                 <?php endif; ?>
@@ -1349,6 +1502,25 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     data: { attempt_id: ATTEMPT_ID, type: 'fullscreen_exit' },
                     dataType: 'json',
                     success: function(res) {
+                        if (res.action === 'auto_submitted') {
+                            overlay.style.display = 'none';
+                            window.isSubmitting = true;
+                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                            
+                            Swal.fire({
+                                title: 'Ujian Dikumpulkan Otomatis',
+                                html: '<div class="text-center"><p>' + (res.message || 'Terdeteksi keluar dari layar penuh. Ujian Anda telah otomatis dikumpulkan dan dinilai.') + '</p></div>',
+                                icon: 'warning',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                confirmButtonText: 'Lihat Hasil Ujian',
+                                confirmButtonColor: '#dc3545'
+                            }).then(() => {
+                                redirectReplace(res.redirect || DASHBOARD_URL);
+                            });
+                            return;
+                        }
+
                         if (res.action === 'lock') {
                             isLocked = true;
                             logoutAndRedirect(LOGIN_URL);

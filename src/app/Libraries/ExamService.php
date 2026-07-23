@@ -86,7 +86,8 @@ class ExamService
             $qBuilder = $db->table('questions')
                            ->select('id')
                            ->whereIn('subject_id', $subjectIds)
-                           ->where('is_enabled', 1);
+                           ->where('is_enabled', 1)
+                           ->orderBy('id', 'ASC');
 
             if ($set->question_type != 0) {
                 $qBuilder->where('type', $set->question_type);
@@ -151,13 +152,7 @@ class ExamService
                 if ($test->random_answers && in_array($q->type, [1, 2])) {
                     if ($test->exam_mode === 'static') {
                         mt_srand($test->id + $q->id);
-                        $keys = array_keys($answers);
-                        shuffle($keys);
-                        $shuffledAnswers = [];
-                        foreach ($keys as $key) {
-                            $shuffledAnswers[] = $answers[$key];
-                        }
-                        $answers = $shuffledAnswers;
+                        shuffle($answers);
                         mt_srand(); // reset seed
                     } else {
                         shuffle($answers);
@@ -318,10 +313,73 @@ class ExamService
             return ['status' => 'error', 'action' => 'kick', 'message' => 'Sesi ujian tidak valid.'];
         }
 
+        $test = $this->testModel->find($attempt->test_id);
+        $isAutoSubmitOnCheat = $test && (int)($test->auto_submit_on_cheat ?? 0) === 1;
+
         $settingModel = new \App\Models\SettingModel();
         $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
-        if (!$isAntiCheatEnabled) {
+
+        if (!$isAntiCheatEnabled && !$isAutoSubmitOnCheat) {
             return ['status' => 'success', 'action' => 'none', 'current_strikes' => (int)($attempt->cheat_strikes ?? 0)];
+        }
+
+        // ─── Auto-Submit on Cheat (per-test feature) ───
+        if ($isAutoSubmitOnCheat) {
+            // Flush Redis answers to DB first
+            $this->flushRedisAnswersToDb($attemptId);
+            
+            // Calculate and save score (this also sets status = 3 / finished)
+            $scorer = new \App\Libraries\ScoringEngine();
+            $scored = $scorer->calculateAndSaveScore($attemptId);
+            
+            $label = match($cheatType) {
+                'tab_switch' => 'membuka tab lain',
+                'fullscreen_exit' => 'keluar dari layar penuh',
+                default => 'pelanggaran saat ujian',
+            };
+
+            if (!$scored) {
+                // Already scored/finished by another concurrent request
+                return [
+                    'status' => 'success',
+                    'action' => 'auto_submitted',
+                    'message' => 'Ujian Anda telah diselesaikan.',
+                    'redirect' => base_url('/student/results/view/' . $test->id),
+                ];
+            }
+            
+            // Increment cheat_strikes for tracking purposes
+            $this->attemptModel->update($attemptId, [
+                'cheat_strikes' => (int)($attempt->cheat_strikes ?? 0) + 1,
+            ]);
+
+            // Real-time Proctor WebSocket Alert
+            try {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
+                    $redis->publish('exam_events', json_encode([
+                        'event' => 'proctor_alert',
+                        'data' => [
+                            'user_id' => $userId,
+                            'test_id' => (int)$test->id,
+                            'event'   => 'auto_submit',
+                            'reason'  => $label
+                        ]
+                    ]));
+                }
+            } catch (\Exception $e) {
+                log_message('error', 'Redis error publishing auto_submit proctor alert: ' . $e->getMessage());
+            }
+            
+            $this->activityLog->log('exam_auto_submit', $userId, 'test', $test->id,
+                "AUTO-SUBMIT: Siswa $label saat fitur auto-submit aktif");
+            
+            return [
+                'status' => 'success',
+                'action' => 'auto_submitted',
+                'message' => 'Ujian Anda telah otomatis dikumpulkan dan dinilai karena terdeteksi ' . $label . '.',
+                'redirect' => base_url('/student/results/view/' . $test->id),
+            ];
         }
 
         $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
@@ -424,6 +482,16 @@ class ExamService
                     'event' => 'ban',
                     'user_id' => $userId,
                     'message' => "Akun Anda telah dikunci karena pelanggaran ($violationType: $clientStrikes strikes). $reason"
+                ]));
+
+                // Real-time Proctor WebSocket Alert for System Auto-Ban
+                $redis->publish('exam_events', json_encode([
+                    'event' => 'proctor_alert',
+                    'data' => [
+                        'user_id' => $userId,
+                        'test_id' => (int)$this->attemptModel->find($attemptId)->test_id,
+                        'event'   => 'ban'
+                    ]
                 ]));
 
                 $currentSessionKey = 'ci_session:' . session_id();

@@ -44,6 +44,7 @@ class Filters extends BaseFilters
         'corsapi'       => CorsApiFilter::class,
         'csrfheader'    => \App\Filters\CsrfHeaderFilter::class,
         'loginratelimit'=> \App\Filters\LoginRateLimitFilter::class,
+        'apiratelimit'  => \App\Filters\ApiRateLimitFilter::class,
     ];
 
     /**
@@ -124,5 +125,6 @@ class Filters extends BaseFilters
     public array $filters = [
         'corsapi'        => ['before' => ['api/exam/*']],
         'loginratelimit' => ['before' => ['login']],
+        'apiratelimit'   => ['before' => ['api/*']],
     ];
 }

@@ -30,6 +30,7 @@ class StaticExamController extends BaseController
         $settingModel = new SettingModel();
         $antiCheat = [
             'enabled' => (bool)$settingModel->getValue('anti_cheat_enabled', false),
+            'auto_submit_on_cheat' => (bool)($test->auto_submit_on_cheat ?? false),
             'max_strikes' => (int)$settingModel->getValue('max_cheat_strikes', 2),
             'suspend_timer' => (int)$settingModel->getValue('suspend_timer_seconds', 30),
             'title' => $settingModel->getValue('anti_cheat_title', '⚠️ Peringatan Kecurangan!'),
@@ -54,12 +55,38 @@ class StaticExamController extends BaseController
             $subjectIds = array_column($subjects, 'subject_id');
             if (empty($subjectIds)) continue;
 
-            $qBuilder = $db->table('questions')->whereIn('subject_id', $subjectIds)->where('is_enabled', 1);
+            $qBuilder = $db->table('questions')
+                           ->select('id')
+                           ->whereIn('subject_id', $subjectIds)
+                           ->where('is_enabled', 1)
+                           ->orderBy('id', 'ASC');
             if ($set->question_type != 0) $qBuilder->where('type', $set->question_type);
             if ($set->difficulty != 0) $qBuilder->where('difficulty', $set->difficulty);
 
-            // Deterministic selection using test->id as seed
-            $questions = $qBuilder->orderBy("RAND({$test->id})")->limit($set->quantity)->get()->getResult();
+            $questionRows = $qBuilder->get()->getResult();
+            $questionIds = array_column($questionRows, 'id');
+            if (empty($questionIds)) continue;
+
+            // Deterministic PHP shuffle using test->id + set->id to match ExamService
+            mt_srand($test->id + $set->id);
+            shuffle($questionIds);
+            mt_srand(); // reset seed
+
+            // Slice to get the required quantity
+            $selectedIds = array_slice($questionIds, 0, $set->quantity);
+            if (empty($selectedIds)) continue;
+
+            // Fetch full rows for the selected IDs
+            $questions = $db->table('questions')
+                            ->whereIn('id', $selectedIds)
+                            ->get()
+                            ->getResult();
+
+            // To preserve the shuffled order, sort the fetched questions based on the position in $selectedIds
+            $idToIndex = array_flip($selectedIds);
+            usort($questions, function ($a, $b) use ($idToIndex) {
+                return $idToIndex[$a->id] <=> $idToIndex[$b->id];
+            });
 
             foreach ($questions as $q) {
                 $questionsData[] = [

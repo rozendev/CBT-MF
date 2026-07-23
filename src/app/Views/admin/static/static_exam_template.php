@@ -1116,6 +1116,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     this.allAnswers = data.answers     || this.allAnswers;
                     this.studentName = data.studentName || '';
                     this.parseMatching();
+                    this.restoreLocalBackup();
 
                     this.initWebSocket();
 
@@ -1372,6 +1373,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             },
 
             saveAnswer() {
+                this.saveLocalBackup();
+
                 const questionId = this.currentQuestion.question_id;
                 const type  = this.currentQuestion.question_type;
                 let data = { attempt_id: ATTEMPT_ID, question_id: questionId, question_type: type, generated_at: EXAM_CONFIG.generatedAt };
@@ -1421,6 +1424,96 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         });
                     }
                 });
+            },
+
+            saveLocalBackup() {
+                if (!ATTEMPT_ID) return;
+                const backupData = {
+                    questions: this.questions.map(q => ({
+                        question_id: q.question_id,
+                        question_type: q.question_type,
+                        answer_text: q.answer_text || '',
+                        is_flagged: q.is_flagged || false,
+                        matchingPairs: q.matchingPairs ? q.matchingPairs.map(p => ({ left: p.left, selected: p.selected })) : null
+                    })),
+                    answers: this.allAnswers
+                };
+                localStorage.setItem("cbt_backup_attempt_" + ATTEMPT_ID, JSON.stringify(backupData));
+            },
+
+            restoreLocalBackup() {
+                if (!ATTEMPT_ID) return;
+                const raw = localStorage.getItem("cbt_backup_attempt_" + ATTEMPT_ID);
+                if (!raw) return;
+                try {
+                    const backup = JSON.parse(raw);
+                    if (backup && backup.questions && backup.answers) {
+                        let needsSaveIds = [];
+
+                        this.questions.forEach((q, idx) => {
+                            const bq = backup.questions.find(x => x.question_id === q.question_id);
+                            if (!bq) return;
+
+                            q.is_flagged = bq.is_flagged || q.is_flagged;
+
+                            if (q.question_type == 3) {
+                                if (bq.answer_text && (!q.answer_text || q.answer_text.trim() === '')) {
+                                    q.answer_text = bq.answer_text;
+                                    needsSaveIds.push(idx);
+                                }
+                            } else if (q.question_type == 4 || q.question_type == 5) {
+                                let backupMatching = {};
+                                bq.matchingPairs.forEach(p => { backupMatching[p.left] = p.selected; });
+
+                                let changed = false;
+                                q.matchingPairs.forEach(p => {
+                                    if (backupMatching[p.left] && !p.selected) {
+                                        p.selected = backupMatching[p.left];
+                                        changed = true;
+                                    }
+                                });
+                                if (changed) {
+                                    needsSaveIds.push(idx);
+                                }
+                            } else {
+                                const serverAnswers = this.allAnswers[q.question_id] || [];
+                                const backupAnswers = backup.answers[q.question_id] || [];
+
+                                let changed = false;
+                                serverAnswers.forEach(sa => {
+                                    const ba = backupAnswers.find(x => x.answer_id === sa.answer_id);
+                                    if (ba && ba.is_selected == 1 && sa.is_selected == 0) {
+                                        sa.is_selected = 1;
+                                        changed = true;
+                                    }
+                                });
+                                if (changed) {
+                                    needsSaveIds.push(idx);
+                                }
+                            }
+                        });
+
+                        // Sequentially sync any unsaved offline answers back to the server
+                        if (needsSaveIds.length > 0) {
+                            let saveSequence = Promise.resolve();
+                            needsSaveIds.forEach(idx => {
+                                saveSequence = saveSequence.then(() => {
+                                    return new Promise((resolve) => {
+                                        const prevIndex = this.currentIndex;
+                                        this.currentIndex = idx;
+                                        this.saveAnswer();
+                                        setTimeout(() => {
+                                            this.currentIndex = prevIndex;
+                                            resolve();
+                                        }, 250);
+                                    });
+                                });
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to restore local backup", e);
+                }
             },
 
             countAnswered() {
@@ -1619,6 +1712,23 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     strikes = data.current_strikes;
                 }
 
+                if (data.action === 'auto_submitted') {
+                    isLocked = true;
+                    clearSuspend();
+                    document.getElementById('examContent').style.display = 'none';
+                    await Swal.fire({
+                        title: 'Ujian Dikumpulkan Otomatis',
+                        html: (data.message || 'Ujian dikumpulkan otomatis oleh server.') + '<br><br>Menuju halaman hasil...',
+                        icon: 'warning',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        confirmButtonText: 'Lihat Hasil Ujian',
+                        confirmButtonColor: '#dc3545'
+                    });
+                    window.location.href = data.redirect || (API + '/student/dashboard');
+                    return;
+                }
+
                 if (data.action === 'lock') {
                     isLocked = true;
                     clearSuspend();
@@ -1651,24 +1761,32 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         // ── Tab Switch Detection ──
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
-            if (AC_CONFIG.enabled === false) return;
+            if (AC_CONFIG.enabled === false && !AC_CONFIG.auto_submit_on_cheat) return;
 
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
-            // Lapor ke server agar server yang mengkalkulasi strike dan menentukan action (suspend/lock)
             reportCheat('tab_switch');
+        });
+
+        // ── Window Focus Loss (Alt-Tab / Minimize) ──
+        window.addEventListener('blur', function() {
+            if (!examStarted || isLocked || isSuspended || window.isSubmitting) return;
+            if (AC_CONFIG.enabled === false && !AC_CONFIG.auto_submit_on_cheat) return;
+
+            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+
+            reportCheat('tab_switch'); // Treat focus loss as tab switch
         });
 
         // ── Fullscreen Exit Detection ──
         document.addEventListener('fullscreenchange', function() {
             if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
 
-            if (AC_CONFIG.enabled === false) {
+            if (AC_CONFIG.enabled === false && !AC_CONFIG.auto_submit_on_cheat) {
                 reportCheat('fullscreen_exit');
                 return;
             }
 
-            // Lapor ke server
             reportCheat('fullscreen_exit');
         });
     })();

@@ -149,9 +149,11 @@ services:
 
 volumes:
   mariadb_data:
-    driver: local
+    external: true
+    name: sistem-ujian_mariadb_data
   redis_data:
-    driver: local
+    external: true
+    name: sistem-ujian_redis_data
 
 networks:
   ujian_network:
