@@ -94,3 +94,11 @@ config/local.*
 *.bak
 *.backup
 *~
+
+# AI Agent & Graphify Artifacts
+graphify-out/
+.agents/
+
+# Uploads / Dynamic Data (Ensure they aren't tracked)
+docker/mysql/data/
+docker/redis/data/
