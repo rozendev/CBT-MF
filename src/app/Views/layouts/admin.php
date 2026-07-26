@@ -301,9 +301,9 @@ else $greeting = 'Malam';
             $isAdmin = session()->get('role') === 'admin';
             
             $mainNav = [
-                ['url' => '/admin/dashboard', 'icon' => 'bi-house-door', 'label' => 'Dashboard'],
-                ['url' => '/admin/tests',     'icon' => 'bi-file-earmark-text', 'label' => 'Ujian'],
-                ['url' => '/proctor',         'icon' => 'bi-broadcast text-danger', 'label' => 'Live Proctoring'],
+                ['url' => '/admin/dashboard', 'icon' => 'bi-house-door', 'label' => lang('App.menu_dashboard')],
+                ['url' => '/admin/tests',     'icon' => 'bi-file-earmark-text', 'label' => lang('App.menu_exams')],
+                ['url' => '/proctor',         'icon' => 'bi-broadcast text-danger', 'label' => lang('App.menu_proctoring')],
             ];
             foreach ($mainNav as $item):
                 $active = str_contains($currentUrl, $item['url']) ? 'active' : '';
@@ -316,15 +316,15 @@ else $greeting = 'Malam';
             <div class="nav-label">MANAGEMENT</div>
             <?php
             $mgtNav = [
-                ['url' => '/admin/results',   'icon' => 'bi-bar-chart', 'label' => 'Hasil Ujian'],
-                ['url' => '/admin/reports',   'icon' => 'bi-file-earmark-spreadsheet', 'label' => 'Export Laporan'],
-                ['url' => '/admin/questions', 'icon' => 'bi-journal-text', 'label' => 'Bank Soal'],
-                ['url' => '/admin/subjects',  'icon' => 'bi-book', 'label' => 'Subjek'],
-                ['url' => '/admin/modules',   'icon' => 'bi-folder2', 'label' => 'Modul'],
+                ['url' => '/admin/results',   'icon' => 'bi-bar-chart', 'label' => lang('App.menu_results')],
+                ['url' => '/admin/reports',   'icon' => 'bi-file-earmark-spreadsheet', 'label' => lang('App.menu_reports')],
+                ['url' => '/admin/questions', 'icon' => 'bi-journal-text', 'label' => lang('App.menu_questions')],
+                ['url' => '/admin/subjects',  'icon' => 'bi-book', 'label' => lang('App.menu_subjects')],
+                ['url' => '/admin/modules',   'icon' => 'bi-folder2', 'label' => lang('App.menu_modules')],
             ];
             if ($isAdmin) {
-                array_unshift($mgtNav, ['url' => '/admin/users', 'icon' => 'bi-people', 'label' => 'Siswa/Pengguna']);
-                $mgtNav[] = ['url' => '/admin/groups', 'icon' => 'bi-collection', 'label' => 'Grup'];
+                array_unshift($mgtNav, ['url' => '/admin/users', 'icon' => 'bi-people', 'label' => lang('App.menu_users')]);
+                $mgtNav[] = ['url' => '/admin/groups', 'icon' => 'bi-collection', 'label' => lang('App.menu_groups')];
             }
             foreach ($mgtNav as $item):
                 $active = str_contains($currentUrl, $item['url']) ? 'active' : '';
@@ -337,13 +337,13 @@ else $greeting = 'Malam';
             <?php if ($isAdmin): ?>
             <div class="nav-label">SYSTEM</div>
             <a href="<?= base_url('/admin/analytics') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/analytics') ? 'active' : '' ?>">
-                <i class="bi bi-graph-up-arrow"></i> Web Analytics
+                <i class="bi bi-graph-up-arrow"></i> <?= lang('App.menu_analytics') ?>
             </a>
             <a href="<?= base_url('/admin/suspend') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/suspend') ? 'active' : '' ?>">
-                <i class="bi bi-shield-lock"></i> Keamanan (Suspend)
+                <i class="bi bi-shield-lock"></i> <?= lang('App.menu_security') ?>
             </a>
             <a href="<?= base_url('/admin/settings') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/settings') ? 'active' : '' ?>">
-                <i class="bi bi-gear"></i> Pengaturan
+                <i class="bi bi-gear"></i> <?= lang('App.menu_settings') ?>
             </a>
             <?php endif; ?>
         </nav>
@@ -362,6 +362,17 @@ else $greeting = 'Malam';
         </div>
 
         <div class="d-flex align-items-center gap-2 gap-md-3">
+            <!-- Language Dropdown -->
+            <div class="dropdown">
+                <button class="topbar-icon-btn" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="<?= lang('App.language') ?>">
+                    <i class="bi bi-globe"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end border-0 shadow-sm" style="border-radius: 12px; background: var(--bg-surface);">
+                    <li><a class="dropdown-item py-2 <?= (session('lang') == 'id' || !session('lang')) ? 'active' : '' ?>" href="<?= base_url('lang/id') ?>" style="color: var(--text-primary);">Indonesia</a></li>
+                    <li><a class="dropdown-item py-2 <?= session('lang') == 'en' ? 'active' : '' ?>" href="<?= base_url('lang/en') ?>" style="color: var(--text-primary);">English</a></li>
+                </ul>
+            </div>
+
             <!-- Theme Toggle -->
             <button class="topbar-icon-btn" id="btnThemeToggle" title="Toggle Theme">
                 <i class="bi bi-moon-stars" id="themeIcon"></i>
@@ -383,11 +394,11 @@ else $greeting = 'Malam';
                     </div>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end border-0 shadow-sm" style="border-radius: 12px; background: var(--bg-surface);">
-                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/tests') ?>" style="color: var(--text-primary);"><i class="bi bi-file-earmark-text me-2 text-muted"></i> Manajemen Ujian</a></li>
-                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/results') ?>" style="color: var(--text-primary);"><i class="bi bi-bar-chart-fill me-2 text-muted"></i> Laporan Ujian</a></li>
-                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/reports') ?>" style="color: var(--text-primary);"><i class="bi bi-file-earmark-spreadsheet-fill me-2 text-success"></i> Export Laporan</a></li>
+                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/tests') ?>" style="color: var(--text-primary);"><i class="bi bi-file-earmark-text me-2 text-muted"></i> <?= lang('App.exam_management') ?></a></li>
+                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/results') ?>" style="color: var(--text-primary);"><i class="bi bi-bar-chart-fill me-2 text-muted"></i> <?= lang('App.exam_reports') ?></a></li>
+                    <li><a class="dropdown-item py-2" href="<?= base_url('/admin/reports') ?>" style="color: var(--text-primary);"><i class="bi bi-file-earmark-spreadsheet-fill me-2 text-success"></i> <?= lang('App.menu_reports') ?></a></li>
                     <li><hr class="dropdown-divider" style="border-color: var(--border-color);"></li>
-                    <li><a class="dropdown-item py-2 text-danger fw-semibold" href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();"><i class="bi bi-box-arrow-right me-2"></i> Logout</a></li>
+                    <li><a class="dropdown-item py-2 text-danger fw-semibold" href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();"><i class="bi bi-box-arrow-right me-2"></i> <?= lang('App.logout') ?></a></li>
                 </ul>
             </div>
         </div>

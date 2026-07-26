@@ -86,12 +86,21 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
             </button>
             <div class="collapse navbar-collapse" id="navbarStudent">
                 <ul class="navbar-nav ms-auto align-items-center">
+                    <li class="nav-item dropdown me-3">
+                        <a class="nav-link dropdown-toggle text-white-50" href="#" id="langDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-globe"></i> <?= strtoupper(session('lang') ?? config('App')->defaultLocale) ?>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0" aria-labelledby="langDropdown">
+                            <li><a class="dropdown-item <?= (session('lang') == 'id' || !session('lang')) ? 'active' : '' ?>" href="<?= base_url('lang/id') ?>">Indonesia</a></li>
+                            <li><a class="dropdown-item <?= session('lang') == 'en' ? 'active' : '' ?>" href="<?= base_url('lang/en') ?>">English</a></li>
+                        </ul>
+                    </li>
                     <li class="nav-item me-3">
                         <span class="nav-link text-white-50"><i class="bi bi-person-circle me-1"></i> <?= esc(session('firstname') . ' ' . session('lastname')) ?></span>
                     </li>
                     <li class="nav-item">
                         <a href="#" onclick="event.preventDefault(); document.getElementById('logout-form').submit();" class="btn btn-outline-light btn-sm rounded-pill px-3">
-                            Logout <i class="bi bi-box-arrow-right ms-1"></i>
+                            <?= lang('App.logout') ?> <i class="bi bi-box-arrow-right ms-1"></i>
                         </a>
                     </li>
                 </ul>

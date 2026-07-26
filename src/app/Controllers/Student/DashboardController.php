@@ -31,6 +31,26 @@ class DashboardController extends BaseController
         $query = $db->query($sql, [$userId, $userId]);
         $availableTests = $query->getResult();
 
+        $settingModel = new \App\Models\SettingModel();
+        $globalShowScore = (bool)$settingModel->getValue('show_score_after_exam', false);
+        $globalAllowReview = (bool)$settingModel->getValue('allow_review', false);
+
+        foreach ($availableTests as $t) {
+            if ($t->show_score_after_exam !== null) {
+                $t->can_show_score = (bool)$t->show_score_after_exam;
+            } elseif (isset($t->results_visible)) {
+                $t->can_show_score = (bool)$t->results_visible;
+            } else {
+                $t->can_show_score = $globalShowScore;
+            }
+
+            if ($t->allow_review !== null) {
+                $t->can_allow_review = (bool)$t->allow_review;
+            } else {
+                $t->can_allow_review = $globalAllowReview;
+            }
+        }
+
         return view('student/dashboard', [
             'availableTests' => $availableTests
         ]);

@@ -53,6 +53,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         
         // Suspend & Lock
         $routes->get('suspend', 'Admin\SuspendController::index');
+        $routes->post('suspend/bulk-action', 'Admin\SuspendController::bulkAction');
         $routes->post('suspend/release/(:num)', 'Admin\SuspendController::release/$1');
         $routes->post('suspend/ban/(:num)', 'Admin\SuspendController::ban/$1');
         $routes->post('suspend/reset/(:num)', 'Admin\SuspendController::reset/$1');
@@ -174,3 +175,4 @@ $routes->group('proctor', ['filter' => 'role:proctor,admin'], static function ($
 
 // ── Default Route ───────────────────────────────────
 $routes->get('/', 'Home::index');
+$routes->get('lang/(:segment)', 'LanguageController::switchLanguage/$1');

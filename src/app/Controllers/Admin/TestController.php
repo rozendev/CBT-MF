@@ -59,6 +59,10 @@ class TestController extends BaseController
             $data[$field] = ($val === '' || $val === 'default' || $val === null) ? null : (int) $val;
         }
 
+        if (array_key_exists('show_score_after_exam', $data) && $data['show_score_after_exam'] !== null) {
+            $data['results_visible'] = (int)$data['show_score_after_exam'];
+        }
+
         // Auto-calculate end_time based on begin_time and duration_minutes (Hardcap logic)
         if (!empty($data['begin_time']) && !empty($data['duration_minutes'])) {
             $data['end_time'] = date('Y-m-d H:i:s', strtotime($data['begin_time'] . " + {$data['duration_minutes']} minutes"));
@@ -122,6 +126,10 @@ class TestController extends BaseController
         foreach ($triStateFields as $field) {
             $val = $this->request->getPost($field);
             $data[$field] = ($val === '' || $val === 'default' || $val === null) ? null : (int) $val;
+        }
+
+        if (array_key_exists('show_score_after_exam', $data) && $data['show_score_after_exam'] !== null) {
+            $data['results_visible'] = (int)$data['show_score_after_exam'];
         }
 
         // Auto-calculate end_time based on begin_time and duration_minutes (Hardcap logic)

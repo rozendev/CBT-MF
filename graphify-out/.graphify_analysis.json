@@ -1,0 +1,1428 @@
+{
+  "communities": {
+    "0": [
+      "baseconfig",
+      "config_app",
+      "config_app_app",
+      "config_app_app_construct",
+      "config_cache",
+      "config_cache_cache",
+      "config_cache_cache_construct",
+      "config_contentsecuritypolicy",
+      "config_contentsecuritypolicy_contentsecuritypolicy",
+      "config_cookie",
+      "config_cookie_cookie",
+      "config_cookie_cookie_construct",
+      "config_cors",
+      "config_cors_cors",
+      "config_curlrequest",
+      "config_curlrequest_curlrequest",
+      "config_email",
+      "config_email_email",
+      "config_encryption",
+      "config_encryption_encryption",
+      "config_exceptions",
+      "config_exceptions_exceptions",
+      "config_exceptions_exceptions_handler",
+      "config_feature",
+      "config_feature_feature",
+      "config_format",
+      "config_format_format",
+      "config_generators",
+      "config_generators_generators",
+      "config_honeypot",
+      "config_honeypot_honeypot",
+      "config_images",
+      "config_images_images",
+      "config_logger",
+      "config_logger_logger",
+      "config_migrations",
+      "config_migrations_migrations",
+      "config_pager",
+      "config_pager_pager",
+      "config_security",
+      "config_security_security",
+      "config_session",
+      "config_toolbar",
+      "config_toolbar_toolbar",
+      "config_useragents",
+      "config_useragents_useragents",
+      "config_validation",
+      "config_validation_validation",
+      "exceptionhandlerinterface",
+      "throwable"
+    ],
+    "1": [
+      "filterinterface",
+      "filters_apiratelimitfilter",
+      "filters_apiratelimitfilter_apiratelimitfilter",
+      "filters_apiratelimitfilter_apiratelimitfilter_after",
+      "filters_apiratelimitfilter_apiratelimitfilter_before",
+      "filters_authfilter",
+      "filters_authfilter_authfilter",
+      "filters_authfilter_authfilter_after",
+      "filters_authfilter_authfilter_before",
+      "filters_corsapifilter",
+      "filters_corsapifilter_corsapifilter",
+      "filters_corsapifilter_corsapifilter_after",
+      "filters_corsapifilter_corsapifilter_before",
+      "filters_corsapifilter_corsapifilter_getallowedorigins",
+      "filters_corsapifilter_corsapifilter_isoriginallowed",
+      "filters_corsapifilter_corsapifilter_setcorsheaders",
+      "filters_csrfheaderfilter",
+      "filters_csrfheaderfilter_csrfheaderfilter",
+      "filters_csrfheaderfilter_csrfheaderfilter_after",
+      "filters_csrfheaderfilter_csrfheaderfilter_before",
+      "filters_loginratelimitfilter",
+      "filters_loginratelimitfilter_loginratelimitfilter",
+      "filters_loginratelimitfilter_loginratelimitfilter_after",
+      "filters_loginratelimitfilter_loginratelimitfilter_before",
+      "filters_multiloginfilter",
+      "filters_multiloginfilter_multiloginfilter",
+      "filters_multiloginfilter_multiloginfilter_after",
+      "filters_multiloginfilter_multiloginfilter_before",
+      "filters_rolefilter",
+      "filters_rolefilter_rolefilter",
+      "filters_rolefilter_rolefilter_after",
+      "filters_rolefilter_rolefilter_before",
+      "src_app_filters_apiratelimitfilter_php_requestinterface",
+      "src_app_filters_apiratelimitfilter_php_responseinterface",
+      "src_app_filters_authfilter_php_requestinterface",
+      "src_app_filters_authfilter_php_responseinterface",
+      "src_app_filters_corsapifilter_php_requestinterface",
+      "src_app_filters_corsapifilter_php_responseinterface",
+      "src_app_filters_csrfheaderfilter_php_requestinterface",
+      "src_app_filters_csrfheaderfilter_php_responseinterface",
+      "src_app_filters_loginratelimitfilter_php_requestinterface",
+      "src_app_filters_loginratelimitfilter_php_responseinterface",
+      "src_app_filters_multiloginfilter_php_requestinterface",
+      "src_app_filters_multiloginfilter_php_responseinterface",
+      "src_app_filters_rolefilter_php_requestinterface",
+      "src_app_filters_rolefilter_php_responseinterface"
+    ],
+    "2": [
+      "src_composer",
+      "src_composer_autoload",
+      "src_composer_autoload_dev",
+      "src_composer_autoload_dev_psr_4",
+      "src_composer_autoload_exclude_from_classmap",
+      "src_composer_autoload_psr_4",
+      "src_composer_config",
+      "src_composer_config_optimize_autoloader",
+      "src_composer_config_preferred_install",
+      "src_composer_config_sort_packages",
+      "src_composer_description",
+      "src_composer_homepage",
+      "src_composer_license",
+      "src_composer_name",
+      "src_composer_psr_4_app",
+      "src_composer_psr_4_config",
+      "src_composer_psr_4_tests_support",
+      "src_composer_require",
+      "src_composer_require_cboden_ratchet",
+      "src_composer_require_clue_redis_react",
+      "src_composer_require_codeigniter4_framework",
+      "src_composer_require_dev",
+      "src_composer_require_dev_fakerphp_faker",
+      "src_composer_require_dev_mikey179_vfsstream",
+      "src_composer_require_dev_phpunit_phpunit",
+      "src_composer_require_php",
+      "src_composer_require_phpoffice_phpspreadsheet",
+      "src_composer_require_phpoffice_phpword",
+      "src_composer_scripts",
+      "src_composer_scripts_test",
+      "src_composer_support",
+      "src_composer_support_forum",
+      "src_composer_support_slack",
+      "src_composer_support_source",
+      "src_composer_type"
+    ],
+    "3": [
+      "app",
+      "ciunittestcase",
+      "database_exampledatabasetest",
+      "database_exampledatabasetest_exampledatabasetest",
+      "database_exampledatabasetest_exampledatabasetest_testmodelfindall",
+      "database_exampledatabasetest_exampledatabasetest_testsoftdeleteleavesrow",
+      "database_staticexammismatchtest",
+      "database_staticexammismatchtest_staticexammismatchtest",
+      "database_staticexammismatchtest_staticexammismatchtest_testapiratelimitfilter",
+      "database_staticexammismatchtest_staticexammismatchtest_teststaticexamquestionalignment",
+      "database_usersoftdeleteandreusetest",
+      "database_usersoftdeleteandreusetest_usersoftdeleteandreusetest",
+      "database_usersoftdeleteandreusetest_usersoftdeleteandreusetest_setup",
+      "database_usersoftdeleteandreusetest_usersoftdeleteandreusetest_testsoftdeleteandreuse",
+      "databasetesttrait",
+      "libraries_configreader",
+      "libraries_configreader_configreader",
+      "libraries_configreader_configreader_construct",
+      "session_examplesessiontest",
+      "session_examplesessiontest_examplesessiontest",
+      "session_examplesessiontest_examplesessiontest_testsessionsimple",
+      "unit_healthtest",
+      "unit_healthtest_healthtest",
+      "unit_healthtest_healthtest_testbaseurlhasbeenset",
+      "unit_healthtest_healthtest_testisdefinedapppath"
+    ],
+    "4": [
+      "admin_reportcontroller",
+      "admin_reportcontroller_reportcontroller",
+      "admin_reportcontroller_reportcontroller_applyborders",
+      "admin_reportcontroller_reportcontroller_applypassfailconditional",
+      "admin_reportcontroller_reportcontroller_autosizecolumns",
+      "admin_reportcontroller_reportcontroller_buildgroupstatssheet",
+      "admin_reportcontroller_reportcontroller_buildquestionanalysissheet",
+      "admin_reportcontroller_reportcontroller_buildstudentstatssheet",
+      "admin_reportcontroller_reportcontroller_buildteststatssheet",
+      "admin_reportcontroller_reportcontroller_calculatestddev",
+      "admin_reportcontroller_reportcontroller_construct",
+      "admin_reportcontroller_reportcontroller_downloadspreadsheet",
+      "admin_reportcontroller_reportcontroller_export",
+      "admin_reportcontroller_reportcontroller_exportgroupreport",
+      "admin_reportcontroller_reportcontroller_exportstudentreport",
+      "admin_reportcontroller_reportcontroller_exporttestdetailreport",
+      "admin_reportcontroller_reportcontroller_exporttestreport",
+      "admin_reportcontroller_reportcontroller_headerstyle",
+      "admin_reportcontroller_reportcontroller_index",
+      "admin_reportcontroller_reportcontroller_statheaderstyle",
+      "spreadsheet",
+      "worksheet"
+    ],
+    "5": [
+      "admin_suspendcontroller",
+      "admin_suspendcontroller_suspendcontroller",
+      "admin_suspendcontroller_suspendcontroller_ban",
+      "admin_suspendcontroller_suspendcontroller_construct",
+      "admin_suspendcontroller_suspendcontroller_getuserattempts",
+      "admin_suspendcontroller_suspendcontroller_index",
+      "admin_suspendcontroller_suspendcontroller_release",
+      "admin_suspendcontroller_suspendcontroller_reset",
+      "admin_suspendcontroller_suspendcontroller_resetattempt",
+      "admin_suspendcontroller_suspendcontroller_resetlogin",
+      "libraries_scoringengine",
+      "libraries_scoringengine_scoringengine",
+      "libraries_scoringengine_scoringengine_calculateandsavescore",
+      "libraries_scoringengine_scoringengine_calculatescorepreview",
+      "libraries_scoringengine_scoringengine_evaluateessay",
+      "libraries_scoringengine_scoringengine_evaluatemultiplechoice",
+      "libraries_scoringengine_scoringengine_evaluatesinglechoice",
+      "src_app_controllers_admin_suspendcontroller_php_testattemptmodel",
+      "src_app_controllers_admin_suspendcontroller_php_usermodel"
+    ],
+    "6": [
+      "admin_testcontroller_testcontroller_extendtime",
+      "admin_testcontroller_testcontroller_update",
+      "config_session_session",
+      "config_session_session_construct",
+      "src_app_controllers_student_examcontroller_php_activitylogmodel",
+      "src_app_controllers_student_examcontroller_php_testattemptmodel",
+      "src_app_controllers_student_examcontroller_php_testmodel",
+      "student_examcontroller",
+      "student_examcontroller_examcontroller",
+      "student_examcontroller_examcontroller_autosync",
+      "student_examcontroller_examcontroller_checkcurrentscore",
+      "student_examcontroller_examcontroller_construct",
+      "student_examcontroller_examcontroller_finish",
+      "student_examcontroller_examcontroller_flushredisanswerstodb",
+      "student_examcontroller_examcontroller_prepare",
+      "student_examcontroller_examcontroller_reportcheat",
+      "student_examcontroller_examcontroller_saveanswer",
+      "student_examcontroller_examcontroller_start",
+      "student_examcontroller_examcontroller_take"
+    ],
+    "7": [
+      "admin_questioncontroller",
+      "admin_questioncontroller_questioncontroller",
+      "admin_questioncontroller_questioncontroller_bulkdelete",
+      "admin_questioncontroller_questioncontroller_construct",
+      "admin_questioncontroller_questioncontroller_create",
+      "admin_questioncontroller_questioncontroller_delete",
+      "admin_questioncontroller_questioncontroller_edit",
+      "admin_questioncontroller_questioncontroller_index",
+      "admin_questioncontroller_questioncontroller_preview",
+      "admin_questioncontroller_questioncontroller_saveanswers",
+      "admin_questioncontroller_questioncontroller_store",
+      "admin_questioncontroller_questioncontroller_update",
+      "admin_questioncontroller_questioncontroller_uploadimage",
+      "src_app_controllers_admin_questioncontroller_php_activitylogmodel",
+      "src_app_controllers_admin_questioncontroller_php_answermodel",
+      "src_app_controllers_admin_questioncontroller_php_modulemodel",
+      "src_app_controllers_admin_questioncontroller_php_questionmodel",
+      "src_app_controllers_admin_questioncontroller_php_subjectmodel"
+    ],
+    "8": [
+      "admin_usercontroller",
+      "admin_usercontroller_usercontroller",
+      "admin_usercontroller_usercontroller_bulkdelete",
+      "admin_usercontroller_usercontroller_construct",
+      "admin_usercontroller_usercontroller_create",
+      "admin_usercontroller_usercontroller_delete",
+      "admin_usercontroller_usercontroller_edit",
+      "admin_usercontroller_usercontroller_import",
+      "admin_usercontroller_usercontroller_index",
+      "admin_usercontroller_usercontroller_printcardsindex",
+      "admin_usercontroller_usercontroller_printcardsprocess",
+      "admin_usercontroller_usercontroller_store",
+      "admin_usercontroller_usercontroller_template",
+      "admin_usercontroller_usercontroller_unlock",
+      "admin_usercontroller_usercontroller_update",
+      "src_app_controllers_admin_usercontroller_php_activitylogmodel",
+      "src_app_controllers_admin_usercontroller_php_groupmodel",
+      "src_app_controllers_admin_usercontroller_php_usermodel"
+    ],
+    "9": [
+      "config",
+      "config_database",
+      "config_database_database",
+      "config_database_database_construct",
+      "libraries_examservice",
+      "libraries_examservice_examservice",
+      "libraries_examservice_examservice_construct",
+      "libraries_examservice_examservice_flushredisanswerstodb",
+      "libraries_examservice_examservice_generateattempt",
+      "libraries_examservice_examservice_handlecheat",
+      "libraries_examservice_examservice_triggerban",
+      "src_app_libraries_examservice_php_activitylogmodel",
+      "src_app_libraries_examservice_php_answermodel",
+      "src_app_libraries_examservice_php_questionmodel",
+      "src_app_libraries_examservice_php_testattemptmodel",
+      "src_app_libraries_examservice_php_testlogmodel",
+      "src_app_libraries_examservice_php_testmodel",
+      "testloganswermodel"
+    ],
+    "10": [
+      "model",
+      "models_examplemodel",
+      "models_examplemodel_examplemodel",
+      "models_testgroupmodel",
+      "models_testgroupmodel_testgroupmodel",
+      "models_testgroupmodel_testgroupmodel_gettestgroups",
+      "models_testloganswermodel",
+      "models_testloganswermodel_testloganswermodel",
+      "models_testmodel",
+      "models_testmodel_testmodel",
+      "models_testmodel_testmodel_clearcache",
+      "models_testmodel_testmodel_findcached",
+      "models_testsubjectmodel",
+      "models_testsubjectmodel_testsubjectmodel",
+      "models_testsubjectsetmodel",
+      "models_testsubjectsetmodel_testsubjectsetmodel",
+      "models_testsubjectsetmodel_testsubjectsetmodel_getsetsbytest"
+    ],
+    "11": [
+      "models_usermodel",
+      "models_usermodel_usermodel",
+      "models_usermodel_usermodel_cleanpointers",
+      "models_usermodel_usermodel_countbyrole",
+      "models_usermodel_usermodel_finddeletedbyusername",
+      "models_usermodel_usermodel_getbyusername",
+      "models_usermodel_usermodel_getusersingroup",
+      "models_usermodel_usermodel_hashpassword",
+      "models_usermodel_usermodel_hashpasswordmanually",
+      "models_usermodel_usermodel_incrementloginattempts",
+      "models_usermodel_usermodel_islocked",
+      "models_usermodel_usermodel_lockaccount",
+      "models_usermodel_usermodel_recordlogin",
+      "models_usermodel_usermodel_resetloginattempts",
+      "models_usermodel_usermodel_reusedeleteduser",
+      "models_usermodel_usermodel_verifypassword"
+    ],
+    "12": [
+      "admin_testcontroller",
+      "admin_testcontroller_testcontroller",
+      "admin_testcontroller_testcontroller_addsubjectset",
+      "admin_testcontroller_testcontroller_config",
+      "admin_testcontroller_testcontroller_construct",
+      "admin_testcontroller_testcontroller_create",
+      "admin_testcontroller_testcontroller_delete",
+      "admin_testcontroller_testcontroller_deletesubjectset",
+      "admin_testcontroller_testcontroller_edit",
+      "admin_testcontroller_testcontroller_index",
+      "admin_testcontroller_testcontroller_store",
+      "admin_testcontroller_testcontroller_updategroups",
+      "src_app_controllers_admin_testcontroller_php_activitylogmodel",
+      "src_app_controllers_admin_testcontroller_php_testmodel"
+    ],
+    "13": [
+      "admin_dashboardcontroller",
+      "admin_dashboardcontroller_dashboardcontroller",
+      "admin_dashboardcontroller_dashboardcontroller_index",
+      "api_synccontroller",
+      "api_synccontroller_synccontroller",
+      "api_synccontroller_synccontroller_keepalive",
+      "controllers_basecontroller_basecontroller",
+      "exam_examcontroller",
+      "exam_examcontroller_examcontroller",
+      "exam_examcontroller_examcontroller_index",
+      "student_dashboardcontroller",
+      "student_dashboardcontroller_dashboardcontroller",
+      "student_dashboardcontroller_dashboardcontroller_index"
+    ],
+    "14": [
+      "api_examapicontroller",
+      "api_examapicontroller_examapicontroller",
+      "api_examapicontroller_examapicontroller_autosave",
+      "api_examapicontroller_examapicontroller_autosync",
+      "api_examapicontroller_examapicontroller_checkscore",
+      "api_examapicontroller_examapicontroller_construct",
+      "api_examapicontroller_examapicontroller_finish",
+      "api_examapicontroller_examapicontroller_flushredisanswerstodb",
+      "api_examapicontroller_examapicontroller_init",
+      "api_examapicontroller_examapicontroller_reportcheat",
+      "src_app_controllers_api_examapicontroller_php_activitylogmodel",
+      "src_app_controllers_api_examapicontroller_php_testattemptmodel",
+      "src_app_controllers_api_examapicontroller_php_testmodel"
+    ],
+    "15": [
+      "connectioninterface",
+      "exception",
+      "libraries_websocketserverhandler",
+      "libraries_websocketserverhandler_websocketserverhandler",
+      "libraries_websocketserverhandler_websocketserverhandler_broadcastevent",
+      "libraries_websocketserverhandler_websocketserverhandler_broadcastheartbeat",
+      "libraries_websocketserverhandler_websocketserverhandler_broadcasttoproctors",
+      "libraries_websocketserverhandler_websocketserverhandler_construct",
+      "libraries_websocketserverhandler_websocketserverhandler_onclose",
+      "libraries_websocketserverhandler_websocketserverhandler_onerror",
+      "libraries_websocketserverhandler_websocketserverhandler_onmessage",
+      "libraries_websocketserverhandler_websocketserverhandler_onopen",
+      "messagecomponentinterface"
+    ],
+    "16": [
+      "admin_settingcontroller",
+      "admin_settingcontroller_settingcontroller",
+      "admin_settingcontroller_settingcontroller_clearcache",
+      "admin_settingcontroller_settingcontroller_construct",
+      "admin_settingcontroller_settingcontroller_getsysteminfo",
+      "admin_settingcontroller_settingcontroller_handlefileupload",
+      "admin_settingcontroller_settingcontroller_index",
+      "admin_settingcontroller_settingcontroller_resetsettings",
+      "admin_settingcontroller_settingcontroller_sanitizesvg",
+      "admin_settingcontroller_settingcontroller_update",
+      "admin_settingcontroller_settingcontroller_updateenv",
+      "src_app_controllers_admin_settingcontroller_php_settingmodel"
+    ],
+    "17": [
+      "admin_subjectcontroller",
+      "admin_subjectcontroller_subjectcontroller",
+      "admin_subjectcontroller_subjectcontroller_construct",
+      "admin_subjectcontroller_subjectcontroller_create",
+      "admin_subjectcontroller_subjectcontroller_delete",
+      "admin_subjectcontroller_subjectcontroller_edit",
+      "admin_subjectcontroller_subjectcontroller_index",
+      "admin_subjectcontroller_subjectcontroller_store",
+      "admin_subjectcontroller_subjectcontroller_update",
+      "src_app_controllers_admin_subjectcontroller_php_activitylogmodel",
+      "src_app_controllers_admin_subjectcontroller_php_modulemodel",
+      "src_app_controllers_admin_subjectcontroller_php_subjectmodel"
+    ],
+    "18": [
+      "admin_groupcontroller",
+      "admin_groupcontroller_groupcontroller",
+      "admin_groupcontroller_groupcontroller_construct",
+      "admin_groupcontroller_groupcontroller_create",
+      "admin_groupcontroller_groupcontroller_delete",
+      "admin_groupcontroller_groupcontroller_edit",
+      "admin_groupcontroller_groupcontroller_index",
+      "admin_groupcontroller_groupcontroller_store",
+      "admin_groupcontroller_groupcontroller_update",
+      "src_app_controllers_admin_groupcontroller_php_activitylogmodel",
+      "src_app_controllers_admin_groupcontroller_php_groupmodel"
+    ],
+    "19": [
+      "admin_modulecontroller",
+      "admin_modulecontroller_modulecontroller",
+      "admin_modulecontroller_modulecontroller_construct",
+      "admin_modulecontroller_modulecontroller_create",
+      "admin_modulecontroller_modulecontroller_delete",
+      "admin_modulecontroller_modulecontroller_edit",
+      "admin_modulecontroller_modulecontroller_index",
+      "admin_modulecontroller_modulecontroller_store",
+      "admin_modulecontroller_modulecontroller_update",
+      "src_app_controllers_admin_modulecontroller_php_activitylogmodel",
+      "src_app_controllers_admin_modulecontroller_php_modulemodel"
+    ],
+    "20": [
+      "admin_resultcontroller",
+      "admin_resultcontroller_resultcontroller",
+      "admin_resultcontroller_resultcontroller_construct",
+      "admin_resultcontroller_resultcontroller_deleteattempt",
+      "admin_resultcontroller_resultcontroller_detail",
+      "admin_resultcontroller_resultcontroller_index",
+      "admin_resultcontroller_resultcontroller_updatemanualscore",
+      "admin_resultcontroller_resultcontroller_view",
+      "src_app_controllers_admin_resultcontroller_php_testattemptmodel",
+      "src_app_controllers_admin_resultcontroller_php_testlogmodel",
+      "src_app_controllers_admin_resultcontroller_php_testmodel"
+    ],
+    "21": [
+      "auth_authcontroller",
+      "auth_authcontroller_authcontroller",
+      "auth_authcontroller_authcontroller_attemptlogin",
+      "auth_authcontroller_authcontroller_construct",
+      "auth_authcontroller_authcontroller_getsettingvalue",
+      "auth_authcontroller_authcontroller_login",
+      "auth_authcontroller_authcontroller_logout",
+      "auth_authcontroller_authcontroller_maintenance",
+      "auth_authcontroller_authcontroller_redirectbyrole",
+      "src_app_controllers_auth_authcontroller_php_activitylogmodel",
+      "src_app_controllers_auth_authcontroller_php_usermodel"
+    ],
+    "22": [
+      "admin_wordimportcontroller",
+      "admin_wordimportcontroller_wordimportcontroller",
+      "admin_wordimportcontroller_wordimportcontroller_construct",
+      "admin_wordimportcontroller_wordimportcontroller_downloadtemplate",
+      "admin_wordimportcontroller_wordimportcontroller_extracttextusingphpword",
+      "admin_wordimportcontroller_wordimportcontroller_index",
+      "admin_wordimportcontroller_wordimportcontroller_parseblocks",
+      "admin_wordimportcontroller_wordimportcontroller_process",
+      "admin_wordimportcontroller_wordimportcontroller_processphpwordelement"
+    ],
+    "23": [
+      "migration",
+      "migrations_2026_06_13_000001_addindexes",
+      "migrations_2026_06_13_000001_addindexes_addindexes",
+      "migrations_2026_06_13_000001_addindexes_addindexes_down",
+      "migrations_2026_06_13_000001_addindexes_addindexes_up",
+      "migrations_2026_06_16_000001_addunbannedattousers",
+      "migrations_2026_06_16_000001_addunbannedattousers_addunbannedattousers",
+      "migrations_2026_06_16_000001_addunbannedattousers_addunbannedattousers_down",
+      "migrations_2026_06_16_000001_addunbannedattousers_addunbannedattousers_up"
+    ],
+    "24": [
+      "models_settingmodel",
+      "models_settingmodel_settingmodel",
+      "models_settingmodel_settingmodel_clearcacheafterinsert",
+      "models_settingmodel_settingmodel_clearcachebeforedelete",
+      "models_settingmodel_settingmodel_clearcachebeforeupdate",
+      "models_settingmodel_settingmodel_clearcachebykey",
+      "models_settingmodel_settingmodel_getgroupedsettings",
+      "models_settingmodel_settingmodel_getvalue",
+      "models_settingmodel_settingmodel_setvalue"
+    ],
+    "25": [
+      "models_testattemptmodel",
+      "models_testattemptmodel_testattemptmodel",
+      "models_testattemptmodel_testattemptmodel_clearattemptcache",
+      "models_testattemptmodel_testattemptmodel_clearattemptcachebeforedelete",
+      "models_testattemptmodel_testattemptmodel_clearattemptcachebeforeupdate",
+      "models_testattemptmodel_testattemptmodel_clearcacheforattempt",
+      "models_testattemptmodel_testattemptmodel_findcached",
+      "models_testattemptmodel_testattemptmodel_getactiveattempt",
+      "models_testattemptmodel_testattemptmodel_getactiveattemptcached"
+    ],
+    "26": [
+      "proctor_livecontroller",
+      "proctor_livecontroller_livecontroller",
+      "proctor_livecontroller_livecontroller_construct",
+      "proctor_livecontroller_livecontroller_lockattempt",
+      "proctor_livecontroller_livecontroller_monitor",
+      "src_app_controllers_proctor_livecontroller_php_settingmodel",
+      "src_app_controllers_proctor_livecontroller_php_testattemptmodel",
+      "src_app_controllers_proctor_livecontroller_php_testmodel"
+    ],
+    "27": [
+      "src_app_controllers_student_resultcontroller_php_testattemptmodel",
+      "src_app_controllers_student_resultcontroller_php_testmodel",
+      "student_resultcontroller",
+      "student_resultcontroller_resultcontroller",
+      "student_resultcontroller_resultcontroller_construct",
+      "student_resultcontroller_resultcontroller_resolvesetting",
+      "student_resultcontroller_resultcontroller_review",
+      "student_resultcontroller_resultcontroller_view"
+    ],
+    "28": [
+      "admin_analyticscontroller",
+      "admin_analyticscontroller_analyticscontroller",
+      "admin_analyticscontroller_analyticscontroller_construct",
+      "admin_analyticscontroller_analyticscontroller_getdata",
+      "admin_analyticscontroller_analyticscontroller_index",
+      "admin_analyticscontroller_analyticscontroller_schema",
+      "responsetrait"
+    ],
+    "29": [
+      "admin_staticexamcontroller",
+      "admin_staticexamcontroller_staticexamcontroller",
+      "admin_staticexamcontroller_staticexamcontroller_construct",
+      "admin_staticexamcontroller_staticexamcontroller_delete",
+      "admin_staticexamcontroller_staticexamcontroller_extractbase64images",
+      "admin_staticexamcontroller_staticexamcontroller_generate",
+      "src_app_controllers_admin_staticexamcontroller_php_testmodel"
+    ],
+    "30": [
+      "models_answermodel",
+      "models_answermodel_answermodel",
+      "models_answermodel_answermodel_clearcache",
+      "models_answermodel_answermodel_clearcachebeforedelete",
+      "models_answermodel_answermodel_clearcachebeforeupdate",
+      "models_answermodel_answermodel_clearrelatedattemptcacheforquestion",
+      "models_answermodel_answermodel_getanswersbyquestion"
+    ],
+    "31": [
+      "models_groupmodel",
+      "models_groupmodel_groupmodel",
+      "models_groupmodel_groupmodel_addusertogroup",
+      "models_groupmodel_groupmodel_getmembercount",
+      "models_groupmodel_groupmodel_getusergroups",
+      "models_groupmodel_groupmodel_getusersgroups",
+      "models_groupmodel_groupmodel_removeuserfromgroup"
+    ],
+    "32": [
+      "seeder",
+      "seeds_exampleseeder",
+      "seeds_exampleseeder_exampleseeder",
+      "seeds_exampleseeder_exampleseeder_run",
+      "seeds_initialseeder",
+      "seeds_initialseeder_initialseeder",
+      "seeds_initialseeder_initialseeder_run"
+    ],
+    "33": [
+      "controller",
+      "controllers_basecontroller",
+      "controllers_basecontroller_basecontroller_initcontroller",
+      "loggerinterface",
+      "src_app_controllers_basecontroller_php_requestinterface",
+      "src_app_controllers_basecontroller_php_responseinterface"
+    ],
+    "34": [
+      "html_debug",
+      "html_debug_getfirstchildwithtagname",
+      "html_debug_gethash",
+      "html_debug_init",
+      "html_debug_showtab",
+      "html_debug_toggle"
+    ],
+    "35": [
+      "models_questionmodel",
+      "models_questionmodel_questionmodel",
+      "models_questionmodel_questionmodel_clearrelatedattemptcache",
+      "models_questionmodel_questionmodel_forcedeletewithanswers",
+      "models_questionmodel_questionmodel_getquestionswithdetails"
+    ],
+    "36": [
+      "proctor_dashboardcontroller",
+      "proctor_dashboardcontroller_dashboardcontroller",
+      "proctor_dashboardcontroller_dashboardcontroller_construct",
+      "proctor_dashboardcontroller_dashboardcontroller_index",
+      "src_app_controllers_proctor_dashboardcontroller_php_testmodel"
+    ],
+    "37": [
+      "src_preload",
+      "src_preload_preload",
+      "src_preload_preload_construct",
+      "src_preload_preload_load",
+      "src_preload_preload_loadautoloader"
+    ],
+    "38": [
+      "auth_queuecontroller",
+      "auth_queuecontroller_queuecontroller",
+      "auth_queuecontroller_queuecontroller_index",
+      "auth_queuecontroller_queuecontroller_ping"
+    ],
+    "39": [
+      "basecommand",
+      "commands_websocketserve",
+      "commands_websocketserve_websocketserve",
+      "commands_websocketserve_websocketserve_run"
+    ],
+    "40": [
+      "config_mimes",
+      "config_mimes_mimes",
+      "config_mimes_mimes_guessextensionfromtype",
+      "config_mimes_mimes_guesstypefromextension"
+    ],
+    "41": [
+      "libraries_redisclient",
+      "libraries_redisclient_redisclient",
+      "libraries_redisclient_redisclient_getinstance",
+      "redis"
+    ],
+    "42": [
+      "migrations_2020_02_22_222222_example_migration",
+      "migrations_2020_02_22_222222_example_migration_examplemigration",
+      "migrations_2020_02_22_222222_example_migration_examplemigration_down",
+      "migrations_2020_02_22_222222_example_migration_examplemigration_up"
+    ],
+    "43": [
+      "migrations_2026_05_30_000001_createuserstable",
+      "migrations_2026_05_30_000001_createuserstable_createuserstable",
+      "migrations_2026_05_30_000001_createuserstable_createuserstable_down",
+      "migrations_2026_05_30_000001_createuserstable_createuserstable_up"
+    ],
+    "44": [
+      "migrations_2026_05_30_000002_creategroupstable",
+      "migrations_2026_05_30_000002_creategroupstable_creategroupstable",
+      "migrations_2026_05_30_000002_creategroupstable_creategroupstable_down",
+      "migrations_2026_05_30_000002_creategroupstable_creategroupstable_up"
+    ],
+    "45": [
+      "migrations_2026_05_30_000003_createusergroupstable",
+      "migrations_2026_05_30_000003_createusergroupstable_createusergroupstable",
+      "migrations_2026_05_30_000003_createusergroupstable_createusergroupstable_down",
+      "migrations_2026_05_30_000003_createusergroupstable_createusergroupstable_up"
+    ],
+    "46": [
+      "migrations_2026_05_30_000004_createmodulestable",
+      "migrations_2026_05_30_000004_createmodulestable_createmodulestable",
+      "migrations_2026_05_30_000004_createmodulestable_createmodulestable_down",
+      "migrations_2026_05_30_000004_createmodulestable_createmodulestable_up"
+    ],
+    "47": [
+      "migrations_2026_05_30_000005_createsubjectstable",
+      "migrations_2026_05_30_000005_createsubjectstable_createsubjectstable",
+      "migrations_2026_05_30_000005_createsubjectstable_createsubjectstable_down",
+      "migrations_2026_05_30_000005_createsubjectstable_createsubjectstable_up"
+    ],
+    "48": [
+      "migrations_2026_05_30_000006_createquestionstable",
+      "migrations_2026_05_30_000006_createquestionstable_createquestionstable",
+      "migrations_2026_05_30_000006_createquestionstable_createquestionstable_down",
+      "migrations_2026_05_30_000006_createquestionstable_createquestionstable_up"
+    ],
+    "49": [
+      "migrations_2026_05_30_000007_createanswerstable",
+      "migrations_2026_05_30_000007_createanswerstable_createanswerstable",
+      "migrations_2026_05_30_000007_createanswerstable_createanswerstable_down",
+      "migrations_2026_05_30_000007_createanswerstable_createanswerstable_up"
+    ],
+    "50": [
+      "migrations_2026_05_30_000008_createteststable",
+      "migrations_2026_05_30_000008_createteststable_createteststable",
+      "migrations_2026_05_30_000008_createteststable_createteststable_down",
+      "migrations_2026_05_30_000008_createteststable_createteststable_up"
+    ],
+    "51": [
+      "migrations_2026_05_30_000009_createtestsubjectsetstable",
+      "migrations_2026_05_30_000009_createtestsubjectsetstable_createtestsubjectsetstable",
+      "migrations_2026_05_30_000009_createtestsubjectsetstable_createtestsubjectsetstable_down",
+      "migrations_2026_05_30_000009_createtestsubjectsetstable_createtestsubjectsetstable_up"
+    ],
+    "52": [
+      "migrations_2026_05_30_000010_createtestsubjectstable",
+      "migrations_2026_05_30_000010_createtestsubjectstable_createtestsubjectstable",
+      "migrations_2026_05_30_000010_createtestsubjectstable_createtestsubjectstable_down",
+      "migrations_2026_05_30_000010_createtestsubjectstable_createtestsubjectstable_up"
+    ],
+    "53": [
+      "migrations_2026_05_30_000011_createtestgroupstable",
+      "migrations_2026_05_30_000011_createtestgroupstable_createtestgroupstable",
+      "migrations_2026_05_30_000011_createtestgroupstable_createtestgroupstable_down",
+      "migrations_2026_05_30_000011_createtestgroupstable_createtestgroupstable_up"
+    ],
+    "54": [
+      "migrations_2026_05_30_000012_createtestattemptstable",
+      "migrations_2026_05_30_000012_createtestattemptstable_createtestattemptstable",
+      "migrations_2026_05_30_000012_createtestattemptstable_createtestattemptstable_down",
+      "migrations_2026_05_30_000012_createtestattemptstable_createtestattemptstable_up"
+    ],
+    "55": [
+      "migrations_2026_05_30_000013_createtestlogstable",
+      "migrations_2026_05_30_000013_createtestlogstable_createtestlogstable",
+      "migrations_2026_05_30_000013_createtestlogstable_createtestlogstable_down",
+      "migrations_2026_05_30_000013_createtestlogstable_createtestlogstable_up"
+    ],
+    "56": [
+      "migrations_2026_05_30_000014_createtestloganswerstable",
+      "migrations_2026_05_30_000014_createtestloganswerstable_createtestloganswerstable",
+      "migrations_2026_05_30_000014_createtestloganswerstable_createtestloganswerstable_down",
+      "migrations_2026_05_30_000014_createtestloganswerstable_createtestloganswerstable_up"
+    ],
+    "57": [
+      "migrations_2026_05_30_000015_createactivitylogstable",
+      "migrations_2026_05_30_000015_createactivitylogstable_createactivitylogstable",
+      "migrations_2026_05_30_000015_createactivitylogstable_createactivitylogstable_down",
+      "migrations_2026_05_30_000015_createactivitylogstable_createactivitylogstable_up"
+    ],
+    "58": [
+      "migrations_2026_05_30_000016_createsettingstable",
+      "migrations_2026_05_30_000016_createsettingstable_createsettingstable",
+      "migrations_2026_05_30_000016_createsettingstable_createsettingstable_down",
+      "migrations_2026_05_30_000016_createsettingstable_createsettingstable_up"
+    ],
+    "59": [
+      "migrations_2026_05_30_071132_addcheatstrikestotestattempts",
+      "migrations_2026_05_30_071132_addcheatstrikestotestattempts_addcheatstrikestotestattempts",
+      "migrations_2026_05_30_071132_addcheatstrikestotestattempts_addcheatstrikestotestattempts_down",
+      "migrations_2026_05_30_071132_addcheatstrikestotestattempts_addcheatstrikestotestattempts_up"
+    ],
+    "60": [
+      "migrations_2026_05_31_073016_addsnapshotcolumnstotestlogs",
+      "migrations_2026_05_31_073016_addsnapshotcolumnstotestlogs_addsnapshotcolumnstotestlogs",
+      "migrations_2026_05_31_073016_addsnapshotcolumnstotestlogs_addsnapshotcolumnstotestlogs_down",
+      "migrations_2026_05_31_073016_addsnapshotcolumnstotestlogs_addsnapshotcolumnstotestlogs_up"
+    ],
+    "61": [
+      "migrations_2026_06_01_014708_createcisessionstable",
+      "migrations_2026_06_01_014708_createcisessionstable_createcisessionstable",
+      "migrations_2026_06_01_014708_createcisessionstable_createcisessionstable_down",
+      "migrations_2026_06_01_014708_createcisessionstable_createcisessionstable_up"
+    ],
+    "62": [
+      "migrations_2026_06_05_041559_addlastactiveattousers",
+      "migrations_2026_06_05_041559_addlastactiveattousers_addlastactiveattousers",
+      "migrations_2026_06_05_041559_addlastactiveattousers_addlastactiveattousers_down",
+      "migrations_2026_06_05_041559_addlastactiveattousers_addlastactiveattousers_up"
+    ],
+    "63": [
+      "migrations_2026_06_06_065600_addstaticpagetotests",
+      "migrations_2026_06_06_065600_addstaticpagetotests_addstaticpagetotests",
+      "migrations_2026_06_06_065600_addstaticpagetotests_addstaticpagetotests_down",
+      "migrations_2026_06_06_065600_addstaticpagetotests_addstaticpagetotests_up"
+    ],
+    "64": [
+      "migrations_2026_06_13_120000_addafterexamsettingstotests",
+      "migrations_2026_06_13_120000_addafterexamsettingstotests_addafterexamsettingstotests",
+      "migrations_2026_06_13_120000_addafterexamsettingstotests_addafterexamsettingstotests_down",
+      "migrations_2026_06_13_120000_addafterexamsettingstotests_addafterexamsettingstotests_up"
+    ],
+    "65": [
+      "migrations_2026_06_26_015403_alteruserroleenum",
+      "migrations_2026_06_26_015403_alteruserroleenum_alteruserroleenum",
+      "migrations_2026_06_26_015403_alteruserroleenum_alteruserroleenum_down",
+      "migrations_2026_06_26_015403_alteruserroleenum_alteruserroleenum_up"
+    ],
+    "66": [
+      "migrations_2026_07_21_141200_fixusersoftdeleteuniqueness",
+      "migrations_2026_07_21_141200_fixusersoftdeleteuniqueness_fixusersoftdeleteuniqueness",
+      "migrations_2026_07_21_141200_fixusersoftdeleteuniqueness_fixusersoftdeleteuniqueness_down",
+      "migrations_2026_07_21_141200_fixusersoftdeleteuniqueness_fixusersoftdeleteuniqueness_up"
+    ],
+    "67": [
+      "migrations_2026_07_22_160000_addautosubmitoncheattotests",
+      "migrations_2026_07_22_160000_addautosubmitoncheattotests_addautosubmitoncheattotests",
+      "migrations_2026_07_22_160000_addautosubmitoncheattotests_addautosubmitoncheattotests_down",
+      "migrations_2026_07_22_160000_addautosubmitoncheattotests_addautosubmitoncheattotests_up"
+    ],
+    "68": [
+      "models_activitylogmodel",
+      "models_activitylogmodel_activitylogmodel",
+      "models_activitylogmodel_activitylogmodel_getrecent",
+      "models_activitylogmodel_activitylogmodel_log"
+    ],
+    "69": [
+      "models_testlogmodel",
+      "models_testlogmodel_testlogmodel",
+      "models_testlogmodel_testlogmodel_clearcache",
+      "models_testlogmodel_testlogmodel_findcached"
+    ],
+    "70": [
+      "autoloadconfig",
+      "config_autoload",
+      "config_autoload_autoload"
+    ],
+    "71": [
+      "basefilters",
+      "config_filters",
+      "config_filters_filters"
+    ],
+    "72": [
+      "baseforeigncharacters",
+      "config_foreigncharacters",
+      "config_foreigncharacters_foreigncharacters"
+    ],
+    "73": [
+      "basemodules",
+      "config_modules",
+      "config_modules_modules"
+    ],
+    "74": [
+      "basepublisher",
+      "config_publisher",
+      "config_publisher_publisher"
+    ],
+    "75": [
+      "baserouting",
+      "config_routing",
+      "config_routing_routing"
+    ],
+    "76": [
+      "baseservice",
+      "config_services",
+      "config_services_services"
+    ],
+    "77": [
+      "baseview",
+      "config_view",
+      "config_view_view"
+    ],
+    "78": [
+      "controllers_healthcontroller",
+      "controllers_healthcontroller_healthcontroller",
+      "controllers_healthcontroller_healthcontroller_index"
+    ],
+    "79": [
+      "controllers_home",
+      "controllers_home_home",
+      "controllers_home_home_index"
+    ],
+    "80": [
+      "models_modulemodel",
+      "models_modulemodel_modulemodel",
+      "models_modulemodel_modulemodel_getmoduleswithdetails"
+    ],
+    "81": [
+      "models_subjectmodel",
+      "models_subjectmodel_subjectmodel",
+      "models_subjectmodel_subjectmodel_getsubjectswithdetails"
+    ],
+    "82": [
+      "settings_index",
+      "settings_index_settingchecked",
+      "settings_index_settingval"
+    ],
+    "83": [
+      "config_doctypes",
+      "config_doctypes_doctypes"
+    ],
+    "84": [
+      "config_hostnames",
+      "config_hostnames_hostnames"
+    ],
+    "85": [
+      "config_kint",
+      "config_kint_kint"
+    ],
+    "86": [
+      "config_optimize",
+      "config_optimize_optimize"
+    ],
+    "87": [
+      "config_paths",
+      "config_paths_paths"
+    ],
+    "88": [
+      "config_workermode",
+      "config_workermode_workermode"
+    ],
+    "89": [
+      "install_actions",
+      "install_actions_getenvvars"
+    ],
+    "90": [
+      "install_index",
+      "install_index_getenvvars"
+    ],
+    "91": [
+      "src_test_docx",
+      "src_test_docx_extracttextfromdocx"
+    ],
+    "92": [
+      "src_test_parser",
+      "src_test_parser_processphpwordelement"
+    ],
+    "93": [
+      "admin_analytics"
+    ],
+    "94": [
+      "admin_dashboard"
+    ],
+    "95": [
+      "app_common"
+    ],
+    "96": [
+      "auth_login"
+    ],
+    "97": [
+      "auth_maintenance"
+    ],
+    "98": [
+      "auth_queue"
+    ],
+    "99": [
+      "boot_development"
+    ],
+    "100": [
+      "boot_production"
+    ],
+    "101": [
+      "boot_testing"
+    ],
+    "102": [
+      "cli_error_404"
+    ],
+    "103": [
+      "cli_error_exception"
+    ],
+    "104": [
+      "cli_production"
+    ],
+    "105": [
+      "config_constants"
+    ],
+    "106": [
+      "config_events"
+    ],
+    "107": [
+      "config_routes"
+    ],
+    "108": [
+      "en_validation"
+    ],
+    "109": [
+      "exam_index"
+    ],
+    "110": [
+      "exam_prepare"
+    ],
+    "111": [
+      "exam_result"
+    ],
+    "112": [
+      "exam_review"
+    ],
+    "113": [
+      "exam_take"
+    ],
+    "114": [
+      "groups_form"
+    ],
+    "115": [
+      "groups_index"
+    ],
+    "116": [
+      "html_error_400"
+    ],
+    "117": [
+      "html_error_403"
+    ],
+    "118": [
+      "html_error_404"
+    ],
+    "119": [
+      "html_error_exception"
+    ],
+    "120": [
+      "html_production"
+    ],
+    "121": [
+      "install_test"
+    ],
+    "122": [
+      "layouts_admin"
+    ],
+    "123": [
+      "layouts_exam"
+    ],
+    "124": [
+      "layouts_proctor"
+    ],
+    "125": [
+      "layouts_student"
+    ],
+    "126": [
+      "modules_form"
+    ],
+    "127": [
+      "modules_index"
+    ],
+    "128": [
+      "pagers_bootstrap_pagination"
+    ],
+    "129": [
+      "proctor_dashboard"
+    ],
+    "130": [
+      "proctor_live"
+    ],
+    "131": [
+      "public_index"
+    ],
+    "132": [
+      "questions_form"
+    ],
+    "133": [
+      "questions_index"
+    ],
+    "134": [
+      "questions_preview"
+    ],
+    "135": [
+      "questions_word_import"
+    ],
+    "136": [
+      "reports_index"
+    ],
+    "137": [
+      "results_detail"
+    ],
+    "138": [
+      "results_index"
+    ],
+    "139": [
+      "results_view"
+    ],
+    "140": [
+      "src_test_cheat"
+    ],
+    "141": [
+      "src_test_docx_image"
+    ],
+    "142": [
+      "src_test_slow"
+    ],
+    "143": [
+      "static_static_exam_template"
+    ],
+    "144": [
+      "steps_step1"
+    ],
+    "145": [
+      "steps_step2"
+    ],
+    "146": [
+      "steps_step3"
+    ],
+    "147": [
+      "steps_step4"
+    ],
+    "148": [
+      "steps_step5"
+    ],
+    "149": [
+      "student_dashboard"
+    ],
+    "150": [
+      "subjects_form"
+    ],
+    "151": [
+      "subjects_index"
+    ],
+    "152": [
+      "suspend_index"
+    ],
+    "153": [
+      "tests_config"
+    ],
+    "154": [
+      "tests_form"
+    ],
+    "155": [
+      "tests_index"
+    ],
+    "156": [
+      "users_form"
+    ],
+    "157": [
+      "users_index"
+    ],
+    "158": [
+      "users_print_cards_form"
+    ],
+    "159": [
+      "users_print_cards_layout"
+    ],
+    "160": [
+      "views_welcome_message"
+    ]
+  },
+  "cohesion": {
+    "0": 0.05877551020408163,
+    "1": 0.07632850241545894,
+    "2": 0.05714285714285714,
+    "3": 0.11666666666666667,
+    "4": 0.30735930735930733,
+    "5": 0.15204678362573099,
+    "6": 0.1871345029239766,
+    "7": 0.16339869281045752,
+    "8": 0.1503267973856209,
+    "9": 0.1830065359477124,
+    "10": 0.16176470588235295,
+    "11": 0.13333333333333333,
+    "12": 0.18681318681318682,
+    "13": 0.20512820512820512,
+    "14": 0.23076923076923078,
+    "15": 0.2564102564102564,
+    "16": 0.22727272727272727,
+    "17": 0.21212121212121213,
+    "18": 0.21818181818181817,
+    "19": 0.21818181818181817,
+    "20": 0.2727272727272727,
+    "21": 0.2727272727272727,
+    "22": 0.3055555555555556,
+    "23": 0.2777777777777778,
+    "24": 0.3333333333333333,
+    "25": 0.3333333333333333,
+    "26": 0.35714285714285715,
+    "27": 0.42857142857142855,
+    "28": 0.3333333333333333,
+    "29": 0.38095238095238093,
+    "30": 0.42857142857142855,
+    "31": 0.2857142857142857,
+    "32": 0.38095238095238093,
+    "33": 0.4666666666666667,
+    "34": 0.5333333333333333,
+    "35": 0.4,
+    "36": 0.5,
+    "37": 0.5,
+    "38": 0.5,
+    "39": 0.6666666666666666,
+    "40": 0.5,
+    "41": 0.6666666666666666,
+    "42": 0.5,
+    "43": 0.5,
+    "44": 0.5,
+    "45": 0.5,
+    "46": 0.5,
+    "47": 0.5,
+    "48": 0.5,
+    "49": 0.5,
+    "50": 0.5,
+    "51": 0.5,
+    "52": 0.5,
+    "53": 0.5,
+    "54": 0.5,
+    "55": 0.5,
+    "56": 0.5,
+    "57": 0.5,
+    "58": 0.5,
+    "59": 0.5,
+    "60": 0.5,
+    "61": 0.5,
+    "62": 0.5,
+    "63": 0.5,
+    "64": 0.5,
+    "65": 0.5,
+    "66": 0.5,
+    "67": 0.5,
+    "68": 0.5,
+    "69": 0.5,
+    "70": 1.0,
+    "71": 0.6666666666666666,
+    "72": 0.6666666666666666,
+    "73": 0.6666666666666666,
+    "74": 0.6666666666666666,
+    "75": 0.6666666666666666,
+    "76": 1.0,
+    "77": 0.6666666666666666,
+    "78": 0.6666666666666666,
+    "79": 0.6666666666666666,
+    "80": 0.6666666666666666,
+    "81": 0.6666666666666666,
+    "82": 0.6666666666666666,
+    "83": 1.0,
+    "84": 1.0,
+    "85": 1.0,
+    "86": 1.0,
+    "87": 1.0,
+    "88": 1.0,
+    "89": 1.0,
+    "90": 1.0,
+    "91": 1.0,
+    "92": 1.0,
+    "93": 1.0,
+    "94": 1.0,
+    "95": 1.0,
+    "96": 1.0,
+    "97": 1.0,
+    "98": 1.0,
+    "99": 1.0,
+    "100": 1.0,
+    "101": 1.0,
+    "102": 1.0,
+    "103": 1.0,
+    "104": 1.0,
+    "105": 1.0,
+    "106": 1.0,
+    "107": 1.0,
+    "108": 1.0,
+    "109": 1.0,
+    "110": 1.0,
+    "111": 1.0,
+    "112": 1.0,
+    "113": 1.0,
+    "114": 1.0,
+    "115": 1.0,
+    "116": 1.0,
+    "117": 1.0,
+    "118": 1.0,
+    "119": 1.0,
+    "120": 1.0,
+    "121": 1.0,
+    "122": 1.0,
+    "123": 1.0,
+    "124": 1.0,
+    "125": 1.0,
+    "126": 1.0,
+    "127": 1.0,
+    "128": 1.0,
+    "129": 1.0,
+    "130": 1.0,
+    "131": 1.0,
+    "132": 1.0,
+    "133": 1.0,
+    "134": 1.0,
+    "135": 1.0,
+    "136": 1.0,
+    "137": 1.0,
+    "138": 1.0,
+    "139": 1.0,
+    "140": 1.0,
+    "141": 1.0,
+    "142": 1.0,
+    "143": 1.0,
+    "144": 1.0,
+    "145": 1.0,
+    "146": 1.0,
+    "147": 1.0,
+    "148": 1.0,
+    "149": 1.0,
+    "150": 1.0,
+    "151": 1.0,
+    "152": 1.0,
+    "153": 1.0,
+    "154": 1.0,
+    "155": 1.0,
+    "156": 1.0,
+    "157": 1.0,
+    "158": 1.0,
+    "159": 1.0,
+    "160": 1.0
+  },
+  "gods": [
+    {
+      "id": "config_session_session",
+      "label": "Session",
+      "degree": 62
+    },
+    {
+      "id": "controllers_basecontroller_basecontroller",
+      "label": "BaseController",
+      "degree": 53
+    },
+    {
+      "id": "admin_reportcontroller_reportcontroller",
+      "label": "ReportController",
+      "degree": 20
+    },
+    {
+      "id": "admin_questioncontroller_questioncontroller",
+      "label": "QuestionController",
+      "degree": 18
+    },
+    {
+      "id": "admin_usercontroller_usercontroller",
+      "label": "UserController",
+      "degree": 18
+    },
+    {
+      "id": "admin_testcontroller_testcontroller",
+      "label": "TestController",
+      "degree": 16
+    },
+    {
+      "id": "models_usermodel_usermodel",
+      "label": "UserModel",
+      "degree": 16
+    },
+    {
+      "id": "student_examcontroller_examcontroller",
+      "label": "ExamController",
+      "degree": 15
+    },
+    {
+      "id": "api_examapicontroller_examapicontroller",
+      "label": "ExamApiController",
+      "degree": 13
+    },
+    {
+      "id": "libraries_examservice_examservice",
+      "label": "ExamService",
+      "degree": 13
+    }
+  ],
+  "surprises": [
+    {
+      "source": "AnalyticsController",
+      "target": "BaseController",
+      "source_files": [
+        "src/app/Controllers/Admin/AnalyticsController.php",
+        "src/app/Controllers/BaseController.php"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "inherits",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "GroupController",
+      "target": "BaseController",
+      "source_files": [
+        "src/app/Controllers/Admin/GroupController.php",
+        "src/app/Controllers/BaseController.php"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "inherits",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "ModuleController",
+      "target": "BaseController",
+      "source_files": [
+        "src/app/Controllers/Admin/ModuleController.php",
+        "src/app/Controllers/BaseController.php"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "inherits",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "QuestionController",
+      "target": "BaseController",
+      "source_files": [
+        "src/app/Controllers/Admin/QuestionController.php",
+        "src/app/Controllers/BaseController.php"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "inherits",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "ReportController",
+      "target": "BaseController",
+      "source_files": [
+        "src/app/Controllers/Admin/ReportController.php",
+        "src/app/Controllers/BaseController.php"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "inherits",
+      "why": "bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `BaseController` connect `Community 13` to `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 12`, `Community 14`, `Community 16`, `Community 17`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 22`, `Community 26`, `Community 27`, `Community 28`, `Community 29`, `Community 33`, `Community 36`, `Community 38`, `Community 78`, `Community 79`?",
+      "why": "High betweenness centrality (0.120) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `Session` connect `Community 6` to `Community 0`, `Community 1`, `Community 7`, `Community 8`, `Community 9`, `Community 12`, `Community 13`, `Community 14`, `Community 16`, `Community 17`, `Community 18`, `Community 19`, `Community 21`, `Community 22`, `Community 26`, `Community 27`, `Community 36`, `Community 38`, `Community 79`?",
+      "why": "High betweenness centrality (0.118) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `ReportController` connect `Community 4` to `Community 13`?",
+      "why": "High betweenness centrality (0.021) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 59 inferred relationships involving `Session` (e.g. with `.delete()` and `.store()`) actually correct?",
+      "why": "`Session` has 59 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `DocTypes`, `Hostnames`, `Kint` to the rest of the system?",
+      "why": "32 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 0` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.05877551020408163 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 1` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.07632850241545894 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

@@ -19,54 +19,71 @@ class SuspendController extends BaseController
 
     public function index()
     {
-        $db = \Config\Database::connect();
+        $this->userModel->select('users.id, users.username, users.firstname, users.lastname, users.is_active, users.created_at')
+            ->select('(SELECT COUNT(*) FROM test_attempts ta WHERE ta.user_id = users.id) as total_attempts')
+            ->select('(SELECT COUNT(*) FROM test_attempts ta2 WHERE ta2.user_id = users.id AND ta2.status IN (1,2)) as active_attempts')
+            ->select('(SELECT SUM(ta3.cheat_strikes) FROM test_attempts ta3 WHERE ta3.user_id = users.id) as total_strikes')
+            ->where('users.role', 'siswa')
+            ->orderBy('users.is_active', 'ASC')
+            ->orderBy('users.username', 'ASC');
 
-        // Get ALL students with their latest attempt info (if any)
-        $users = $db->query("
-            SELECT u.id, u.username, u.firstname, u.lastname, u.is_active, u.created_at,
-                   (SELECT COUNT(*) FROM test_attempts ta WHERE ta.user_id = u.id) as total_attempts,
-                   (SELECT COUNT(*) FROM test_attempts ta2 WHERE ta2.user_id = u.id AND ta2.status IN (1,2)) as active_attempts,
-                   (SELECT SUM(ta3.cheat_strikes) FROM test_attempts ta3 WHERE ta3.user_id = u.id) as total_strikes
-            FROM users u
-            WHERE u.role = 'siswa'
-              AND u.deleted_at IS NULL
-            ORDER BY u.is_active ASC, u.username ASC
-        ")->getResult();
+        $users = $this->userModel->paginate(20, 'users');
+        $pager = $this->userModel->pager;
 
-        return view('admin/suspend/index', ['users' => $users]);
+        return view('admin/suspend/index', [
+            'users' => $users,
+            'pager' => $pager
+        ]);
+    }
+
+    public function bulkAction()
+    {
+        $action = $this->request->getPost('action');
+        $userIds = $this->request->getPost('user_ids');
+
+        if (empty($userIds) || !is_array($userIds)) {
+            return redirect()->to('/admin/suspend')->with('error', 'Pilih minimal satu user.');
+        }
+
+        $count = 0;
+        foreach ($userIds as $id) {
+            $user = $this->userModel->find($id);
+            if ($user) {
+                if ($action === 'ban') {
+                    $this->_doBan($id);
+                } elseif ($action === 'unban') {
+                    $this->_doRelease($id);
+                } elseif ($action === 'reset_login') {
+                    $this->_doResetLogin($id);
+                }
+                $count++;
+            }
+        }
+
+        return redirect()->to('/admin/suspend')->with('success', "Aksi massal berhasil diterapkan pada {$count} user.");
     }
 
     /**
      * Ban a user: set is_active = 0 and lock all their active attempts
      */
-    public function ban($userId)
+    private function _doBan($userId)
     {
-        $user = $this->userModel->find($userId);
-        if (!$user) {
-            return redirect()->to('/admin/suspend')->with('error', 'User tidak ditemukan.');
-        }
-
         $db = \Config\Database::connect();
         $db->transStart();
 
-        // Deactivate user
         $this->userModel->update($userId, ['is_active' => 0]);
 
-        // Lock all active/paused attempts
         $db->table('test_attempts')
            ->where('user_id', $userId)
            ->whereIn('status', [1, 2])
-           ->update(['status' => 2]); // Paused instead of Locked, so progress is saved and can be resumed
+           ->update(['status' => 2]);
 
         $db->transComplete();
 
-        // Invalidate session in Redis to kick immediately via MultiLoginFilter + SSE
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
-                // Signal for MultiLoginFilter (existing)
                 $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
-                // Signal for SSE stream (new) — detected within 3 seconds
                 $redis->setex("ban_signal:{$userId}", 120, '1');
                 $redis->publish('exam_events', json_encode([
                     'event' => 'ban',
@@ -74,7 +91,6 @@ class SuspendController extends BaseController
                     'message' => 'Akun Anda telah ditangguhkan/diblokir oleh Admin. Hubungi pengawas ujian.'
                 ]));
                 
-                // Scan Redis for active PHP session keys (ci_session:*) and destroy them (HIGH-06)
                 $iterator = null;
                 do {
                     $keys = $redis->scan($iterator, 'ci_session:*', 100);
@@ -93,37 +109,36 @@ class SuspendController extends BaseController
             log_message('error', 'Redis error on ban: ' . $e->getMessage());
         }
 
-        // Delete CI sessions from database to support DatabaseHandler session configurations
         $db->table('ci_sessions')
            ->groupStart()
                ->like('data', "user_id|i:{$userId};")
                ->orLike('data', "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";")
            ->groupEnd()
            ->delete();
-
-        return redirect()->to('/admin/suspend')->with('success', "User {$user->username} telah di-BAN.");
     }
 
-    /**
-     * Release a banned user: set is_active = 1 and clean up Redis ban keys
-     */
-    public function release($userId)
+    public function ban($userId)
     {
         $user = $this->userModel->find($userId);
         if (!$user) {
             return redirect()->to('/admin/suspend')->with('error', 'User tidak ditemukan.');
         }
 
+        $this->_doBan($userId);
+
+        return redirect()->to('/admin/suspend')->with('success', "User {$user->username} telah di-BAN.");
+    }
+
+    private function _doRelease($userId)
+    {
         $this->userModel->update($userId, ['is_active' => 1, 'unbanned_at' => date('Y-m-d H:i:s')]);
 
-        // Reset cheat strikes so server state matches unban
         $db = \Config\Database::connect();
         $db->table('test_attempts')
            ->where('user_id', $userId)
            ->where('cheat_strikes >', 0)
            ->update(['cheat_strikes' => 0]);
 
-        // Clean up Redis ban keys so they don't interfere with next login
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
@@ -133,20 +148,22 @@ class SuspendController extends BaseController
         } catch (\Exception $e) {
             log_message('error', 'Redis error on release: ' . $e->getMessage());
         }
-
-        return redirect()->to('/admin/suspend')->with('success', "User {$user->username} telah di-RELEASE.");
     }
 
-    /**
-     * Clear user's Redis login session manually so they can login again on a new device
-     */
-    public function resetLogin($userId)
+    public function release($userId)
     {
         $user = $this->userModel->find($userId);
         if (!$user) {
             return redirect()->to('/admin/suspend')->with('error', 'User tidak ditemukan.');
         }
 
+        $this->_doRelease($userId);
+
+        return redirect()->to('/admin/suspend')->with('success', "User {$user->username} telah di-RELEASE.");
+    }
+
+    private function _doResetLogin($userId)
+    {
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
@@ -154,7 +171,6 @@ class SuspendController extends BaseController
                 $redis->zRem('active_sessions', $userId);
                 $redis->zRem('login_queue', $userId);
 
-                // Clear IP-level rate limit from Redis if a failed IP was logged
                 $failedIp = $redis->get("last_failed_login_ip:{$userId}");
                 if ($failedIp) {
                     $redis->del("login_attempts_ip:{$failedIp}");
@@ -164,6 +180,16 @@ class SuspendController extends BaseController
         } catch (\Exception $e) {
             log_message('error', 'Redis error on reset login: ' . $e->getMessage());
         }
+    }
+
+    public function resetLogin($userId)
+    {
+        $user = $this->userModel->find($userId);
+        if (!$user) {
+            return redirect()->to('/admin/suspend')->with('error', 'User tidak ditemukan.');
+        }
+
+        $this->_doResetLogin($userId);
 
         return redirect()->to('/admin/suspend')->with('success', "Sesi login {$user->username} berhasil di-reset. Siswa kini bisa login kembali.");
     }

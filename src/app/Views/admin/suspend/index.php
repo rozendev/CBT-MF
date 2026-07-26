@@ -9,10 +9,26 @@
         <p class="text-muted small mt-1">Daftar seluruh siswa terdaftar. Admin dapat mem-ban, me-release, atau mereset seluruh sesi ujian siswa.</p>
     </div>
     <div class="card-body">
+        <form id="bulkForm" action="<?= base_url('/admin/suspend/bulk-action') ?>" method="POST">
+        <?= csrf_field() ?>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex gap-2 align-items-center">
+                <select id="bulkActionSelect" name="action" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">-- Aksi Massal --</option>
+                    <option value="ban">Ban (Suspend)</option>
+                    <option value="unban">Release (Unban)</option>
+                    <option value="reset_login">Reset Sesi Login</option>
+                </select>
+                <button type="button" class="btn btn-sm btn-primary" onclick="submitBulkAction()">Terapkan</button>
+            </div>
+        </div>
+
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
+                        <th width="3%"><input type="checkbox" id="checkAll"></th>
                         <th width="5%">No</th>
                         <th>Siswa</th>
                         <th>Status Akun</th>
@@ -25,14 +41,15 @@
                 <tbody>
                     <?php if (empty($users)): ?>
                     <tr>
-                        <td colspan="7" class="text-center py-4 text-muted">
+                        <td colspan="8" class="text-center py-4 text-muted">
                             <i class="bi bi-people fs-3 d-block mb-2"></i>
                             Belum ada siswa terdaftar.
                         </td>
                     </tr>
                     <?php else: ?>
-                        <?php $no = 1; foreach ($users as $u): ?>
+                        <?php $no = 1 + (int)($pager->getCurrentPage('users') - 1) * $pager->getPerPage('users'); foreach ($users as $u): ?>
                         <tr class="<?= !$u->is_active ? 'table-danger bg-opacity-10' : '' ?>">
+                            <td><input type="checkbox" name="user_ids[]" value="<?= $u->id ?>" class="checkItem"></td>
                             <td><?= $no++ ?></td>
                             <td>
                                 <div class="fw-bold"><?= esc($u->firstname . ' ' . $u->lastname) ?></div>
@@ -98,6 +115,10 @@
                 </tbody>
             </table>
         </div>
+        <div class="mt-3 d-flex justify-content-center">
+            <?= $pager->links('users', 'bootstrap_pagination') ?>
+        </div>
+        </form>
     </div>
 </div>
 
@@ -152,6 +173,42 @@
 <script>
     let currentUserId = null;
     let currentUsername = '';
+
+    document.getElementById('checkAll')?.addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.checkItem');
+        checkboxes.forEach(cb => cb.checked = this.checked);
+    });
+
+    function submitBulkAction() {
+        const select = document.getElementById('bulkActionSelect').value;
+        const checked = document.querySelectorAll('.checkItem:checked');
+        
+        if (!select) {
+            Swal.fire('Peringatan', 'Silakan pilih aksi massal terlebih dahulu.', 'warning');
+            return;
+        }
+        
+        if (checked.length === 0) {
+            Swal.fire('Peringatan', 'Pilih minimal satu siswa.', 'warning');
+            return;
+        }
+
+        const actionText = document.querySelector('#bulkActionSelect option:checked').text;
+        
+        Swal.fire({
+            title: 'Konfirmasi Aksi Massal',
+            text: `Anda akan menerapkan aksi "${actionText}" pada ${checked.length} siswa. Lanjutkan?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Ya, Lanjutkan',
+            cancelButtonText: 'Batal',
+            confirmButtonColor: '#0d6efd'
+        }).then((res) => {
+            if (res.isConfirmed) {
+                document.getElementById('bulkForm').submit();
+            }
+        });
+    }
 
     function getStatusBadge(status) {
         switch(parseInt(status)) {

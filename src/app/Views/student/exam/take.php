@@ -15,7 +15,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ujian: <?= esc($test->name) ?> - <?= esc($appName) ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -55,7 +55,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             setTimeout(renderMath, 500);
         });
     </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <script defer src="<?= base_url('vendor/alpinejs/alpine.min.js') ?>"></script>
     <style>
         :root {
             --color-background: <?= $secondaryColor ?>;
@@ -488,10 +488,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         </div>
         
         <p class="mb-2 text-warning">Pelanggaran: <span id="strikeCount" class="fw-bold fs-5">1</span> / <span id="maxStrikes" class="fw-bold fs-5">2</span></p>
+    </div>
+    <!-- /suspendOverlay -->
+
     <!-- ▼ EXAM CONTENT ▼ -->
     <div id="examContent" style="display:block;" x-data="examApp()">
         <!-- Offline Overlay -->
-        <div x-show="isOffline" style="display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; flex-direction: column;" :class="{'d-flex': isOffline}">
+        <div x-show="isOffline" style="display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(8px); align-items: center; justify-content: center; flex-direction: column;" :class="{'d-flex': isOffline}">
             <div class="bg-white rounded-4 shadow-lg p-5 text-center" style="max-width: 450px; width: 90%;">
                 <div class="mb-4 d-flex justify-content-center">
                     <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; background: rgba(220, 53, 69, 0.1);">
@@ -532,7 +535,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
         <!-- Progress Bar -->
         <div class="progress-wrapper">
-            <div class="progress-fill" :style="'width: ' + ((countAnswered() / questions.length) * 100) + '%'"></div>
+            <div class="progress-fill" :style="'width: ' + ((questions && questions.length > 0) ? ((countAnswered() / questions.length) * 100) : 0) + '%'"></div>
         </div>
 
         <!-- Autosave Indicator -->
@@ -785,8 +788,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const RAW_QUESTIONS = <?= json_encode($questions) ?>;
-        const RAW_ANSWERS = <?= json_encode($answers) ?>;
+        const RAW_QUESTIONS = <?= json_encode(!empty($questions) ? $questions : []) ?>;
+        const RAW_ANSWERS = <?= json_encode(!empty($answers) ? $answers : (object)[]) ?>;
         const SAVE_URL = '<?= base_url('/student/exam/save-answer') ?>';
         const REPORT_CHEAT_URL = '<?= base_url('/student/exam/report-cheat') ?>';
         const DASHBOARD_URL = "<?= base_url('/student/dashboard') ?>";
@@ -796,8 +799,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         const ALLOW_NOANSWER = <?= (int) $test->allow_noanswer ?>;
         
         let durationMin = <?= (int) $test->duration_minutes ?>;
-        const beginTimeMs = <?= strtotime($test->begin_time) * 1000 ?>;
-        const startTime = <?= strtotime($attempt->started_at) * 1000 ?>;
+        const beginTimeMs = <?= !empty($test->begin_time) ? (strtotime($test->begin_time) * 1000) : 0 ?>;
+        const startTime = <?= !empty($attempt->started_at) ? (strtotime($attempt->started_at) * 1000) : 0 ?>;
 
         $.ajaxSetup({
             headers: {
@@ -868,13 +871,31 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         let isSuspended = false;
         let isLocked = false;
         
-        <?php if ($isAntiCheatEnabled): ?>
+        <?php if ($isAntiCheatEnabled || !empty($test->auto_submit_on_cheat)): ?>
+        let fullscreenNoticeShown = false;
         ['click', 'touchstart', 'keydown'].forEach(evt => {
             document.addEventListener(evt, function() {
                 if (!document.fullscreenElement && !isLocked && !isSuspended) {
                     const el = document.documentElement;
                     const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-                    if (rfs) rfs.call(el).catch(()=>{});
+                    if (rfs) {
+                        rfs.call(el).catch(err => {
+                            if (!fullscreenNoticeShown) {
+                                fullscreenNoticeShown = true;
+                                console.warn('Fullscreen request denied/failed:', err);
+                                Swal.fire({
+                                    title: 'Layar Penuh Diperlukan',
+                                    text: 'Gagal mengaktifkan mode Layar Penuh. Mohon aktifkan izin Layar Penuh di browser Anda.',
+                                    icon: 'warning',
+                                    toast: true,
+                                    position: 'top-end',
+                                    showConfirmButton: false,
+                                    timer: 4000
+                                });
+                                setTimeout(() => { fullscreenNoticeShown = false; }, 10000);
+                            }
+                        });
+                    }
                 }
             });
         });
@@ -885,8 +906,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         // ═══════════════════════════════════════════════════════
         document.addEventListener('alpine:init', () => {
             Alpine.data('examApp', () => ({
-                questions: RAW_QUESTIONS,
-                allAnswers: RAW_ANSWERS,
+                questions: Array.isArray(RAW_QUESTIONS) ? RAW_QUESTIONS : [],
+                allAnswers: (RAW_ANSWERS && typeof RAW_ANSWERS === 'object') ? RAW_ANSWERS : {},
                 currentIndex: 0,
                 isSaving: false,
                 showSavedToast: false,
@@ -899,31 +920,33 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     window.addEventListener('offline', () => this.isOffline = true);
                     window.addEventListener('online', () => this.isOffline = false);
                     // Parse Matching Options for Type 4 and Type 5
-                    this.questions.forEach(q => {
-                        q.is_flagged = false;
-                        if (q.question_type == 4 || q.question_type == 5) {
-                            q.matchingPairs = [];
-                            let rights = [];
-                            let savedMatching = {};
-                            try { if (q.answer_text) savedMatching = JSON.parse(q.answer_text); } catch(e){}
+                    if (Array.isArray(this.questions)) {
+                        this.questions.forEach(q => {
+                            q.is_flagged = false;
+                            if (q.question_type == 4 || q.question_type == 5) {
+                                q.matchingPairs = [];
+                                let rights = [];
+                                let savedMatching = {};
+                                try { if (q.answer_text) savedMatching = JSON.parse(q.answer_text); } catch(e){}
 
-                            let ansList = this.allAnswers[q.log_id] || [];
-                            ansList.forEach(a => {
-                                let parts = (a.answer_text || '').split('|::|');
-                                let left = parts[0] || '';
-                                let right = parts[1] || '';
-                                if (left && right) {
-                                    q.matchingPairs.push({
-                                        left: left,
-                                        right: right,
-                                        selected: savedMatching[left] || ''
-                                    });
-                                    rights.push(right);
-                                }
-                            });
-                            q.matchingOptions = rights.sort(() => 0.5 - Math.random());
-                        }
-                    });
+                                let ansList = (this.allAnswers && q.log_id && this.allAnswers[q.log_id]) ? this.allAnswers[q.log_id] : [];
+                                ansList.forEach(a => {
+                                    let parts = (a.answer_text || '').split('|::|');
+                                    let left = parts[0] || '';
+                                    let right = parts[1] || '';
+                                    if (left && right) {
+                                        q.matchingPairs.push({
+                                            left: left,
+                                            right: right,
+                                            selected: savedMatching[left] || ''
+                                        });
+                                        rights.push(right);
+                                    }
+                                });
+                                q.matchingOptions = rights.sort(() => 0.5 - Math.random());
+                            }
+                        });
+                    }
 
                     // Restore offline progress from localStorage if any
                     this.restoreLocalBackup();
@@ -938,7 +961,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
                     // ═══ Countdown Timer (if timed exam) ═══
                     if (durationMin > 0) {
-                        this.endTimeMs = beginTimeMs + (durationMin * 60 * 1000);
+                        this.endTimeMs = (startTime || beginTimeMs) + (durationMin * 60 * 1000);
                         this.timerInterval = setInterval(() => {
                             const now = new Date().getTime();
                             const distance = this.endTimeMs - now;
@@ -1072,8 +1095,14 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     }, delay);
                 },
 
-                get currentQuestion() { return this.questions[this.currentIndex]; },
-                get currentAnswers() { return this.allAnswers[this.currentQuestion.log_id] || []; },
+                get currentQuestion() { 
+                    return (Array.isArray(this.questions) && this.questions[this.currentIndex]) ? this.questions[this.currentIndex] : {}; 
+                },
+                get currentAnswers() { 
+                    const q = this.currentQuestion;
+                    if (!q || !q.log_id) return [];
+                    return (this.allAnswers && this.allAnswers[q.log_id]) ? this.allAnswers[q.log_id] : []; 
+                },
 
                 formatTime(ms) {
                     if (ms <= 0) return "00:00:00";
@@ -1143,7 +1172,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     }
 
                     this.isSaving = true;
-                    $.post('<?= base_url('/student/exam/autosave') ?>', data)
+                    this.activeSaveRequest = $.post('<?= base_url('/student/exam/autosave') ?>', data)
                      .done((res) => {
                          this.isSaving = false;
                          this.showSavedToast = true;
@@ -1169,18 +1198,21 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                      });
                 },
 
+                isQuestionAnswered(q) {
+                    if (!q) return false;
+                    if (q.question_type == 3) {
+                        return Boolean(q.answer_text && q.answer_text.trim() !== '');
+                    }
+                    if (q.question_type == 4 || q.question_type == 5) {
+                        return Boolean(q.matchingPairs && q.matchingPairs.length > 0 && q.matchingPairs.every(p => p.selected !== ''));
+                    }
+                    const ansList = (this.allAnswers && q.log_id && this.allAnswers[q.log_id]) ? this.allAnswers[q.log_id] : [];
+                    return ansList.some(a => a.is_selected == 1);
+                },
+
                 countAnswered() {
-                    let count = 0;
-                    this.questions.forEach(q => {
-                        if (q.question_type == 3) { 
-                            if (q.answer_text && q.answer_text.trim() !== '') count++; 
-                        } else if (q.question_type == 4 || q.question_type == 5) {
-                            if (q.matchingPairs && q.matchingPairs.every(p => p.selected !== '')) count++;
-                        } else { 
-                            if ((this.allAnswers[q.log_id]||[]).some(a => a.is_selected == 1)) count++; 
-                        }
-                    });
-                    return count;
+                    if (!Array.isArray(this.questions)) return 0;
+                    return this.questions.filter(q => this.isQuestionAnswered(q)).length;
                 },
 
                 countFlagged() {
@@ -1192,16 +1224,12 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
 
                 getGridButtonClass(idx) {
-                    const q = this.questions[idx];
+                    const q = (Array.isArray(this.questions) && this.questions[idx]) ? this.questions[idx] : {};
                     let classes = [];
                     if (q.is_flagged) {
                         classes.push('flagged');
                     } else {
-                        let answered = false;
-                        if (q.question_type == 3) answered = (q.answer_text && q.answer_text.trim() !== '');
-                        else if (q.question_type == 4 || q.question_type == 5) answered = (q.matchingPairs && q.matchingPairs.every(p => p.selected !== ''));
-                        else answered = (this.allAnswers[q.log_id]||[]).some(a => a.is_selected == 1);
-                        classes.push(answered ? 'answered' : 'unanswered');
+                        classes.push(this.isQuestionAnswered(q) ? 'answered' : 'unanswered');
                     }
                     if (idx === this.currentIndex) classes.push('current');
                     return classes.join(' ');
@@ -1274,6 +1302,10 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 async submitFinish() {
                     window.isSubmitting = true;
                     if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+
+                    if (this.activeSaveRequest && typeof this.activeSaveRequest.always === 'function') {
+                        try { await this.activeSaveRequest; } catch(e) {}
+                    }
 
                     $.post(FINISH_URL, { attempt_id: ATTEMPT_ID })
                      .done((res) => {
@@ -1386,9 +1418,15 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         // ═══════════════════════════════════════════════════════
         
         (function() {
-            // ── TAB SWITCH ──
-            document.addEventListener('visibilitychange', function() {
-                if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
+            let lastTabSwitchReportTime = 0;
+            const TAB_SWITCH_DEBOUNCE_MS = 2000;
+
+            function triggerTabSwitchReport(reasonMsg) {
+                const now = Date.now();
+                if (now - lastTabSwitchReportTime < TAB_SWITCH_DEBOUNCE_MS) return;
+                lastTabSwitchReportTime = now;
+
+                if (!examStarted || isLocked || isSuspended || window.isSubmitting) return;
                 <?php if (!$isAntiCheatEnabled && empty($test->auto_submit_on_cheat)): ?>return;<?php endif; ?>
 
                 $.ajax({
@@ -1403,7 +1441,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                             
                             Swal.fire({
                                 title: 'Ujian Dikumpulkan Otomatis',
-                                html: '<div class="text-center"><p>' + (res.message || 'Terdeteksi kecurangan. Ujian Anda telah otomatis dikumpulkan dan dinilai.') + '</p></div>',
+                                html: '<div class="text-center"><p>' + (res.message || reasonMsg) + '</p></div>',
                                 icon: 'warning',
                                 allowOutsideClick: false,
                                 allowEscapeKey: false,
@@ -1421,7 +1459,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
 
                         if (res.status === 'success') {
-                            Swal.fire('Peringatan', res.message || 'Anda terdeteksi membuka tab lain. Ujian dikunci.', 'warning').then(() => {
+                            Swal.fire('Peringatan', res.message || 'Anda terdeteksi membuka tab/jendela lain. Ujian dikunci.', 'warning').then(() => {
                                 redirectReplace(DASHBOARD_URL);
                             });
                         } else if (res.status === 'suspended') {
@@ -1439,47 +1477,17 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         });
                     }
                 });
+            }
+
+            // ── TAB SWITCH & WINDOW BLUR ──
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    triggerTabSwitchReport('Terdeteksi kecurangan. Ujian Anda telah otomatis dikumpulkan dan dinilai.');
+                }
             });
 
-            // ── WINDOW BLUR (Alt-Tab / Multi-Window / Focus Loss) ──
             window.addEventListener('blur', function() {
-                if (!examStarted || isLocked || isSuspended || window.isSubmitting) return;
-                <?php if (!$isAntiCheatEnabled && empty($test->auto_submit_on_cheat)): ?>return;<?php endif; ?>
-
-                $.ajax({
-                    url: REPORT_CHEAT_URL,
-                    type: 'POST',
-                    data: { attempt_id: ATTEMPT_ID, type: 'tab_switch' }, // Treat focus loss as tab_switch
-                    dataType: 'json',
-                    success: function(res) {
-                        if (res.action === 'auto_submitted') {
-                            window.isSubmitting = true;
-                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                            
-                            Swal.fire({
-                                title: 'Ujian Dikumpulkan Otomatis',
-                                html: '<div class="text-center"><p>' + (res.message || 'Terdeteksi kehilangan fokus layar. Ujian Anda telah otomatis dikumpulkan dan dinilai.') + '</p></div>',
-                                icon: 'warning',
-                                allowOutsideClick: false,
-                                allowEscapeKey: false,
-                                confirmButtonText: 'Lihat Hasil Ujian',
-                                confirmButtonColor: '#dc3545'
-                            }).then(() => {
-                                redirectReplace(res.redirect || DASHBOARD_URL);
-                            });
-                        } else if (res.action === 'lock') {
-                            isLocked = true;
-                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                            logoutAndRedirect(LOGIN_URL);
-                        } else if (res.status === 'suspended') {
-                            isLocked = true;
-                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                            Swal.fire('Dihentikan', 'Sesi Anda telah dihentikan oleh Admin.', 'error').then(() => {
-                                redirectReplace(DASHBOARD_URL);
-                            });
-                        }
-                    }
-                });
+                triggerTabSwitchReport('Terdeteksi kehilangan fokus layar. Ujian Anda telah otomatis dikumpulkan dan dinilai.');
             });
 
             // ── FULLSCREEN EXIT ──

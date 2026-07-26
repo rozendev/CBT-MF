@@ -1,6 +1,6 @@
 <?= $this->extend('layouts/student') ?>
 
-<?= $this->section('page_title') ?>Dashboard Siswa<?= $this->endSection() ?>
+<?= $this->section('page_title') ?><?= lang('App.dashboard_student') ?><?= $this->endSection() ?>
 
 <?= $this->section('styles') ?>
 <style>
@@ -130,15 +130,15 @@
 <?php endif; ?>
 
 <div class="greeting-card mt-3">
-    <div class="greeting-name">Halo, <?= esc(session('firstname')) ?>! 👋</div>
-    <p class="greeting-subtitle">Siap untuk ujian hari ini? Berikut daftar ujianmu.</p>
+    <div class="greeting-name"><?= lang('App.hello') ?>, <?= esc(session('firstname')) ?>! 👋</div>
+    <p class="greeting-subtitle"><?= lang('App.greeting_subtitle') ?></p>
 </div>
 
 <?php if (empty($availableTests)): ?>
     <div class="empty-state">
         <div class="empty-icon"><i class="bi bi-calendar-x"></i></div>
-        <div class="empty-title">Tidak Ada Ujian Aktif</div>
-        <div class="empty-desc">Belum ada ujian yang dijadwalkan untuk kelas Anda saat ini. Silakan cek kembali nanti.</div>
+        <div class="empty-title"><?= lang('App.no_active_exam') ?></div>
+        <div class="empty-desc"><?= lang('App.no_active_exam_desc') ?></div>
     </div>
 <?php else: ?>
     <?php foreach ($availableTests as $test): ?>
@@ -146,19 +146,19 @@
             <h2 class="exam-title"><?= esc($test->name) ?></h2>
             
             <?php if ($test->duration_minutes > 0): ?>
-                <div class="duration-badge"><i class="bi bi-clock me-1"></i> <?= $test->duration_minutes ?>mnt</div>
+                <div class="duration-badge"><i class="bi bi-clock me-1"></i> <?= $test->duration_minutes ?><?= lang('App.minutes_abbr') ?></div>
             <?php endif; ?>
             
             <p class="exam-desc">
-                <?= strip_tags($test->description) ?: 'Tidak ada deskripsi.' ?>
+                <?= strip_tags($test->description) ?: lang('App.no_description') ?>
             </p>
             
             <div class="exam-schedule">
                 <i class="bi bi-calendar2-event text-primary"></i>
                 <?php if ($test->begin_time || $test->end_time): ?>
-                    <span><?= $test->begin_time ? date('d/m/Y H:i', strtotime($test->begin_time)) : 'Sekarang' ?> - <?= $test->end_time ? date('H:i', strtotime($test->end_time)) : 'Selesai' ?></span>
+                    <span><?= $test->begin_time ? date('d/m/Y H:i', strtotime($test->begin_time)) : lang('App.now') ?> - <?= $test->end_time ? date('H:i', strtotime($test->end_time)) : lang('App.finished') ?></span>
                 <?php else: ?>
-                    <span>Tersedia kapan saja</span>
+                    <span><?= lang('App.available_anytime') ?></span>
                 <?php endif; ?>
             </div>
             
@@ -178,30 +178,48 @@
             ?>
             
             <?php if ($status == 3 || ($isExpired && $status != -1)): ?>
-                <?php if (isset($test->results_visible) && $test->results_visible == 1): ?>
-                    <a href="<?= base_url('/student/results/view/' . $test->id) ?>" class="btn-exam-action success text-decoration-none">
-                        <i class="bi bi-award-fill fs-5"></i> Lihat Nilai
-                    </a>
+                <?php 
+                    $canShowScore = !empty($test->can_show_score);
+                    $canAllowReview = !empty($test->can_allow_review);
+                    $isRepeatable = !empty($test->is_repeatable) && !$isExpired;
+                ?>
+                <?php if ($canShowScore || $canAllowReview || $isRepeatable): ?>
+                    <div class="d-flex flex-column gap-2">
+                        <?php if ($canShowScore): ?>
+                            <a href="<?= base_url('/student/results/view/' . $test->id) ?>" class="btn-exam-action success text-decoration-none">
+                                <i class="bi bi-award-fill fs-5"></i> <?= lang('App.view_score') ?>
+                            </a>
+                        <?php elseif ($canAllowReview): ?>
+                            <a href="<?= base_url('/student/results/view/' . $test->id) ?>" class="btn-exam-action primary text-decoration-none" style="background-color: #0dcaf0; color: #000;">
+                                <i class="bi bi-journal-check fs-5"></i> <?= lang('App.review_questions') ?>
+                            </a>
+                        <?php endif; ?>
+                        <?php if ($isRepeatable): ?>
+                            <a href="<?= base_url('/student/exam/prepare/' . $test->id) ?>" class="btn-exam-action warning text-decoration-none">
+                                <i class="bi bi-arrow-repeat fs-5"></i> <?= lang('App.retry_exam') ?>
+                            </a>
+                        <?php endif; ?>
+                    </div>
                 <?php else: ?>
                     <button class="btn-exam-action disabled" disabled>
-                        <i class="bi bi-check-circle-fill fs-5"></i> Selesai
+                        <i class="bi bi-check-circle-fill fs-5"></i> <?= lang('App.finished') ?>
                     </button>
                 <?php endif; ?>
             <?php elseif ($isExpired): ?>
                 <button class="btn-exam-action disabled" disabled>
-                    <i class="bi bi-lock-fill fs-5"></i> Terkunci (Waktu Habis)
+                    <i class="bi bi-lock-fill fs-5"></i> <?= lang('App.locked_time_up') ?>
                 </button>
             <?php elseif ($isUpcoming): ?>
                 <button class="btn-exam-action disabled" disabled>
-                    <i class="bi bi-clock-fill fs-5"></i> Belum Mulai
+                    <i class="bi bi-clock-fill fs-5"></i> <?= lang('App.not_started_yet') ?>
                 </button>
             <?php elseif ($status == 1 || $status == 2): ?>
                 <a href="<?= base_url('/student/exam/take/' . $test->id) ?>" class="btn-exam-action warning text-decoration-none">
-                    <i class="bi bi-play-fill fs-5"></i> Lanjutkan Ujian
+                    <i class="bi bi-play-fill fs-5"></i> <?= lang('App.continue_exam') ?>
                 </a>
             <?php else: ?>
                 <a href="<?= base_url('/student/exam/prepare/' . $test->id) ?>" class="btn-exam-action primary text-decoration-none">
-                    <i class="bi bi-play-fill fs-5"></i> Mulai Ujian
+                    <i class="bi bi-play-fill fs-5"></i> <?= lang('App.start_exam') ?>
                 </a>
             <?php endif; ?>
         </div>

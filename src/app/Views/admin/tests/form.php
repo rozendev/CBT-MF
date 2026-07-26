@@ -109,126 +109,163 @@
             </div>
         </div>
 
-        <!-- Kolom Kanan: Pengaturan Navigasi & Status -->
+        <!-- Kolom Kanan: Pengaturan Pelaksanaan, Hasil, & Status -->
         <div class="col-lg-4">
             <div class="card shadow-sm sticky-top" style="top: 80px;">
-                <div class="card-header bg-white border-bottom py-3">
-                    <h6 class="m-0 fw-bold"><i class="bi bi-toggles me-2"></i>Opsi Pelaksanaan</h6>
+                <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold text-primary"><i class="bi bi-sliders me-2"></i>Opsi Pelaksanaan & Hasil</h6>
                 </div>
                 <div class="card-body p-4">
                     
-                    <div class="mb-4">
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="random_questions" value="1" 
-                                   <?= old('random_questions', $test->random_questions ?? '1') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label">Acak Urutan Soal</label>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="random_answers" value="1" 
-                                   <?= old('random_answers', $test->random_answers ?? '1') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label">Acak Urutan Jawaban (PG)</label>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="show_menu" value="1" 
-                                   <?= old('show_menu', $test->show_menu ?? '1') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label">Tampilkan Menu Navigasi Soal</label>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="allow_noanswer" value="1" 
-                                   <?= old('allow_noanswer', $test->allow_noanswer ?? '1') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label">Izinkan Kosong (Tidak Dijawab)</label>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input bg-info border-info" type="checkbox" name="mcma_partial_score" value="1" 
-                                   <?= old('mcma_partial_score', $test->mcma_partial_score ?? '1') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label fw-bold text-info">Gunakan Sistem Bobot (PG Kompleks)</label>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="results_visible" value="1" 
-                                   <?= old('results_visible', $test->results_visible ?? '0') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label">Tampilkan Nilai ke Siswa</label>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" name="is_repeatable" value="1" 
-                                   <?= old('is_repeatable', $test->is_repeatable ?? '0') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label text-danger">Boleh Diulang</label>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input bg-danger border-danger" type="checkbox" name="auto_submit_on_cheat" value="1" 
-                                   <?= old('auto_submit_on_cheat', $test->auto_submit_on_cheat ?? '0') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label text-danger fw-bold">
-                                <i class="bi bi-shield-exclamation me-1"></i>Auto-Submit saat Kecurangan
-                            </label>
-                        </div>
-                        <div class="form-text text-danger-emphasis small mb-2" style="margin-top:-4px;">
-                            Jika aktif, ujian akan langsung dikumpulkan dan dinilai otomatis saat siswa terdeteksi curang (1 kali saja). Siswa akan melihat peringatan sebelum memulai ujian.
-                        </div>
-                    </div>
-
-                    <hr>
-
-                    <div class="mb-4">
-                        <label class="form-label fw-bold">Status Ujian</label>
+                    <!-- Master Switch Status Ujian -->
+                    <div class="p-3 bg-light rounded-3 border mb-4">
+                        <label class="form-label fw-bold d-block text-dark mb-1">Status Ujian</label>
                         <div class="form-check form-switch">
-                            <input class="form-check-input fs-4" type="checkbox" name="is_enabled" value="1"
+                            <input class="form-check-input fs-4" type="checkbox" id="isEnabledToggle" name="is_enabled" value="1"
                                    <?= old('is_enabled', $test->is_enabled ?? '0') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label mt-1 ms-2">Aktif (Dapat Dikerjakan)</label>
+                            <label class="form-check-label mt-1 ms-2 fw-semibold">Aktif (Dapat Dikerjakan)</label>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- After-Exam Settings (Per-Exam Override) -->
-            <div class="card shadow-sm mt-3">
-                <div class="card-header bg-white border-bottom py-3">
-                    <h6 class="m-0 fw-bold text-info"><i class="bi bi-clipboard2-check me-2"></i>Setelah Ujian Selesai</h6>
-                </div>
-                <div class="card-body p-4">
-                    <p class="text-muted small mb-3">Override pengaturan global dari halaman Pengaturan. Pilih "Default" untuk menggunakan nilai dari Pengaturan Sistem.</p>
+                    <!-- Container Opsi Pelaksanaan & Hasil (Bisa Di-disable via Master Switch) -->
+                    <div id="executionOptionsGroup">
+                        <h6 class="fw-bold text-dark border-bottom pb-2 mb-3"><i class="bi bi-toggles me-2 text-primary"></i>Pengaturan Pelaksanaan</h6>
 
-                    <?php
-                        $settingModel = new \App\Models\SettingModel();
-                        $globalShowScore = $settingModel->getValue('show_score_after_exam', false) ? 'Ya' : 'Tidak';
-                        $globalShowCorrect = $settingModel->getValue('show_correct_answers', false) ? 'Ya' : 'Tidak';
-                        $globalAllowReview = $settingModel->getValue('allow_review', false) ? 'Ya' : 'Tidak';
-                    ?>
+                        <div class="mb-4">
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" name="random_questions" value="1" 
+                                       <?= old('random_questions', $test->random_questions ?? '1') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label">Acak Urutan Soal</label>
+                            </div>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" name="random_answers" value="1" 
+                                       <?= old('random_answers', $test->random_answers ?? '1') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label">Acak Urutan Jawaban (PG)</label>
+                            </div>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" name="show_menu" value="1" 
+                                       <?= old('show_menu', $test->show_menu ?? '1') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label">Tampilkan Menu Navigasi Soal</label>
+                            </div>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" name="allow_noanswer" value="1" 
+                                       <?= old('allow_noanswer', $test->allow_noanswer ?? '1') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label">Izinkan Kosong (Tidak Dijawab)</label>
+                            </div>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input bg-info border-info" type="checkbox" name="mcma_partial_score" value="1" 
+                                       <?= old('mcma_partial_score', $test->mcma_partial_score ?? '1') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label fw-bold text-info">Gunakan Sistem Bobot (PG Kompleks)</label>
+                            </div>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input" type="checkbox" id="isRepeatableToggle" name="is_repeatable" value="1" 
+                                       <?= old('is_repeatable', $test->is_repeatable ?? '0') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label text-danger">Boleh Diulang</label>
+                            </div>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input bg-danger border-danger" type="checkbox" id="autoSubmitToggle" name="auto_submit_on_cheat" value="1" 
+                                       <?= old('auto_submit_on_cheat', $test->auto_submit_on_cheat ?? '0') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label text-danger fw-bold">
+                                    <i class="bi bi-shield-exclamation me-1"></i>Auto-Submit saat Kecurangan
+                                </label>
+                            </div>
+                            <div class="form-text text-danger-emphasis small mb-2" style="margin-top:-4px;">
+                                Ujian akan otomatis dikumpulkan saat curang. Saling mengunci dengan opsi "Boleh Diulang".
+                            </div>
+                        </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold small">Tampilkan Skor</label>
-                        <select class="form-select form-select-sm" name="show_score_after_exam">
-                            <option value="default" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalShowScore ?>)</option>
-                            <option value="1" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
-                            <option value="0" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
-                        </select>
+                        <h6 class="fw-bold text-dark border-bottom pb-2 mb-3"><i class="bi bi-clipboard2-check me-2 text-info"></i>Setelah Ujian Selesai</h6>
+
+                        <?php
+                            $settingModel = new \App\Models\SettingModel();
+                            $globalShowScore = $settingModel->getValue('show_score_after_exam', false) ? 'Ya' : 'Tidak';
+                            $globalShowCorrect = $settingModel->getValue('show_correct_answers', false) ? 'Ya' : 'Tidak';
+                            $globalAllowReview = $settingModel->getValue('allow_review', false) ? 'Ya' : 'Tidak';
+                        ?>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Tampilkan Skor</label>
+                            <select class="form-select form-select-sm" name="show_score_after_exam">
+                                <option value="default" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalShowScore ?>)</option>
+                                <option value="1" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
+                                <option value="0" <?= old('show_score_after_exam', $test->show_score_after_exam ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Tampilkan Kunci Jawaban</label>
+                            <select class="form-select form-select-sm" name="show_correct_answers">
+                                <option value="default" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalShowCorrect ?>)</option>
+                                <option value="1" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
+                                <option value="0" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Izinkan Review Soal</label>
+                            <select class="form-select form-select-sm" name="allow_review">
+                                <option value="default" <?= old('allow_review', $test->allow_review ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalAllowReview ?>)</option>
+                                <option value="1" <?= old('allow_review', $test->allow_review ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
+                                <option value="0" <?= old('allow_review', $test->allow_review ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold small">Tampilkan Kunci Jawaban</label>
-                        <select class="form-select form-select-sm" name="show_correct_answers">
-                            <option value="default" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalShowCorrect ?>)</option>
-                            <option value="1" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
-                            <option value="0" <?= old('show_correct_answers', $test->show_correct_answers ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold small">Izinkan Review Soal</label>
-                        <select class="form-select form-select-sm" name="allow_review">
-                            <option value="default" <?= old('allow_review', $test->allow_review ?? null) === null ? 'selected' : '' ?>>Default (<?= $globalAllowReview ?>)</option>
-                            <option value="1" <?= old('allow_review', $test->allow_review ?? null) === '1' ? 'selected' : '' ?>>Ya</option>
-                            <option value="0" <?= old('allow_review', $test->allow_review ?? null) === '0' ? 'selected' : '' ?>>Tidak</option>
-                        </select>
-                    </div>
-
-                    <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg">
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg fw-bold">
                             <i class="bi bi-save me-1"></i> Simpan Pengaturan
                         </button>
-                        <a href="<?= base_url('/admin/tests') ?>" class="btn btn-light">Batal</a>
+                        <a href="<?= base_url('/admin/tests') ?>" class="btn btn-light border">Batal</a>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const elAutoSubmit = document.getElementById('autoSubmitToggle');
+    const elRepeatable = document.getElementById('isRepeatableToggle');
+    const elIsEnabled = document.getElementById('isEnabledToggle');
+    const elOptionsGroup = document.getElementById('executionOptionsGroup');
+
+    function syncMutualExclusion() {
+        if (!elAutoSubmit || !elRepeatable) return;
+        
+        if (elAutoSubmit.checked) {
+            elRepeatable.checked = false;
+            elRepeatable.disabled = true;
+        } else {
+            elRepeatable.disabled = false;
+        }
+
+        if (elRepeatable.checked) {
+            elAutoSubmit.checked = false;
+            elAutoSubmit.disabled = true;
+        } else {
+            elAutoSubmit.disabled = false;
+        }
+    }
+
+    function syncIsEnabled() {
+        if (!elIsEnabled || !elOptionsGroup) return;
+        const isEnabled = elIsEnabled.checked;
+        const inputs = elOptionsGroup.querySelectorAll('input, select');
+        inputs.forEach(input => {
+            input.disabled = !isEnabled;
+        });
+        if (isEnabled) {
+            syncMutualExclusion();
+        }
+    }
+
+    if (elAutoSubmit) elAutoSubmit.addEventListener('change', syncMutualExclusion);
+    if (elRepeatable) elRepeatable.addEventListener('change', syncMutualExclusion);
+    if (elIsEnabled) elIsEnabled.addEventListener('change', syncIsEnabled);
+
+    // Run initial state setup
+    syncIsEnabled();
+});
+</script>
 <?= $this->endSection() ?>

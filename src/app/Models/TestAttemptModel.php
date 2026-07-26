@@ -110,12 +110,13 @@ class TestAttemptModel extends Model
         return $data;
     }
 
-    private function clearCacheForAttempt($attemptId, $testId, $userId)
+    public function clearCacheForAttempt($attemptId, $testId, $userId)
     {
         $cache = service('cache');
         try {
             if ($testId && $userId) {
                 $cache->delete("active_attempt_{$testId}_{$userId}");
+                $cache->delete("attempt_active_{$testId}_{$userId}");
             }
             if ($attemptId) {
                 $cache->delete("attempt_{$attemptId}");

@@ -1,6 +1,9 @@
 public/uploads/
 public/vendor/
+public/static/
 vendor/
+writable/
+build/
 test_img.png
 *.png
 *.jpeg

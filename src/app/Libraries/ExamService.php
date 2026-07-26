@@ -41,33 +41,72 @@ class ExamService
         $db = Database::connect();
         $db->transStart();
 
-        // Pessimistic lock: SELECT ... FOR UPDATE prevents concurrent inserts
-        $existing = $db->query(
-            "SELECT id FROM test_attempts WHERE user_id = ? AND test_id = ? AND status IN (0, 1, 2) LIMIT 1 FOR UPDATE",
-            [$userId, $testId]
-        )->getRow();
-
-        if ($existing) {
-            $db->transRollback();
-            return $this->attemptModel->find($existing->id);
-        }
-
-        // Fetch test details
+        // 1. Fetch test details
         $test = $this->testModel->find($testId);
         if (!$test) {
             $db->transRollback();
             return null;
         }
 
-        // 1. Create Test Attempt
-        $attemptData = [
-            'test_id'    => $testId,
-            'user_id'    => $userId,
-            'status'     => 1, // active
-            'started_at' => date('Y-m-d H:i:s'),
-        ];
-        $this->attemptModel->insert($attemptData);
-        $attemptId = $this->attemptModel->getInsertID();
+        // 2. Lock and check if an active attempt exists
+        $active = $db->query(
+            "SELECT id FROM test_attempts WHERE user_id = ? AND test_id = ? AND status IN (0, 1, 2) LIMIT 1 FOR UPDATE",
+            [$userId, $testId]
+        )->getRow();
+
+        if ($active) {
+            $db->transRollback();
+            return $this->attemptModel->find($active->id);
+        }
+
+        // 3. Lock and check if an existing completed attempt exists
+        $existing = $db->query(
+            "SELECT id FROM test_attempts WHERE user_id = ? AND test_id = ? AND status IN (3, 4) ORDER BY id DESC LIMIT 1 FOR UPDATE",
+            [$userId, $testId]
+        )->getRow();
+
+        if ($existing) {
+            if (empty($test->is_repeatable)) {
+                // If not repeatable and already finished, reject
+                $db->transRollback();
+                return null;
+            }
+
+            // REUSE & RESET the existing attempt record on retake instead of inserting stacked new attempt rows
+            $attemptId = (int)$existing->id;
+
+            $db->table('test_attempts')
+               ->where('id', $attemptId)
+               ->update([
+                   'status'        => 1, // reset to active
+                   'started_at'    => date('Y-m-d H:i:s'),
+                   'finished_at'   => null,
+                   'score'         => null,
+                   'cheat_strikes' => 0,
+               ]);
+
+            // Clean up old test_log_answers & test_logs for this attempt
+            $existingLogIds = $db->table('test_logs')->select('id')->where('test_attempt_id', $attemptId)->get()->getResultArray();
+            if (!empty($existingLogIds)) {
+                $logIdList = array_column($existingLogIds, 'id');
+                $db->table('test_log_answers')->whereIn('test_log_id', $logIdList)->delete();
+                $db->table('test_logs')->where('test_attempt_id', $attemptId)->delete();
+            }
+
+            // Invalidate caches via model helper
+            $this->attemptModel->clearCacheForAttempt($attemptId, $testId, $userId);
+
+        } else {
+            // No previous attempt exists: Create new Test Attempt
+            $attemptData = [
+                'test_id'    => $testId,
+                'user_id'    => $userId,
+                'status'     => 1, // active
+                'started_at' => date('Y-m-d H:i:s'),
+            ];
+            $this->attemptModel->insert($attemptData);
+            $attemptId = $this->attemptModel->getInsertID();
+        }
 
         // 2. Generate Questions from Subject Sets
         $sets = $db->table('test_subject_sets')->where('test_id', $testId)->get()->getResult();
@@ -103,14 +142,10 @@ class ExamService
                 continue;
             }
 
-            // PHP shuffle (seeded for static, random for dynamic)
-            if ($test->exam_mode === 'static') {
-                mt_srand($test->id + $set->id);
-                shuffle($questionIds);
-                mt_srand(); // reset seed
-            } else {
-                shuffle($questionIds);
-            }
+            // Deterministic question pool selection per test & subject set (always fixed set of questions for the test)
+            mt_srand($test->id + $set->id);
+            shuffle($questionIds);
+            mt_srand(); // reset seed
 
             // Slice to get the required quantity
             $selectedIds = array_slice($questionIds, 0, $set->quantity);
@@ -124,7 +159,7 @@ class ExamService
                             ->get()
                             ->getResult();
 
-            // To preserve the shuffled order, sort the fetched questions based on the position in $selectedIds
+            // To preserve the initial order, sort the fetched questions based on the position in $selectedIds
             $idToIndex = array_flip($selectedIds);
             usort($questions, function ($a, $b) use ($idToIndex) {
                 return $idToIndex[$a->id] <=> $idToIndex[$b->id];
@@ -177,7 +212,7 @@ class ExamService
             }
         }
 
-        // If random questions is globally true, we shuffle the display_order of the generated test_logs
+        // If random questions is enabled, shuffle the display_order of the selected questions for this attempt
         if ($test->random_questions) {
             $logs = $this->testLogModel->where('test_attempt_id', $attemptId)->findAll();
             if ($test->exam_mode === 'static') {

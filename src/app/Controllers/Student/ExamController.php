@@ -35,13 +35,24 @@ class ExamController extends BaseController
             return redirect()->to('/student/dashboard')->with('error', 'Ujian tidak tersedia.');
         }
 
-        // Check if user has an active attempt
+        // Check for active attempt
         $activeAttempt = $this->attemptModel->getActiveAttemptCached($id, session('user_id'));
         if ($activeAttempt) {
             if ($test->exam_mode == 'static' && !empty($test->static_page_path)) {
                 return redirect()->to(base_url($test->static_page_path));
             }
             return redirect()->to('/student/exam/take/' . $id)->with('info', 'Anda memiliki ujian yang sedang berlangsung.');
+        }
+
+        // Check if student already finished and exam is not repeatable
+        if (empty($test->is_repeatable)) {
+            $completed = $this->attemptModel->where('user_id', session('user_id'))
+                                             ->where('test_id', $id)
+                                             ->whereIn('status', [3, 4])
+                                             ->first();
+            if ($completed) {
+                return redirect()->to('/student/results/view/' . $id)->with('error', 'Anda telah menyelesaikan ujian ini.');
+            }
         }
 
         // Check time boundaries
@@ -83,11 +94,22 @@ class ExamController extends BaseController
             return redirect()->to('/student/exam/take/' . $id);
         }
 
+        // Check is_repeatable: if not repeatable and student already completed an attempt, block start
+        if (empty($test->is_repeatable)) {
+            $completed = $this->attemptModel->where('user_id', $userId)
+                                             ->where('test_id', $id)
+                                             ->whereIn('status', [3, 4])
+                                             ->first();
+            if ($completed) {
+                return redirect()->to('/student/results/view/' . $id)->with('error', 'Ujian ini hanya dapat dikerjakan satu kali.');
+            }
+        }
+
         $examService = new \App\Libraries\ExamService();
         $attempt = $examService->generateAttempt((int)$id, (int)$userId, $this->request->getIPAddress());
 
         if (!$attempt) {
-            return redirect()->back()->with('error', 'Terjadi kesalahan saat men-generate soal ujian.');
+            return redirect()->to('/student/results/view/' . $id)->with('error', 'Ujian ini hanya dapat dikerjakan satu kali atau terjadi kesalahan saat menyiapkan ujian.');
         }
 
         if ($test->exam_mode === 'static' && !empty($test->static_page_path)) {
@@ -120,7 +142,7 @@ class ExamController extends BaseController
         
         $questionsKey = "attempt_questions_{$attempt->id}";
         $questions = $cache->get($questionsKey);
-        if ($questions === null) {
+        if (empty($questions)) {
             $sql = "
                 SELECT tl.*, tl.id as log_id
                 FROM test_logs tl
@@ -128,9 +150,15 @@ class ExamController extends BaseController
                 ORDER BY tl.display_order ASC
             ";
             $questions = $db->query($sql, [$attempt->id])->getResult();
-            try {
-                $cache->save($questionsKey, $questions, 7200); // 2 hours
-            } catch (\Exception $e) {}
+            if (!empty($questions)) {
+                try {
+                    $cache->save($questionsKey, $questions, 7200); // 2 hours
+                } catch (\Exception $e) {}
+            }
+        }
+
+        if (empty($questions)) {
+            return redirect()->to('/student/dashboard')->with('error', 'Gagal memuat soal ujian. Belum ada soal yang tersimpan untuk sesi ujian ini.');
         }
 
         // Fetch answers for all these questions
@@ -139,7 +167,7 @@ class ExamController extends BaseController
         if (!empty($logIds)) {
             $answersKey = "attempt_answers_{$attempt->id}";
             $answers = $cache->get($answersKey);
-            if ($answers === null) {
+            if (empty($answers)) {
                 $ansSql = "
                     SELECT tla.*, tla.id as log_answer_id
                     FROM test_log_answers tla
@@ -153,9 +181,11 @@ class ExamController extends BaseController
                 foreach ($rawAnswers as $ans) {
                     $answers[$ans->test_log_id][] = $ans;
                 }
-                try {
-                    $cache->save($answersKey, $answers, 7200); // 2 hours
-                } catch (\Exception $e) {}
+                if (!empty($answers)) {
+                    try {
+                        $cache->save($answersKey, $answers, 7200); // 2 hours
+                    } catch (\Exception $e) {}
+                }
             }
         }
 
@@ -195,7 +225,7 @@ class ExamController extends BaseController
         }
 
         $settingModel = new \App\Models\SettingModel();
-        $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
+        $isAntiCheatEnabled = (bool)$settingModel->getValue('anti_cheat_enabled', false) || !empty($test->auto_submit_on_cheat);
 
         $wsToken = bin2hex(random_bytes(16));
         try {
@@ -325,6 +355,7 @@ class ExamController extends BaseController
             $scorer->calculateAndSaveScore($attempt->id);
             
             $this->activityLog->log('finish_test', $userId, 'test', $id, "Menyelesaikan ujian");
+            $this->attemptModel->clearCacheForAttempt($attempt->id, (int)$id, (int)$userId);
         }
 
         if ($this->request->isAJAX()) {

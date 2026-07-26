@@ -123,6 +123,7 @@ class ResultController extends BaseController
             return redirect()->to('/student/results/view/' . $testId)->with('error', 'Review tidak diizinkan untuk ujian ini.');
         }
 
+        $showScore = $this->resolveSetting($test->show_score_after_exam, 'show_score_after_exam', true);
         $showCorrect = $this->resolveSetting($test->show_correct_answers, 'show_correct_answers', false);
 
         $attempt = $this->attemptModel->where('test_id', $testId)
@@ -164,6 +165,7 @@ class ResultController extends BaseController
             'attempt'     => $attempt,
             'logs'        => $logs,
             'answers'     => $answers,
+            'showScore'   => $showScore,
             'showCorrect' => $showCorrect,
         ]);
     }

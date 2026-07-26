@@ -13,7 +13,7 @@
                 <h3 class="fw-bold mb-1"><?= esc($test->name) ?></h3>
                 <p class="mb-0 text-white-50">Sistem Ujian Online</p>
 
-                <?php if (!empty($test->auto_submit_on_cheat) && !empty($isAntiCheatEnabled)): ?>
+                <?php if (!empty($test->auto_submit_on_cheat)): ?>
                 <!-- Step Indicator Wizard -->
                 <div class="d-flex justify-content-center align-items-center gap-3 mt-4" id="wizardHeader">
                     <div class="d-flex align-items-center gap-2">
@@ -82,7 +82,7 @@
                             </div>
                         <?php endif; ?>
 
-                        <?php if (!empty($test->auto_submit_on_cheat) && !empty($isAntiCheatEnabled)): ?>
+                        <?php if (!empty($test->auto_submit_on_cheat)): ?>
                             <div class="alert alert-danger border-danger rounded-3 mb-4">
                                 <div class="d-flex align-items-start gap-2">
                                     <i class="bi bi-shield-exclamation fs-3 text-danger flex-shrink-0"></i>
@@ -112,7 +112,7 @@
                     <!-- ═══════════════════════════════════════════════════════ -->
                     <!--  STEP 2: CEK KESIAPAN PERANGKAT & ADVICE BERSAHABAT     -->
                     <!-- ═══════════════════════════════════════════════════════ -->
-                    <?php if (!empty($test->auto_submit_on_cheat) && !empty($isAntiCheatEnabled)): ?>
+                    <?php if (!empty($test->auto_submit_on_cheat)): ?>
                     <div id="step2Container" style="display: none;">
                         <h5 class="fw-bold text-dark border-bottom pb-2 mb-3">
                             <i class="bi bi-sliders text-primary me-2"></i>Checklist Kesiapan Perangkat
