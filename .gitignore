@@ -1,7 +1,10 @@
-```
 # Dependencies
 vendor/
+src/vendor/
 composer.lock
+
+# Static Exports
+src/public/static/
 
 # Environment
 .env
@@ -91,4 +94,3 @@ config/local.*
 *.bak
 *.backup
 *~
-```
