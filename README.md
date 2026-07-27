@@ -1,17 +1,17 @@
 # Sistem Ujian (CBT)
 
-Aplikasi Computer-Based Test (CBT) menggunakan **CodeIgniter 4 (PHP 8.5)**, dirancang untuk skalabilitas tinggi dengan **Docker**, **Nginx**, **MariaDB**, dan **Redis**.
+Aplikasi Computer-Based Test (CBT) menggunakan CodeIgniter 4 (PHP 8.5), dirancang untuk skalabilitas tinggi dengan Docker, Nginx, MariaDB, dan Redis.
 
 Aplikasi ini menggunakan teknologi **WebSocket (ReactPHP/Ratchet)** untuk deteksi kecurangan dan manajemen sesi secara *real-time* (seperti Ban, Kick, Tambah Waktu, dan Sinkronisasi Mode Statis) guna menghindari habisnya *PHP-FPM worker* pada saat beban tinggi.
 
-## 🚀 Fitur Utama
+## Fitur Utama
 - **Ujian Berbasis Waktu**: Ujian dengan batas waktu yang bisa ditambah oleh admin secara *real-time*.
 - **Anti-Cheat Terintegrasi**: Peringatan otomatis ketika siswa keluar dari mode *fullscreen* atau beralih tab.
 - **Static Exam Generator**: Menghasilkan file statis HTML yang membuat ujian tahan terhadap lonjakan akses ribuan peserta sekaligus.
 - **WebSocket Daemon**: Daemon independen dengan single-thread ReactPHP & Redis Pub/Sub untuk komunikasi server-ke-klien dengan CPU dan Memory footprint yang sangat kecil.
 - **Cloudflare Tunnel Ready**: Konfigurasi telah disesuaikan agar berjalan lancar di belakang proksi dan Cloudflare.
 
-## 🛠 Instalasi & Menjalankan Aplikasi
+## Instalasi & Menjalankan Aplikasi
 
 Aplikasi ini sepenuhnya berjalan di dalam Docker. Semua perintah dieksekusi menggunakan *wrapper* script `./scripts/cmd.sh`.
 
@@ -64,7 +64,7 @@ Setelah Composer selesai menginstal dependensi, jalankan migrasi database dan se
 ./scripts/cmd.sh php spark db:seed MainSeeder # (Opsional) Seeder data awal
 ```
 
-## 🐛 Pemecahan Masalah (Troubleshooting)
+## Pemecahan Masalah (Troubleshooting)
 
 ### 1. WebSocket Terputus / Tidak Konek (ERR_CONNECTION_REFUSED atau Code 1006)
 - **Gejala**: Siswa masuk ke halaman ujian tetapi *alert* "Reconnecting WebSocket..." muncul terus menerus.
@@ -114,13 +114,13 @@ exit
 ### 7. PHP-FPM Resource Exhausted / Server Terasa Lambat
 - **Solusi**: Jika Anda baru saja beralih dari versi lawas (yang masih menggunakan Server-Sent Events / EventSource), pastikan Anda telah sepenuhnya mendeploy Daemon WebSocket. Cara termudahnya adalah periksa *Network tab* di *DevTools* Browser. Anda harusnya melihat aktivitas ke `wss://domain.com/ws/` dengan status kode `101 Switching Protocols`, bukan request yang terus-menerus "*Pending*" (itu adalah sisa SSE FPM).
 
-## 🗂 Struktur Repositori
+## Struktur Repositori
 - `src/` - Kode aplikasi CodeIgniter 4
 - `docker/` - Dockerfiles (Nginx, PHP-FPM, MariaDB init scripts)
 - `scripts/` - Script eksekusi Docker `cmd.sh` dan utilitas lainnya
 - `docker-compose.yml` - Orkestrasi Container
 
-## 🔒 Keamanan & Deployment Produksi
+## Keamanan & Deployment Produksi
 
 Sebelum merilis aplikasi ini ke lingkungan produksi (production), pastikan Anda melakukan langkah-langkah keamanan berikut:
 
@@ -132,4 +132,3 @@ Sebelum merilis aplikasi ini ke lingkungan produksi (production), pastikan Anda 
 4. **Batasi Akses Port Nginx**: Pastikan port Nginx (`8080`) di `docker-compose.yml` hanya mendengarkan ke localhost (`127.0.0.1:8080:80`) jika Anda menggunakan Cloudflare Tunnel atau reverse proxy terpisah untuk menangani lalu lintas HTTPS eksternal.
 5. **Ganti Kredensial Default**: Segera ganti password default admin (`admin123`) di menu administrator setelah login pertama kali.
 6. **Set Environment**: Pastikan `CI_ENVIRONMENT` pada `src/.env` diatur ke `production` agar fitur debugging dinonaktifkan.
-
