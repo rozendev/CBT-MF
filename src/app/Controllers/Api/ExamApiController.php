@@ -230,6 +230,7 @@ class ExamApiController extends BaseController
             ],
             'anti_cheat' => [
                 'enabled' => (bool)$settingModel->getValue('anti_cheat_enabled', false),
+                'auto_submit_on_cheat' => (bool)($test->auto_submit_on_cheat ?? false),
                 'max_strikes' => (int)$settingModel->getValue('max_cheat_strikes', 2),
                 'suspend_timer' => (int)$settingModel->getValue('suspend_timer_seconds', 30),
                 'current_strikes' => (int)($attempt->cheat_strikes ?? 0),

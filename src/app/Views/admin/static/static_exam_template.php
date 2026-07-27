@@ -1023,6 +1023,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
                 if (res.anti_cheat) {
                     EXAM_CONFIG.antiCheat = res.anti_cheat;
+                    // Ensure auto_submit_on_cheat is always present (fallback from test object)
+                    if (EXAM_CONFIG.antiCheat.auto_submit_on_cheat === undefined && res.test) {
+                        EXAM_CONFIG.antiCheat.auto_submit_on_cheat = !!(res.test.auto_submit_on_cheat);
+                    }
                     document.getElementById('antiCheatTitle').textContent = res.anti_cheat.title || 'Peringatan Kecurangan!';
                     document.getElementById('antiCheatMessage').textContent = res.anti_cheat.message || 'Sistem mendeteksi Anda meninggalkan halaman ujian.';
                     if (res.anti_cheat.suspend_timer) document.getElementById('suspendTimerDisplay').textContent = res.anti_cheat.suspend_timer;
@@ -1656,7 +1660,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         let suspendTimerInterval = null;
         let strikes = 0;
 
-        const AC_CONFIG = EXAM_CONFIG.antiCheat || {};
+        // Use a getter so we always read the LATEST antiCheat config
+        // (initExam overwrites EXAM_CONFIG.antiCheat after API response)
+        function getAC() { return EXAM_CONFIG.antiCheat || {}; }
 
         function clearSuspend() {
             isSuspended = false;
@@ -1673,7 +1679,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             overlay.style.display = 'flex';
 
             document.getElementById('strikeCount').innerText = currentStrikes;
-            document.getElementById('maxStrikes').innerText = AC_CONFIG.max_strikes;
+            document.getElementById('maxStrikes').innerText = getAC().max_strikes;
 
             var sec = remainingSec;
             var timerEl = document.getElementById('suspendTimerDisplay');
@@ -1735,7 +1741,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     document.getElementById('examContent').style.display = 'none';
                     await Swal.fire({
                         title: 'Ujian Dikunci Permanen',
-                        html: (data.message || 'Ujian dikunci oleh server.') + '<br><br>Pelanggaran: <strong>' + strikes + '/' + AC_CONFIG.max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
+                        html: (data.message || 'Ujian dikunci oleh server.') + '<br><br>Pelanggaran: <strong>' + strikes + '/' + getAC().max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
                         icon: 'error',
                         allowOutsideClick: false,
                         allowEscapeKey: false,
@@ -1755,13 +1761,13 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
 
         window.__antiCheat = {
-            maxStrikes: AC_CONFIG.max_strikes,
+            maxStrikes: getAC().max_strikes,
         };
 
         // ── Tab Switch Detection ──
         document.addEventListener('visibilitychange', function() {
             if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
-            if (AC_CONFIG.enabled === false && !AC_CONFIG.auto_submit_on_cheat) return;
+            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
 
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
@@ -1771,7 +1777,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         // ── Window Focus Loss (Alt-Tab / Minimize) ──
         window.addEventListener('blur', function() {
             if (!examStarted || isLocked || isSuspended || window.isSubmitting) return;
-            if (AC_CONFIG.enabled === false && !AC_CONFIG.auto_submit_on_cheat) return;
+            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
 
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
 
@@ -1782,7 +1788,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         document.addEventListener('fullscreenchange', function() {
             if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
 
-            if (AC_CONFIG.enabled === false && !AC_CONFIG.auto_submit_on_cheat) {
+            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) {
                 reportCheat('fullscreen_exit');
                 return;
             }
