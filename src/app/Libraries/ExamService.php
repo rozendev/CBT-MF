@@ -318,10 +318,26 @@ class ExamService
             $db->transComplete();
 
             if ($db->transStatus() !== false) {
-                $flushedKeys = array_keys($answers);
-                if (!empty($flushedKeys)) {
-                    $redis->hDel($redisKey, ...$flushedKeys);
+                // Use a Lua script to conditionally delete hash fields only if their value hasn't changed.
+                // This prevents deleting a newer answer that was saved while we were writing to the DB.
+                $luaScript = <<<LUA
+local deleted = 0
+for i=1, #ARGV, 2 do
+    local current = redis.call("HGET", KEYS[1], ARGV[i])
+    if current == ARGV[i+1] then
+        redis.call("HDEL", KEYS[1], ARGV[i])
+        deleted = deleted + 1
+    end
+end
+return deleted
+LUA;
+                $evalArgs = [$redisKey];
+                foreach ($answers as $k => $v) {
+                    $evalArgs[] = (string)$k;
+                    $evalArgs[] = (string)$v;
                 }
+                $redis->eval($luaScript, $evalArgs, 1);
+
                 try {
                     $cache = \Config\Services::cache();
                     $cache->delete("attempt_questions_{$attemptId}");
