@@ -354,6 +354,98 @@ class ExamService
         $settingModel = new \App\Models\SettingModel();
         $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
 
+        // ─── Modified Browser Detection (immediate ban, bypasses strikes) ───
+        if ($cheatType === 'modified_browser') {
+            $request = \Config\Services::request();
+            $detail = $request->getPost('detail') ?? 'unknown';
+
+            // Flush answers before banning
+            $this->flushRedisAnswersToDb($attemptId);
+
+            // Calculate and save score
+            $scorer = new \App\Libraries\ScoringEngine();
+            $scorer->calculateAndSaveScore($attemptId);
+
+            // Deactivate user account
+            $userModel = new \App\Models\UserModel();
+            $userModel->update($userId, ['is_active' => 0]);
+
+            // Lock the attempt
+            $this->attemptModel->update($attemptId, [
+                'status' => 2,
+                'cheat_strikes' => 999, // Flag as modified browser
+            ]);
+
+            // Redis ban signals
+            try {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
+                    $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
+                    $redis->setex("ban_signal:{$userId}", 120, '1');
+
+                    $redis->publish('exam_events', json_encode([
+                        'event' => 'ban',
+                        'user_id' => $userId,
+                        'message' => "Akun dikunci: terdeteksi menggunakan browser modifikasi ($detail)"
+                    ]));
+
+                    $redis->publish('exam_events', json_encode([
+                        'event' => 'proctor_alert',
+                        'data' => [
+                            'user_id' => $userId,
+                            'test_id' => (int)$attempt->test_id,
+                            'event'   => 'modified_browser',
+                            'detail'  => $detail,
+                        ]
+                    ]));
+
+                    // Destroy all sessions for this user
+                    $currentSessionKey = 'ci_session:' . session_id();
+                    $iterator = null;
+                    do {
+                        $keys = $redis->scan($iterator, 'ci_session:*', 100);
+                        if ($keys) {
+                            foreach ($keys as $key) {
+                                if ($key === $currentSessionKey) continue;
+                                $data = $redis->get($key);
+                                if ($data && (strpos($data, "user_id|i:{$userId};") !== false ||
+                                              strpos($data, "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";") !== false)) {
+                                    $redis->del($key);
+                                }
+                            }
+                        }
+                    } while ($iterator > 0);
+
+                    if (session('user_id') == $userId) {
+                        session()->destroy();
+                    }
+                }
+            } catch (\Exception $e) {
+                log_message('error', 'Redis error on modified_browser ban: ' . $e->getMessage());
+            }
+
+            // Clean DB sessions too
+            $db = \Config\Database::connect();
+            $db->table('ci_sessions')
+               ->groupStart()
+                   ->like('data', "user_id|i:{$userId};")
+                   ->orLike('data', "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";")
+               ->groupEnd()
+               ->delete();
+
+            $this->activityLog->log('modified_browser_ban', $userId, 'test', $attempt->test_id,
+                "AUTO-BAN: Browser modifikasi terdeteksi (detail: $detail)");
+
+            return [
+                'status'  => 'success',
+                'action'  => 'lock',
+                'message' => 'Akun Anda telah dikunci karena terdeteksi menggunakan browser modifikasi/tidak resmi.',
+                'redirect' => base_url('/login'),
+                'current_strikes' => 999,
+                'max_strikes' => 0,
+            ];
+        }
+
         if (!$isAntiCheatEnabled && !$isAutoSubmitOnCheat) {
             return ['status' => 'success', 'action' => 'none', 'current_strikes' => (int)($attempt->cheat_strikes ?? 0)];
         }

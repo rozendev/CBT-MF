@@ -1564,6 +1564,123 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         })();
 
         // ═══════════════════════════════════════════════════════
+        //  3b. BROWSER INTEGRITY MONITOR
+        //      Detects modified browsers (floating bubble, split-screen bypass, event suppression)
+        // ═══════════════════════════════════════════════════════
+        <?php if ($isAntiCheatEnabled || !empty($test->auto_submit_on_cheat)): ?>
+        (function() {
+            let integrityReported = false;
+            let rafTimestamps = [];
+            let slowRafCount = 0;
+            let eventLog = { blur: 0, visibilitychange: 0, fullscreenchange: 0 };
+            let expectedScreenW = 0, expectedScreenH = 0;
+
+            // Track when security events actually fire
+            window.addEventListener('blur', function() { eventLog.blur = Date.now(); }, true);
+            document.addEventListener('visibilitychange', function() { eventLog.visibilitychange = Date.now(); }, true);
+            document.addEventListener('fullscreenchange', function() {
+                eventLog.fullscreenchange = Date.now();
+                if (document.fullscreenElement) {
+                    expectedScreenW = screen.width;
+                    expectedScreenH = screen.height;
+                }
+            }, true);
+
+            // rAF timing monitor — foreground tab runs at ~60fps (~16ms per frame)
+            let lastRafTime = 0;
+            function rafLoop(timestamp) {
+                if (lastRafTime > 0) {
+                    const delta = timestamp - lastRafTime;
+                    rafTimestamps.push(delta);
+                    if (rafTimestamps.length > 30) rafTimestamps.shift();
+                }
+                lastRafTime = timestamp;
+                if (!integrityReported) requestAnimationFrame(rafLoop);
+            }
+            requestAnimationFrame(rafLoop);
+
+            function reportModifiedBrowser(detail) {
+                if (integrityReported || !examStarted || isLocked || window.isSubmitting) return;
+                integrityReported = true;
+
+                $.ajax({
+                    url: REPORT_CHEAT_URL,
+                    type: 'POST',
+                    data: { attempt_id: ATTEMPT_ID, type: 'modified_browser', detail: detail },
+                    dataType: 'json',
+                    success: function(res) {
+                        if (res.action === 'lock') {
+                            window.isSubmitting = true;
+                            isLocked = true;
+                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                            document.getElementById('examContent').style.display = 'none';
+
+                            Swal.fire({
+                                title: 'Akun Dikunci',
+                                html: '<div class="text-center"><p>' + (res.message || 'Browser modifikasi terdeteksi.') + '</p></div>',
+                                icon: 'error',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                showConfirmButton: false,
+                                timer: 5000,
+                                timerProgressBar: true
+                            }).then(function() {
+                                window.location.href = res.redirect || LOGIN_URL;
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Main integrity check — runs every 10 seconds
+            setInterval(function() {
+                if (integrityReported || !examStarted || isLocked || window.isSubmitting) return;
+                var now = Date.now();
+
+                // ── Layer 1: Window Dimension Integrity ──
+                if (document.fullscreenElement && expectedScreenW > 0) {
+                    var wDiff = Math.abs(window.innerWidth - expectedScreenW);
+                    var hDiff = Math.abs(window.innerHeight - expectedScreenH);
+                    if (wDiff > 100 || hDiff > 100) {
+                        reportModifiedBrowser('dimension_mismatch:' + window.innerWidth + 'x' + window.innerHeight + '_vs_' + expectedScreenW + 'x' + expectedScreenH);
+                        return;
+                    }
+                }
+
+                // ── Layer 2: Event Suppression Cross-Check ──
+                if (!document.hasFocus() && (now - eventLog.blur > 15000)) {
+                    reportModifiedBrowser('focus_loss_no_blur_event');
+                    return;
+                }
+                if (document.visibilityState === 'hidden' && (now - eventLog.visibilitychange > 15000)) {
+                    reportModifiedBrowser('hidden_no_visibility_event');
+                    return;
+                }
+                if (expectedScreenW > 0 && !document.fullscreenElement && (now - eventLog.fullscreenchange > 15000)) {
+                    reportModifiedBrowser('fullscreen_exit_no_event');
+                    return;
+                }
+
+                // ── Layer 3: rAF Timing Analysis ──
+                if (rafTimestamps.length >= 10) {
+                    var sum = 0;
+                    for (var i = 0; i < rafTimestamps.length; i++) sum += rafTimestamps[i];
+                    var avgDelta = sum / rafTimestamps.length;
+                    if (avgDelta > 200) {
+                        slowRafCount++;
+                        if (slowRafCount >= 3) {
+                            reportModifiedBrowser('raf_timing_anomaly:avg_' + Math.round(avgDelta) + 'ms');
+                            return;
+                        }
+                    } else {
+                        slowRafCount = 0;
+                    }
+                }
+            }, 10000);
+        })();
+        <?php endif; ?>
+
+        // ═══════════════════════════════════════════════════════
         //  4. IMAGE LIGHTBOX PREVIEW
         // ═══════════════════════════════════════════════════════
         (function() {

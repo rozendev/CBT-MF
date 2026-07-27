@@ -1797,6 +1797,121 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         });
     })();
 
+    // ═══ BROWSER INTEGRITY MONITOR ═══
+    // Detects modified browsers (floating bubble, split-screen bypass, event suppression)
+    (function() {
+        let integrityReported = false;
+        let rafTimestamps = [];
+        let slowRafCount = 0;
+        let eventLog = { blur: 0, visibilitychange: 0, fullscreenchange: 0 };
+        let expectedScreenW = 0, expectedScreenH = 0;
+
+        // Track when security events actually fire
+        window.addEventListener('blur', function() { eventLog.blur = Date.now(); }, true);
+        document.addEventListener('visibilitychange', function() { eventLog.visibilitychange = Date.now(); }, true);
+        document.addEventListener('fullscreenchange', function() {
+            eventLog.fullscreenchange = Date.now();
+            if (document.fullscreenElement) {
+                expectedScreenW = screen.width;
+                expectedScreenH = screen.height;
+            }
+        }, true);
+
+        // rAF timing monitor
+        let lastRafTime = 0;
+        function rafLoop(timestamp) {
+            if (lastRafTime > 0) {
+                const delta = timestamp - lastRafTime;
+                rafTimestamps.push(delta);
+                if (rafTimestamps.length > 30) rafTimestamps.shift();
+            }
+            lastRafTime = timestamp;
+            if (!integrityReported) requestAnimationFrame(rafLoop);
+        }
+        requestAnimationFrame(rafLoop);
+
+        async function reportModifiedBrowser(detail) {
+            if (integrityReported || !examStarted || window.isSubmitting) return;
+            integrityReported = true;
+
+            try {
+                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: 'modified_browser', detail: detail });
+                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
+                    method: 'POST',
+                    body: fd
+                }, 2, 5000);
+
+                const data = await res.json();
+                if (data.action === 'lock') {
+                    window.isSubmitting = true;
+                    if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                    document.getElementById('examContent').style.display = 'none';
+
+                    await Swal.fire({
+                        title: 'Akun Dikunci',
+                        html: (data.message || 'Browser modifikasi terdeteksi.') + '<br><br>Menuju halaman login...',
+                        icon: 'error',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        showConfirmButton: false,
+                        timer: 5000,
+                        timerProgressBar: true
+                    });
+                    await logoutAndRedirect(API + '/login');
+                }
+            } catch (err) {
+                console.error('Failed to report integrity violation:', err);
+            }
+        }
+
+        // Main integrity check — runs every 10 seconds
+        setInterval(function() {
+            if (integrityReported || !examStarted || window.isSubmitting) return;
+            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
+            var now = Date.now();
+
+            // ── Layer 1: Window Dimension Integrity ──
+            if (document.fullscreenElement && expectedScreenW > 0) {
+                var wDiff = Math.abs(window.innerWidth - expectedScreenW);
+                var hDiff = Math.abs(window.innerHeight - expectedScreenH);
+                if (wDiff > 100 || hDiff > 100) {
+                    reportModifiedBrowser('dimension_mismatch:' + window.innerWidth + 'x' + window.innerHeight + '_vs_' + expectedScreenW + 'x' + expectedScreenH);
+                    return;
+                }
+            }
+
+            // ── Layer 2: Event Suppression Cross-Check ──
+            if (!document.hasFocus() && (now - eventLog.blur > 15000)) {
+                reportModifiedBrowser('focus_loss_no_blur_event');
+                return;
+            }
+            if (document.visibilityState === 'hidden' && (now - eventLog.visibilitychange > 15000)) {
+                reportModifiedBrowser('hidden_no_visibility_event');
+                return;
+            }
+            if (expectedScreenW > 0 && !document.fullscreenElement && (now - eventLog.fullscreenchange > 15000)) {
+                reportModifiedBrowser('fullscreen_exit_no_event');
+                return;
+            }
+
+            // ── Layer 3: rAF Timing Analysis ──
+            if (rafTimestamps.length >= 10) {
+                var sum = 0;
+                for (var i = 0; i < rafTimestamps.length; i++) sum += rafTimestamps[i];
+                var avgDelta = sum / rafTimestamps.length;
+                if (avgDelta > 200) {
+                    slowRafCount++;
+                    if (slowRafCount >= 3) {
+                        reportModifiedBrowser('raf_timing_anomaly:avg_' + Math.round(avgDelta) + 'ms');
+                        return;
+                    }
+                } else {
+                    slowRafCount = 0;
+                }
+            }
+        }, 10000);
+    })();
+
     // ═══ BOOT ═══
     document.addEventListener('DOMContentLoaded', function() {
         initExam();
