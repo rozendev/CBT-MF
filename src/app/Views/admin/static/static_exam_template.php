@@ -1051,7 +1051,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     // ═══ AUTO FULLSCREEN ═══
     ['click', 'touchstart', 'keydown'].forEach(evt => {
         document.addEventListener(evt, function() {
-            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false) return;
+            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false && !EXAM_CONFIG.antiCheat.auto_submit_on_cheat) return;
             if (!document.fullscreenElement && examStarted && !window.isSubmitting) {
                 const el = document.documentElement;
                 const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
