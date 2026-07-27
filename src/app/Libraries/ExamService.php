@@ -354,10 +354,27 @@ class ExamService
         $settingModel = new \App\Models\SettingModel();
         $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
 
+        // ─── Early Violation Bypass Detection ───
+        // Jika pelanggaran terjadi di 30 detik pertama, ini adalah anomali "race condition"
+        // yang disebabkan oleh aplikasi floating window/split screen saat memaksa masuk fullscreen.
+        $forcedDetail = null;
+        if (in_array($cheatType, ['tab_switch', 'fullscreen_exit'])) {
+            if (!empty($attempt->started_at)) {
+                $startTime = strtotime($attempt->started_at);
+                $elapsedSeconds = time() - $startTime;
+                
+                if ($elapsedSeconds >= 0 && $elapsedSeconds <= 30) {
+                    $cheatType = 'modified_browser';
+                    $forcedDetail = 'early_violation_bypass_in_' . $elapsedSeconds . 's';
+                }
+            }
+        }
+
         // ─── Modified Browser Detection (immediate ban, bypasses strikes) ───
         if ($cheatType === 'modified_browser') {
             $request = \Config\Services::request();
-            $detail = $request->getPost('detail') ?? 'unknown';
+            $detail = $forcedDetail ?? ($request->getPost('detail') ?? 'unknown');
+
 
             // Flush answers before banning
             $this->flushRedisAnswersToDb($attemptId);
