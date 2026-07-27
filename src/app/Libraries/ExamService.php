@@ -318,7 +318,10 @@ class ExamService
             $db->transComplete();
 
             if ($db->transStatus() !== false) {
-                $redis->del($redisKey);
+                $flushedKeys = array_keys($answers);
+                if (!empty($flushedKeys)) {
+                    $redis->hDel($redisKey, ...$flushedKeys);
+                }
                 try {
                     $cache = \Config\Services::cache();
                     $cache->delete("attempt_questions_{$attemptId}");
