@@ -591,6 +591,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         <div class="autosave-chip" x-show="showSavedToast" x-transition.opacity.duration.300ms style="display: none;">
             <i class="bi bi-check-circle-fill" style="color: #198754;"></i> Tersimpan
         </div>
+        <div class="autosave-chip" x-show="showErrorToast" x-transition.opacity.duration.300ms style="display: none; background-color: rgba(220, 53, 69, 0.9);">
+            <i class="bi bi-x-circle-fill" style="color: #fff;"></i> <span style="color: #fff;">Koneksi Gagal (Offline)</span>
+        </div>
         <div class="autosave-chip" x-show="isSaving" x-transition.opacity.duration.150ms style="display: none;">
             <span class="spinner-border spinner-border-sm text-primary" role="status" style="width: 1rem; height: 1rem;"></span> Menyimpan...
         </div>
@@ -1072,6 +1075,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             currentIndex: 0,
             isSaving: false,
             showSavedToast: false,
+            showErrorToast: false,
             timeLeft: EXAM_CONFIG.durationMinutes * 60 * 1000,
             timerInterval: null,
             warningShown: false,
@@ -1376,25 +1380,28 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 this.saveAnswer();
             },
 
-            saveAnswer() {
-                this.saveLocalBackup();
+            saveAnswer(passedData = null, retries = 3) {
+                if (!passedData) {
+                    this.saveLocalBackup();
 
-                const questionId = this.currentQuestion.question_id;
-                const type  = this.currentQuestion.question_type;
-                let data = { attempt_id: ATTEMPT_ID, question_id: questionId, question_type: type, generated_at: EXAM_CONFIG.generatedAt };
+                    const questionId = this.currentQuestion.question_id;
+                    const type  = this.currentQuestion.question_type;
+                    passedData = { attempt_id: ATTEMPT_ID, question_id: questionId, question_type: type, generated_at: EXAM_CONFIG.generatedAt };
 
-                if (type == 3) {
-                    data.answer_text = this.currentQuestion.answer_text || '';
-                } else if (type == 4 || type == 5) {
-                    let matches = {};
-                    this.currentQuestion.matchingPairs.forEach(p => { matches[p.left] = p.selected; });
-                    data.matching_answers_json = JSON.stringify(matches);
-                } else {
-                    data.selected_answers = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
+                    if (type == 3) {
+                        passedData.answer_text = this.currentQuestion.answer_text || '';
+                    } else if (type == 4 || type == 5) {
+                        let matches = {};
+                        this.currentQuestion.matchingPairs.forEach(p => { matches[p.left] = p.selected; });
+                        passedData.matching_answers_json = JSON.stringify(matches);
+                    } else {
+                        passedData.selected_answers = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
+                    }
                 }
 
                 this.isSaving = true;
-                const fd = buildFormData(data);
+                this.showErrorToast = false;
+                const fd = buildFormData(passedData);
 
                 $.ajax({
                     url: API + '/api/exam/autosave',
@@ -1418,14 +1425,21 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     }
                 })
                 .fail((err) => {
-                    this.isSaving = false;
-                    console.error("Gagal menyimpan jawaban", err);
-
                     if (err.status === 401 || err.status === 403) {
+                        this.isSaving = false;
                         if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
                         Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
                             redirectReplace(API + '/login');
                         });
+                    } else {
+                        if (retries > 0) {
+                            setTimeout(() => { this.saveAnswer(passedData, retries - 1); }, 2500);
+                        } else {
+                            this.isSaving = false;
+                            this.showErrorToast = true;
+                            setTimeout(() => { this.showErrorToast = false; }, 4000);
+                            console.error("Gagal menyimpan jawaban (offline)", err);
+                        }
                     }
                 });
             },
