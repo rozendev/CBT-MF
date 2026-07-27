@@ -1086,6 +1086,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             sseErrorCount: 0,
             syncInterval: null,
             isOffline: !navigator.onLine,
+            
+            activeQueue: Promise.resolve(),
+            syncTimeout: null,
+            lastSyncTime: Date.now(),
 
             parseMatching() {
                 this.questions.forEach(q => {
@@ -1163,34 +1167,20 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     }
                 });
 
-                this.syncInterval = setInterval(() => {
-                    if (!ATTEMPT_ID) return;
-                    const fd = buildFormData({ attempt_id: ATTEMPT_ID });
-                    $.ajax({
-                        url: API + '/api/exam/auto-sync',
-                        type: 'POST',
-                        data: fd,
-                        processData: false,
-                        contentType: false,
-                        dataType: 'json',
-                        success: (res) => { 
-                            updateCsrf(res); 
-                            if (res.exam_mode !== undefined) {
-                                if (res.exam_mode !== 'static' || !res.static_page_path) {
-                                    window.isSubmitting = true;
-                                    window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                                } else {
-                                    const expectedUrl = API + '/' + res.static_page_path;
-                                    const currentPath = window.location.pathname;
-                                    if (!expectedUrl.includes(currentPath)) {
-                                        window.isSubmitting = true;
-                                        window.location.href = expectedUrl;
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }, 60000);
+                // Init Auto Sync (Debounce + Max-Wait Hybrid)
+                this.scheduleAutoSync();
+
+                // Fallback saat tab ditutup/refresh
+                window.addEventListener('beforeunload', (e) => {
+                    if (this.isSaving) {
+                        e.preventDefault();
+                        e.returnValue = ''; // Memicu konfirmasi penutupan pada browser modern
+                    }
+                    if (ATTEMPT_ID) {
+                        const fd = buildFormData({ attempt_id: ATTEMPT_ID });
+                        navigator.sendBeacon(API + '/api/exam/auto-sync', fd);
+                    }
+                });
             },
 
             initWebSocket() {
@@ -1267,6 +1257,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                                 window.isSubmitting = true;
                                 window.location.href = expectedUrl;
                             }
+                        }
+                    }
+                    else if (eventName === 'heartbeat') {
+                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                            this.ws.send(JSON.stringify({event: 'pong'}));
                         }
                     }
                 };
@@ -1364,7 +1359,12 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 let currentSelected = this.currentAnswers.find(a => a.is_selected == 1);
                 if (currentSelected && currentSelected.answer_id == answerId) return;
                 this.currentAnswers.forEach(a => { a.is_selected = (a.answer_id == answerId) ? 1 : 0; });
-                this.saveAnswer();
+                
+                // Meng-update jadwal sync setiap ada interaksi user
+                this.scheduleAutoSync();
+
+                // Masukkan ke antrean tunggal
+                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
             },
             toggleCheckbox(answerId, isChecked) {
                 let ans = this.currentAnswers.find(a => a.answer_id == answerId);
@@ -1372,76 +1372,153 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     if (ans.is_selected == (isChecked ? 1 : 0)) return;
                     ans.is_selected = isChecked ? 1 : 0;
                 }
-                this.saveAnswer();
+                this.scheduleAutoSync();
+                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
             },
             updateMatching(index, value) {
                 if (this.questions[this.currentIndex].matchingPairs[index].selected === value) return;
                 this.questions[this.currentIndex].matchingPairs[index].selected = value;
-                this.saveAnswer();
+                this.scheduleAutoSync();
+                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
             },
 
-            saveAnswer(passedData = null, retries = 3) {
-                if (!passedData) {
-                    this.saveLocalBackup();
-
-                    const questionId = this.currentQuestion.question_id;
-                    const type  = this.currentQuestion.question_type;
-                    passedData = { attempt_id: ATTEMPT_ID, question_id: questionId, question_type: type, generated_at: EXAM_CONFIG.generatedAt };
-
-                    if (type == 3) {
-                        passedData.answer_text = this.currentQuestion.answer_text || '';
-                    } else if (type == 4 || type == 5) {
-                        let matches = {};
-                        this.currentQuestion.matchingPairs.forEach(p => { matches[p.left] = p.selected; });
-                        passedData.matching_answers_json = JSON.stringify(matches);
-                    } else {
-                        passedData.selected_answers = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
-                    }
+            scheduleAutoSync() {
+                if (this.syncTimeout) clearTimeout(this.syncTimeout);
+                
+                const timeSinceLastSync = Date.now() - this.lastSyncTime;
+                const MAX_WAIT = 180000; // 3 menit
+                
+                if (timeSinceLastSync > MAX_WAIT) {
+                    this.enqueueRequest('sync');
+                } else {
+                    this.syncTimeout = setTimeout(() => {
+                        this.enqueueRequest('sync');
+                    }, 60000); // 60 detik debounce
                 }
+            },
 
-                this.isSaving = true;
-                this.showErrorToast = false;
-                const fd = buildFormData(passedData);
+            enqueueRequest(action, params = {}) {
+                if (!this.activeQueue) this.activeQueue = Promise.resolve();
+                this.activeQueue = this.activeQueue.then(() => {
+                    return this.performNetworkRequest(action, params);
+                }).catch((err) => {
+                    console.warn("Recovered from queue error:", err);
+                    return Promise.resolve();
+                });
+            },
 
-                $.ajax({
-                    url: API + '/api/exam/autosave',
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    dataType: 'json'
-                })
-                .done((res) => {
-                    this.isSaving = false;
-                    updateCsrf(res);
-                    this.showSavedToast = true;
-                    setTimeout(() => { this.showSavedToast = false; }, 2000);
-
-                    if (res.status === 'kicked') {
-                        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                        Swal.fire('Informasi', res.message, 'info').then(() => {
-                            redirectReplace(API + '/login');
+            performNetworkRequest(action, params) {
+                return new Promise((resolve) => {
+                    if (action === 'sync') {
+                        if (!ATTEMPT_ID) return resolve();
+                        const fd = buildFormData({ attempt_id: ATTEMPT_ID });
+                        $.ajax({
+                            url: API + '/api/exam/auto-sync',
+                            type: 'POST',
+                            data: fd,
+                            processData: false,
+                            contentType: false,
+                            dataType: 'json'
+                        }).always((res) => {
+                            if (res && res.csrf_hash) updateCsrf(res);
+                            if (res && res.exam_mode !== undefined) {
+                                if (res.exam_mode !== 'static' || !res.static_page_path) {
+                                    window.isSubmitting = true;
+                                    window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
+                                } else {
+                                    const expectedUrl = API + '/' + res.static_page_path;
+                                    const currentPath = window.location.pathname;
+                                    if (!expectedUrl.includes(currentPath)) {
+                                        window.isSubmitting = true;
+                                        window.location.href = expectedUrl;
+                                    }
+                                }
+                            }
+                            this.lastSyncTime = Date.now();
+                            this.scheduleAutoSync();
+                            resolve();
                         });
-                    }
-                })
-                .fail((err) => {
-                    if (err.status === 401 || err.status === 403) {
-                        this.isSaving = false;
-                        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                        Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                            redirectReplace(API + '/login');
+                    } else if (action === 'autosave') {
+                        const { logId, retries } = params;
+                        const q = this.questions.find(x => x.question_id === logId);
+                        if (!q) return resolve();
+
+                        this.saveLocalBackup();
+
+                        let passedData = { attempt_id: ATTEMPT_ID, question_id: logId, question_type: q.question_type, generated_at: EXAM_CONFIG.generatedAt };
+                        if (q.question_type == 3) {
+                            passedData.answer_text = q.answer_text;
+                        } else if (q.question_type == 4 || q.question_type == 5) {
+                            let matches = {};
+                            q.matchingPairs.forEach(p => { matches[p.left] = p.selected; });
+                            passedData.matching_answers_json = JSON.stringify(matches);
+                        } else {
+                            const ansList = this.allAnswers[logId] || [];
+                            passedData.selected_answers = ansList.filter(a => a.is_selected == 1).map(a => a.answer_id);
+                        }
+
+                        this.isSaving = true;
+                        this.showErrorToast = false;
+                        const fd = buildFormData(passedData);
+
+                        $.ajax({
+                            url: API + '/api/exam/autosave',
+                            type: 'POST',
+                            data: fd,
+                            processData: false,
+                            contentType: false,
+                            dataType: 'json',
+                            success: (res) => {
+                                updateCsrf(res);
+                                this.isSaving = false;
+                                this.showSavedToast = true;
+                                setTimeout(() => { this.showSavedToast = false; }, 2000);
+
+                                if (res.status === 'kicked') {
+                                    if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                                    Swal.fire('Informasi', res.message, 'info').then(() => {
+                                        window.location.href = API + '/login';
+                                    });
+                                }
+                                resolve();
+                            },
+                            error: (err) => {
+                                if (err.status === 401 || err.status === 403) {
+                                    this.isSaving = false;
+                                    if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                                    Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
+                                        window.location.href = API + '/login';
+                                    });
+                                    resolve();
+                                } else {
+                                    if (retries > 0) {
+                                        setTimeout(() => {
+                                            this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
+                                        }, 2500);
+                                    } else {
+                                        this.isSaving = false;
+                                        this.showErrorToast = true;
+                                        setTimeout(() => { this.showErrorToast = false; }, 4000);
+                                        resolve();
+                                    }
+                                }
+                            }
                         });
                     } else {
-                        if (retries > 0) {
-                            setTimeout(() => { this.saveAnswer(passedData, retries - 1); }, 2500);
-                        } else {
-                            this.isSaving = false;
-                            this.showErrorToast = true;
-                            setTimeout(() => { this.showErrorToast = false; }, 4000);
-                            console.error("Gagal menyimpan jawaban (offline)", err);
-                        }
+                        resolve();
                     }
                 });
+            },
+
+            saveAnswer(qIdToSave = null) {
+                let logId = qIdToSave;
+                if (!logId && this.currentQuestion) {
+                    logId = this.currentQuestion.question_id;
+                }
+                if (!logId) return;
+
+                this.scheduleAutoSync();
+                this.enqueueRequest('autosave', { logId: logId, retries: 3 });
             },
 
             saveLocalBackup() {
@@ -1574,10 +1651,14 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 return classes.join(' ');
             },
 
-            confirmFinish() {
+            async confirmFinish() {
                 if (EXAM_CONFIG.allowNoanswer === 0 && this.countAnswered() < this.questions.length) {
                     new bootstrap.Modal(document.getElementById('unansweredRequiredModal')).show();
                     return;
+                }
+
+                if (this.activeQueue) {
+                    try { await this.activeQueue; } catch(e) {}
                 }
 
                 this.isSaving = true;
@@ -1638,6 +1719,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             async submitFinish() {
                 window.isSubmitting = true;
                 if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+
+                if (this.activeQueue) {
+                    try { await this.activeQueue; } catch(e) {}
+                }
 
                 const fd = buildFormData({ test_id: EXAM_CONFIG.testId, attempt_id: ATTEMPT_ID });
 

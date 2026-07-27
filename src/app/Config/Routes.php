@@ -139,10 +139,13 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->get('results/detail/(:num)', 'Admin\ResultController::detail/$1');
     $routes->post('results/update-score', 'Admin\ResultController::updateManualScore');
     $routes->post('results/delete-attempt/(:num)', 'Admin\ResultController::deleteAttempt/$1');
+
+    // Proctor Report Notifications (polling)
+    $routes->get('notifications/proctor-reports', 'Admin\NotificationController::proctorReports');
 });
 
-// ── Student Routes (role-protected: siswa) ───────────
-$routes->group('student', ['filter' => 'role:siswa'], static function ($routes) {
+// ── Student Routes (role-protected: siswa, admin, guru) ───────────
+$routes->group('student', ['filter' => 'role:siswa,admin,guru'], static function ($routes) {
     $routes->get('/', 'Student\DashboardController::index');
     $routes->get('dashboard', 'Student\DashboardController::index');
     
@@ -165,12 +168,12 @@ $routes->group('student', ['filter' => 'role:siswa'], static function ($routes) 
     $routes->get('results/review/(:num)', 'Student\ResultController::review/$1');
 });
 
-// ── Proctor Routes (role-protected: proctor, admin) ───
-$routes->group('proctor', ['filter' => 'role:proctor,admin'], static function ($routes) {
+// ── Proctor Routes (role-protected: guru, admin) ───
+$routes->group('proctor', ['filter' => 'role:guru,admin'], static function ($routes) {
     $routes->get('/', 'Proctor\DashboardController::index');
     $routes->get('dashboard', 'Proctor\DashboardController::index');
     $routes->get('live/(:num)', 'Proctor\LiveController::monitor/$1');
-    $routes->post('live/lock-attempt', 'Proctor\LiveController::lockAttempt');
+    $routes->post('live/report-student', 'Proctor\LiveController::reportStudent');
 });
 
 // ── Default Route ───────────────────────────────────

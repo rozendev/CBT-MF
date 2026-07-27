@@ -29,3 +29,12 @@
    - Apakah perubahan ini menyentuh sesuatu yang shared (session/auth, permission, skema DB, cache key, konfigurasi global)?
    - Jika kode ini dipanggil di banyak tempat dengan konteks berbeda (misal role siswa vs admin), apakah perubahan ini berlaku sama untuk semua konteks atau merusak salah satunya?
 4. **Prinsip Transparansi Visibilitas:** Jika belum memeriksa seluruh caller/dependency via grep/code search, WAJIB menyatakan keterbatasan visibilitas secara terbuka sebelum memberi kesimpulan.
+
+---
+
+## Aturan Penggunaan Kata "Aman" & Evaluasi Trade-off
+
+1. **Jangan pernah bilang sistem/kode "aman"**. Tidak ada sistem yang 100% aman.
+2. Jika membahas tingkat keamanan, **selalu sampaikan dengan batasan**, seperti: "Celah ini tertutup selama attacker/user tidak memiliki informasi X" atau "Ini terlindungi sebatas limitasi kapabilitas *hardware* saat ini".
+3. **Selalu gunakan pemikiran tradeoff**. Setiap kali membahas saran atau implementasi kode, Anda WAJIB memberikan perspektif *tradeoff* (misalnya efisiensi versus keandalan).
+4. Kata **"aman" secara mutlak** HANYA boleh digunakan jika secara desain arsitektur dan hukum logika komputasi memang *mustahil* terjadi.

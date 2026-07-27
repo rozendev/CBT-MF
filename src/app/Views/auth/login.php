@@ -188,6 +188,30 @@ if (!$activeTest) {
             transform: scale(0.98);
         }
 
+        /* Spinner & Loading State */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #FFFFFF;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+            margin-top: -2px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .btn-submit.loading {
+            opacity: 0.8;
+            cursor: not-allowed;
+            pointer-events: none; /* Mencegah klik ganda saat animasi */
+        }
+
         /* Footer / Help */
         .help-link {
             text-align: center;
@@ -266,7 +290,7 @@ if (!$activeTest) {
                 <input type="password" id="password" name="password" placeholder="Masukkan password" autocomplete="current-password" required>
             </div>
 
-            <button type="submit" class="btn-submit">MASUK</button>
+            <button type="submit" id="btnSubmit" class="btn-submit">MASUK</button>
         </form>
 
         <!-- Help Section -->
@@ -298,6 +322,20 @@ if (!$activeTest) {
     });
     </script>
     <?php endif; ?>
+
+    <script>
+    document.querySelector('form').addEventListener('submit', function(e) {
+        var btn = document.getElementById('btnSubmit');
+        if (btn.classList.contains('loading')) {
+            e.preventDefault(); // Batalkan submit jika sudah loading
+            return;
+        }
+        
+        // Tambahkan class loading dan ubah konten menjadi spinner
+        btn.classList.add('loading');
+        btn.innerHTML = '<span class="spinner"></span> Memproses...';
+    });
+    </script>
 
 </body>
 </html>

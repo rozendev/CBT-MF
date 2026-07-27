@@ -109,12 +109,7 @@ class SuspendController extends BaseController
             log_message('error', 'Redis error on ban: ' . $e->getMessage());
         }
 
-        $db->table('ci_sessions')
-           ->groupStart()
-               ->like('data', "user_id|i:{$userId};")
-               ->orLike('data', "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";")
-           ->groupEnd()
-           ->delete();
+
     }
 
     public function ban($userId)

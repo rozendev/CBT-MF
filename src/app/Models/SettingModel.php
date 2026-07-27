@@ -62,6 +62,17 @@ class SettingModel extends Model
         }
 
         self::$cache[$key] = $value;
+
+        // Auto-correction for websocket_url if it still uses localhost on a remote server
+        if ($key === 'websocket_url' && (empty($value) || strpos($value, 'localhost') !== false)) {
+            $parsed = parse_url(base_url());
+            $host = $parsed['host'] ?? 'localhost';
+            if ($host !== 'localhost' && $host !== '127.0.0.1') {
+                $scheme = (isset($parsed['scheme']) && $parsed['scheme'] === 'https') ? 'wss' : 'ws';
+                $value = $scheme . '://' . $host . '/ws/';
+            }
+        }
+
         return $value;
     }
 

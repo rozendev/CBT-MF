@@ -25,18 +25,23 @@ class WebSocketServe extends BaseCommand
         // Create the event loop
         $loop = Loop::get();
 
-        // Create the WebSocket handler
-        $wsHandler = new WebSocketServerHandler();
-
-        // Redis Pub/Sub client
+        // Redis config
         $redisHost = env('redis.host', 'redis');
         $redisPort = env('redis.port', 6379);
-        $redisPassword = env('redis.password', '');
+        $redisPassword = env('REDIS_PASSWORD', '');
         
-        $auth = !empty($redisPassword) ? "{$redisPassword}@" : "";
+        $auth = !empty($redisPassword) ? ":{$redisPassword}@" : "";
         $redisUrl = "redis://{$auth}{$redisHost}:{$redisPort}";
 
         $factory = new Factory($loop);
+        
+        // Create lazy async Redis client for token validation
+        $asyncRedis = $factory->createLazyClient($redisUrl);
+
+        // Create the WebSocket handler
+        $wsHandler = new WebSocketServerHandler($asyncRedis);
+
+        // Redis Pub/Sub client
         $factory->createClient($redisUrl)->then(function (\Clue\React\Redis\Client $client) use ($wsHandler) {
             CLI::write("Connected to Redis for Pub/Sub.", 'green');
             
@@ -72,6 +77,11 @@ class WebSocketServe extends BaseCommand
         // Add periodic timer for heartbeat (every 30 seconds)
         $loop->addPeriodicTimer(30, function () use ($wsHandler) {
             $wsHandler->broadcastHeartbeat();
+        });
+
+        // Add periodic timer for pruning stale connections (every 45 seconds)
+        $loop->addPeriodicTimer(45, function () use ($wsHandler) {
+            $wsHandler->pruneStaleConnections();
         });
 
         CLI::write("WebSocket Server listening on port 8060...", 'yellow');

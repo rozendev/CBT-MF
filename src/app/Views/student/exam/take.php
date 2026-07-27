@@ -919,6 +919,10 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 timerInterval: null,
                 warningShown: false,
                 isOffline: !navigator.onLine,
+                
+                activeQueue: Promise.resolve(),
+                syncTimeout: null,
+                lastSyncTime: Date.now(),
 
                 init() {
                     window.addEventListener('offline', () => this.isOffline = true);
@@ -955,10 +959,22 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     // Restore offline progress from localStorage if any
                     this.restoreLocalBackup();
 
-                    // Auto Sync to DB every 60 seconds (Write-Behind Hybrid)
-                    setInterval(() => {
-                        $.post('<?= base_url('/student/exam/auto-sync') ?>', { attempt_id: ATTEMPT_ID });
-                    }, 60000);
+                    // Init Auto Sync (Debounce + Max-Wait Hybrid)
+                    this.scheduleAutoSync();
+
+                    // Fallback saat tab ditutup/refresh
+                    window.addEventListener('beforeunload', (e) => {
+                        if (this.isSaving) {
+                            e.preventDefault();
+                            e.returnValue = ''; // Memicu konfirmasi penutupan pada browser modern
+                        }
+                        if (ATTEMPT_ID) {
+                            // Kirim satu last-gasp sync request menggunakan sendBeacon agar tidak terpotong
+                            const fd = new FormData();
+                            fd.append('attempt_id', ATTEMPT_ID);
+                            navigator.sendBeacon('<?= base_url('/student/exam/auto-sync') ?>', fd);
+                        }
+                    });
 
                     // ═══ SSE: Real-time Ban/Kick Detection ═══
                     this.initWebSocket();
@@ -1068,7 +1084,11 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                                 window.location.href = '<?= base_url() ?>' + data.static_page_path;
                             }
                         }
-                        // heartbeat event is ignored on client, but keeps connection alive
+                        else if (eventName === 'heartbeat') {
+                            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                                this.ws.send(JSON.stringify({event: 'pong'}));
+                            }
+                        }
                     };
 
                     this.ws.onclose = (e) => {
@@ -1155,63 +1175,119 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     this.saveAnswer();
                 },
 
-                saveAnswer(passedData = null, retries = 3) {
-                    if (!passedData) {
-                        // Save progress to localStorage as offline safety backup
-                        this.saveLocalBackup();
-
-                        const logId = this.currentQuestion.log_id;
-                        const type = this.currentQuestion.question_type;
-                        passedData = { log_id: logId, question_type: type };
-
-                        if (type == 3) {
-                            passedData.answer_text = this.currentQuestion.answer_text;
-                        } else if (type == 4 || type == 5) {
-                            let matches = {};
-                            this.currentQuestion.matchingPairs.forEach(p => {
-                                matches[p.left] = p.selected;
-                            });
-                            passedData.matching_answers_json = JSON.stringify(matches);
-                        } else {
-                            passedData.selected_answers = this.currentAnswers.filter(a => a.is_selected == 1).map(a => a.answer_id);
-                        }
-                    }
-
-                    this.isSaving = true;
-                    this.showErrorToast = false;
+                scheduleAutoSync() {
+                    if (this.syncTimeout) clearTimeout(this.syncTimeout);
                     
-                    $.post('<?= base_url('/student/exam/autosave') ?>', passedData)
-                     .done((res) => {
-                         this.isSaving = false;
-                         this.showSavedToast = true;
-                         setTimeout(() => { this.showSavedToast = false; }, 2000);
+                    const timeSinceLastSync = Date.now() - this.lastSyncTime;
+                    const MAX_WAIT = 180000; // 3 menit
+                    
+                    if (timeSinceLastSync > MAX_WAIT) {
+                        this.enqueueRequest('sync');
+                    } else {
+                        this.syncTimeout = setTimeout(() => {
+                            this.enqueueRequest('sync');
+                        }, 60000); // 60 detik debounce
+                    }
+                },
 
-                         if (res.status === 'kicked') {
-                             if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                             Swal.fire('Informasi', res.message, 'info').then(() => {
-                                 redirectReplace(LOGIN_URL);
+                enqueueRequest(action, params = {}) {
+                    this.activeQueue = this.activeQueue.then(() => {
+                        return this.performNetworkRequest(action, params);
+                    }).catch((err) => {
+                        console.warn("Recovered from queue error:", err);
+                        // Telan error agar chain berikutnya tidak mati
+                        return Promise.resolve();
+                    });
+                },
+
+                performNetworkRequest(action, params) {
+                    return new Promise((resolve) => {
+                        if (action === 'sync') {
+                            if (!ATTEMPT_ID) return resolve();
+                            $.post('<?= base_url('/student/exam/auto-sync') ?>', { attempt_id: ATTEMPT_ID })
+                             .always(() => {
+                                 this.lastSyncTime = Date.now();
+                                 this.scheduleAutoSync();
+                                 resolve();
                              });
-                         }
-                     })
-                     .fail((err) => {
-                         if (err.status === 401 || err.status === 403) {
-                             this.isSaving = false;
-                             if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                             Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                 redirectReplace(LOGIN_URL);
-                             });
-                         } else {
-                             // Silently retry if network fails
-                             if (retries > 0) {
-                                 setTimeout(() => { this.saveAnswer(passedData, retries - 1); }, 2500);
-                             } else {
+                        } else if (action === 'autosave') {
+                            const { logId, retries } = params;
+                            const q = this.questions.find(x => x.log_id === logId);
+                            if (!q) return resolve();
+
+                            // Update local storage backup
+                            this.saveLocalBackup();
+
+                            let passedData = { log_id: logId, question_type: q.question_type };
+                            if (q.question_type == 3) {
+                                passedData.answer_text = q.answer_text;
+                            } else if (q.question_type == 4 || q.question_type == 5) {
+                                let matches = {};
+                                (q.matchingPairs || []).forEach(p => { matches[p.left] = p.selected; });
+                                passedData.matching_answers_json = JSON.stringify(matches);
+                            } else {
+                                const ansList = this.allAnswers[logId] || [];
+                                passedData.selected_answers = ansList.filter(a => a.is_selected == 1).map(a => a.answer_id);
+                            }
+
+                            this.isSaving = true;
+                            this.showErrorToast = false;
+
+                            $.post('<?= base_url('/student/exam/autosave') ?>', passedData)
+                             .done((res) => {
                                  this.isSaving = false;
-                                 this.showErrorToast = true;
-                                 setTimeout(() => { this.showErrorToast = false; }, 4000);
-                                 console.error("Gagal menyimpan jawaban (offline)", err);
-                             }
-                         }
-                     });
+                                 this.showSavedToast = true;
+                                 setTimeout(() => { this.showSavedToast = false; }, 2000);
+
+                                 if (res.status === 'kicked') {
+                                     if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                                     Swal.fire('Informasi', res.message, 'info').then(() => {
+                                         redirectReplace(LOGIN_URL);
+                                     });
+                                 }
+                                 resolve();
+                             })
+                             .fail((err) => {
+                                 if (err.status === 401 || err.status === 403) {
+                                     this.isSaving = false;
+                                     if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                                     Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
+                                         redirectReplace(LOGIN_URL);
+                                     });
+                                     resolve();
+                                 } else {
+                                     if (retries > 0) {
+                                         // Retry in 2.5s, menahan resolve() dari luar, sehingga meng-block antrean
+                                         setTimeout(() => {
+                                             this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
+                                         }, 2500);
+                                     } else {
+                                         this.isSaving = false;
+                                         this.showErrorToast = true;
+                                         setTimeout(() => { this.showErrorToast = false; }, 4000);
+                                         console.error("Gagal menyimpan jawaban (offline)", err);
+                                         resolve(); // Lepas lock antrean setelah give up
+                                     }
+                                 }
+                             });
+                        } else {
+                            resolve(); // unknown action
+                        }
+                    });
+                },
+
+                saveAnswer(qIdToSave = null) {
+                    let logId = qIdToSave;
+                    if (!logId && this.currentQuestion) {
+                        logId = this.currentQuestion.log_id;
+                    }
+                    if (!logId) return;
+
+                    // Meng-update jadwal sync setiap ada interaksi user
+                    this.scheduleAutoSync();
+                    
+                    // Masukkan ke antrean tunggal
+                    this.enqueueRequest('autosave', { logId: logId, retries: 3 });
                 },
 
                 isQuestionAnswered(q) {
@@ -1251,10 +1327,14 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     return classes.join(' ');
                 },
 
-                confirmFinish() {
+                async confirmFinish() {
                     if (ALLOW_NOANSWER === 0 && this.countAnswered() < this.questions.length) {
                         new bootstrap.Modal(document.getElementById('unansweredRequiredModal')).show();
                         return;
+                    }
+
+                    if (this.activeQueue) {
+                        try { await this.activeQueue; } catch(e) {}
                     }
 
                     this.isSaving = true;
@@ -1319,8 +1399,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     window.isSubmitting = true;
                     if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
 
-                    if (this.activeSaveRequest && typeof this.activeSaveRequest.always === 'function') {
-                        try { await this.activeSaveRequest; } catch(e) {}
+                    if (this.activeQueue) {
+                        try { await this.activeQueue; } catch(e) {}
                     }
 
                     $.post(FINISH_URL, { attempt_id: ATTEMPT_ID })

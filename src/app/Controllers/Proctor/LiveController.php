@@ -6,6 +6,7 @@ use App\Controllers\BaseController;
 use App\Models\TestModel;
 use App\Models\TestAttemptModel;
 use App\Models\SettingModel;
+use App\Models\ActivityLogModel;
 
 class LiveController extends BaseController
 {
@@ -79,88 +80,52 @@ class LiveController extends BaseController
         return view('proctor/live', $data);
     }
 
-    public function lockAttempt()
+    public function reportStudent()
     {
         $userId = $this->request->getPost('user_id');
         $testId = $this->request->getPost('test_id');
+        $action = $this->request->getPost('action');
+        $reason = $this->request->getPost('reason');
 
-        if (!$userId || !$testId) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Data tidak lengkap']);
+        if (!$userId || !$testId || !$action || !$reason) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Data pelaporan tidak lengkap']);
         }
 
-        // Lock attempt
-        $attempt = $this->attemptModel->where('user_id', $userId)->where('test_id', $testId)->first();
-        if ($attempt) {
-            $db = \Config\Database::connect();
-            $db->transStart();
+        // Log it to ActivityLog for persistence
+        $activityLog = new ActivityLogModel();
+        $activityLog->log(
+            'proctor_report',
+            session('user_id'), // The proctor's user_id
+            'test_attempt',
+            (int)$testId,
+            json_encode([
+                'student_id' => $userId,
+                'proctor_name' => session('username'),
+                'suggested_action' => $action,
+                'reason' => $reason
+            ])
+        );
 
-            $userModel = new \App\Models\UserModel();
-            $userModel->update($userId, ['is_active' => 0]);
-
-            $this->attemptModel->update($attempt->id, [
-                'status' => 2, // 2 = locked
-                'cheat_strikes' => $attempt->cheat_strikes + 1
-            ]);
-
-            $db->transComplete();
-
-            // Publish ban event and invalidate sessions exactly like Admin's Ban
-            try {
-                $redis = \App\Libraries\RedisClient::getInstance();
-                if ($redis) {
-                    $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
-                    $redis->setex("ban_signal:{$userId}", 120, '1');
-
-                    // 1. Tell proctors about it
-                    $redis->publish('exam_events', json_encode([
-                        'event' => 'proctor_alert',
-                        'data' => [
-                            'user_id' => $userId,
-                            'test_id' => $testId,
-                            'event'   => 'ban'
-                        ]
-                    ]));
-
-                    // 2. Tell the student and kick them
-                    $redis->publish('exam_events', json_encode([
-                        'event' => 'ban',
-                        'user_id' => $userId,
-                        'message' => 'Akun Anda telah ditangguhkan/diblokir oleh pengawas. Hubungi pengawas ujian.'
-                    ]));
-
-                    // 3. Clear PHP sessions in Redis
-                    $currentSessionKey = 'ci_session:' . session_id();
-                    $iterator = null;
-                    do {
-                        $keys = $redis->scan($iterator, 'ci_session:*', 100);
-                        if ($keys) {
-                            foreach ($keys as $key) {
-                                if ($key === $currentSessionKey) continue;
-
-                                $data = $redis->get($key);
-                                if ($data && (strpos($data, "user_id|i:{$userId};") !== false || 
-                                              strpos($data, "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";") !== false)) {
-                                    $redis->del($key);
-                                }
-                            }
-                        }
-                    } while ($iterator > 0);
-                }
-            } catch (\Exception $e) {
-                log_message('error', 'Redis error on lockAttempt: ' . $e->getMessage());
+        // Publish to Redis so Admins viewing the Live Dashboard or any admin dashboard can get it
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $redis->publish('exam_events', json_encode([
+                    'event' => 'proctor_report_alert',
+                    'data' => [
+                        'student_id' => $userId,
+                        'test_id' => $testId,
+                        'student_username' => $this->request->getPost('student_username'),
+                        'proctor_name' => session('username'),
+                        'suggested_action' => $action,
+                        'reason' => $reason
+                    ]
+                ]));
             }
-
-            // Clear DB sessions as well
-            $db->table('ci_sessions')
-               ->groupStart()
-                   ->like('data', "user_id|i:{$userId};")
-                   ->orLike('data', "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";")
-               ->groupEnd()
-               ->delete();
-
-            return $this->response->setJSON(['status' => 'success']);
+        } catch (\Exception $e) {
+            log_message('error', 'Redis error on reportStudent: ' . $e->getMessage());
         }
 
-        return $this->response->setJSON(['status' => 'error', 'message' => 'Ujian tidak ditemukan']);
+        return $this->response->setJSON(['status' => 'success', 'message' => 'Laporan berhasil dikirim ke Admin']);
     }
 }

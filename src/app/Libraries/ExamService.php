@@ -460,15 +460,6 @@ LUA;
                 log_message('error', 'Redis error on modified_browser ban: ' . $e->getMessage());
             }
 
-            // Clean DB sessions too
-            $db = \Config\Database::connect();
-            $db->table('ci_sessions')
-               ->groupStart()
-                   ->like('data', "user_id|i:{$userId};")
-                   ->orLike('data', "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";")
-               ->groupEnd()
-               ->delete();
-
             $this->activityLog->log('modified_browser_ban', $userId, 'test', $attempt->test_id,
                 "AUTO-BAN: Browser modifikasi terdeteksi (detail: $detail)");
 
@@ -548,13 +539,6 @@ LUA;
         $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
         $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
 
-        if ($cheatType === 'ban_report') {
-            $request = \Config\Services::request();
-            $clientStrikes = (int)($request->getPost('client_strikes') ?? $maxStrikes);
-            $violationType = $request->getPost('violation_type') ?? 'unknown';
-            return $this->triggerBan($userId, $attemptId, $clientStrikes, $violationType, $forceLogout);
-        }
-
         $currentStrikes = (int)($attempt->cheat_strikes ?? 0);
 
         if ($currentStrikes >= $maxStrikes || $attempt->status == 2) {
@@ -615,7 +599,7 @@ LUA;
     /**
      * Trigger ban mechanism
      */
-    private function triggerBan(int $userId, int $attemptId, int $clientStrikes, string $violationType, bool $forceLogout): array
+    private function triggerBan(int $userId, int $attemptId, int $serverStrikes, string $violationType, bool $forceLogout): array
     {
         $db = \Config\Database::connect();
         $userModel = new \App\Models\UserModel();
@@ -625,7 +609,7 @@ LUA;
 
         $userModel->update($userId, ['is_active' => 0]);
         $this->attemptModel->update($attemptId, [
-            'cheat_strikes' => $clientStrikes,
+            'cheat_strikes' => $serverStrikes,
             'status' => 2
         ]);
 
@@ -639,12 +623,12 @@ LUA;
 
                 $reason = $forceLogout
                     ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
-                    : 'melewati batas maksimal peringatan (' . $clientStrikes . '/' . $maxStrikes . ')';
+                    : 'melewati batas maksimal peringatan (' . $serverStrikes . '/' . $maxStrikes . ')';
 
                 $redis->publish('exam_events', json_encode([
                     'event' => 'ban',
                     'user_id' => $userId,
-                    'message' => "Akun Anda telah dikunci karena pelanggaran ($violationType: $clientStrikes strikes). $reason"
+                    'message' => "Akun Anda telah dikunci karena pelanggaran ($violationType: $serverStrikes strikes). $reason"
                 ]));
 
                 // Real-time Proctor WebSocket Alert for System Auto-Ban
@@ -687,21 +671,14 @@ LUA;
             log_message('error', 'Redis error on ban: ' . $e->getMessage());
         }
 
-        $db->table('ci_sessions')
-           ->groupStart()
-               ->like('data', "user_id|i:{$userId};")
-               ->orLike('data', "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";")
-           ->groupEnd()
-           ->delete();
-
         $this->activityLog->log('exam_locked', $userId, 'test', $this->attemptModel->find($attemptId)->test_id,
-            "AUTO-BAN: Client reported $clientStrikes strikes (violation: $violationType)");
+            "AUTO-BAN: System reported $serverStrikes strikes (violation: $violationType)");
 
         return [
             'status' => 'success',
             'action' => 'lock',
             'message' => 'Ujian dikunci karena pelanggaran berulang.',
-            'current_strikes' => $clientStrikes,
+            'current_strikes' => $serverStrikes,
             'max_strikes' => $maxStrikes,
         ];
     }

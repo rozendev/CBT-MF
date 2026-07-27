@@ -483,7 +483,71 @@ else $greeting = 'Malam';
                 }
             }).catch(e => console.error('Keep-alive failed:', e));
         }, 30000);
+
+        // ── Proctor Report Polling ─────────────────────────
+        // Allows admin to receive teacher reports from ANY admin page
+        (function() {
+            let lastCheckTime = '';
+            const seenReportIds = new Set();
+
+            function checkProctorReports() {
+                const url = '<?= base_url('admin/notifications/proctor-reports') ?>' + 
+                            (lastCheckTime ? '?since=' + encodeURIComponent(lastCheckTime) : '');
+
+                fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(r => r.json())
+                .then(res => {
+                    if (res.status === 'success' && res.reports && res.reports.length > 0) {
+                        lastCheckTime = res.server_time;
+
+                        res.reports.forEach(report => {
+                            if (seenReportIds.has(report.id)) return;
+                            seenReportIds.add(report.id);
+
+                            try {
+                                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                                [0, 0.15].forEach(delay => {
+                                    const osc = ctx.createOscillator();
+                                    const gain = ctx.createGain();
+                                    osc.connect(gain);
+                                    gain.connect(ctx.destination);
+                                    osc.frequency.value = 880;
+                                    gain.gain.value = 0.3;
+                                    osc.start(ctx.currentTime + delay);
+                                    osc.stop(ctx.currentTime + delay + 0.1);
+                                });
+                            } catch(e) {}
+
+                            if (typeof Swal !== 'undefined') {
+                                Swal.fire({
+                                    title: '<i class="bi bi-flag-fill text-warning"></i> Laporan Pengawas!',
+                                    html: `Pengawas <strong>${report.proctor_name}</strong> menyarankan tindakan <strong>${(report.suggested_action || 'ban').toUpperCase()}</strong>.<br><br>Alasan:<br><span class="text-danger fw-bold">"${report.reason}"</span>`,
+                                    icon: 'warning',
+                                    showConfirmButton: true,
+                                    confirmButtonText: '<i class="bi bi-shield-lock"></i> Buka Suspend Menu',
+                                    showCancelButton: true,
+                                    cancelButtonText: 'Tutup',
+                                    customClass: { popup: 'rounded-4' }
+                                }).then((result) => {
+                                    if (result.isConfirmed) {
+                                        window.open('<?= base_url('admin/suspend') ?>?q=' + encodeURIComponent(report.student_username || ''), '_blank');
+                                    }
+                                });
+                            }
+                        });
+                    } else if (res.server_time) {
+                        lastCheckTime = res.server_time;
+                    }
+                })
+                .catch(() => {});
+            }
+
+            // Check immediately, then poll every 10 seconds
+            checkProctorReports();
+            setInterval(checkProctorReports, 10000);
+        })();
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <?= $this->renderSection('scripts') ?>
     <form id="logout-form" action="<?= base_url('logout') ?>" method="POST" style="display: none;">
         <?= csrf_field() ?>

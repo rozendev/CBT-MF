@@ -138,6 +138,19 @@
                 </a>
             </div>
 
+            <!-- Preview / Ikuti Ujian -->
+            <div class="col-12 mt-2">
+                <a id="actionPreview" href="#" target="_blank" class="btn btn-light w-100 text-start py-3 px-3 d-flex align-items-center gap-3 border-0 rounded-3">
+                    <span class="d-flex align-items-center justify-content-center rounded-3 bg-success bg-opacity-10 text-success" style="width:44px;height:44px;flex-shrink:0;">
+                        <i class="bi bi-play-circle fs-5"></i>
+                    </span>
+                    <div class="text-start">
+                        <div class="fw-semibold">Ikuti / Pratinjau Ujian</div>
+                        <small class="text-muted">Simulasi ujian sebagai peserta</small>
+                    </div>
+                </a>
+            </div>
+
             <!-- Static Section -->
             <div class="col-12 mt-2"><small class="text-muted fw-semibold text-uppercase" style="letter-spacing:0.5px;">Mode Statis</small></div>
 
@@ -254,6 +267,7 @@
         document.getElementById('actionSheetTitle').textContent = ctx.name;
         document.getElementById('actionEdit').href = '<?= base_url('/admin/tests/edit') ?>/' + ctx.id;
         document.getElementById('actionProctor').href = '<?= base_url('/proctor/live') ?>/' + ctx.id;
+        document.getElementById('actionPreview').href = '<?= base_url('/student/exam/prepare') ?>/' + ctx.id;
 
         const isStatic = ctx.mode === 'static';
         document.getElementById('actionStaticOpen').style.display = isStatic ? '' : 'none';

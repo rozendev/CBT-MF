@@ -11,8 +11,11 @@ class WebSocketServerHandler implements MessageComponentInterface
     protected $userConnections;
     protected $proctorRooms;
 
-    public function __construct()
+    protected $asyncRedis;
+
+    public function __construct($asyncRedis = null)
     {
+        $this->asyncRedis = $asyncRedis;
         $this->clients = new \SplObjectStorage;
         $this->userConnections = [];
         $this->proctorRooms = [];
@@ -21,79 +24,92 @@ class WebSocketServerHandler implements MessageComponentInterface
     public function onOpen(ConnectionInterface $conn)
     {
         $this->clients->attach($conn);
+        $conn->lastPong = time();
         
         // Parse query string from the URI to get user_id and attempt_id
         $querystring = $conn->httpRequest->getUri()->getQuery();
         parse_str($querystring, $query);
 
         if (isset($query['proctor_token'])) {
-            $redis = \App\Libraries\RedisClient::getInstance();
-            if ($redis) {
-                $tokenData = $redis->get("ws_proctor_token:{$query['proctor_token']}");
-                if ($tokenData) {
-                    $tokenData = json_decode($tokenData, true);
-                    $testId = $tokenData['test_id'] ?? 0;
-                    
-                    $conn->role = 'proctor';
-                    $conn->testId = $testId;
-                    
-                    if (!isset($this->proctorRooms[$testId])) {
-                        $this->proctorRooms[$testId] = [];
-                    }
-                    $this->proctorRooms[$testId][] = $conn;
-                    
-                    $conn->send(json_encode([
-                        'event' => 'connected',
-                        'data' => ['message' => 'Proctor WebSocket connected to test ' . $testId]
-                    ]));
-                    return;
-                }
-            }
-            // Invalid token
-            $conn->close();
-            return;
-        } elseif (isset($query['ws_token'])) {
-            $redis = \App\Libraries\RedisClient::getInstance();
-            if ($redis) {
-                $tokenData = $redis->get("ws_student_token:{$query['ws_token']}");
-                if ($tokenData) {
-                    $tokenData = json_decode($tokenData, true);
-                    $userId = (int)($tokenData['user_id'] ?? 0);
-                    $attemptId = (int)($tokenData['attempt_id'] ?? 0);
-                    $testId = (int)($tokenData['test_id'] ?? 0);
-
-                    if ($userId && $attemptId && $testId) {
-                        $conn->userId = $userId;
-                        $conn->attemptId = $attemptId;
+            if ($this->asyncRedis) {
+                $this->asyncRedis->get("ws_proctor_token:{$query['proctor_token']}")->then(function ($tokenData) use ($conn) {
+                    if ($tokenData) {
+                        $tokenData = json_decode($tokenData, true);
+                        $testId = $tokenData['test_id'] ?? 0;
+                        
+                        $conn->role = 'proctor';
                         $conn->testId = $testId;
                         
-                        if (!isset($this->userConnections[$userId])) {
-                            $this->userConnections[$userId] = [];
+                        if (!isset($this->proctorRooms[$testId])) {
+                            $this->proctorRooms[$testId] = [];
                         }
-                        $this->userConnections[$userId][] = $conn;
+                        $this->proctorRooms[$testId][] = $conn;
                         
-                        // Send connected event
                         $conn->send(json_encode([
                             'event' => 'connected',
-                            'data' => [
-                                'message' => 'WebSocket connected',
-                                'attempt_id' => $attemptId
-                            ]
+                            'data' => ['message' => 'Proctor WebSocket connected to test ' . $testId]
                         ]));
-
-                        // Notify proctors that a student connected
-                        $this->broadcastToProctors([
-                            'event' => 'student_connected',
-                            'user_id' => $userId,
-                            'attempt_id' => $attemptId,
-                            'test_id' => $testId
-                        ], $testId);
-                        return;
+                    } else {
+                        // Invalid token
+                        $conn->close();
                     }
-                }
+                })->catch(function (\Exception $e) use ($conn) {
+                    log_message('error', 'Async Redis error: ' . $e->getMessage());
+                    $conn->close();
+                });
+            } else {
+                $conn->close();
             }
-            // Invalid token
-            $conn->close();
+            return;
+        } elseif (isset($query['ws_token'])) {
+            if ($this->asyncRedis) {
+                $this->asyncRedis->get("ws_student_token:{$query['ws_token']}")->then(function ($tokenData) use ($conn) {
+                    if ($tokenData) {
+                        $tokenData = json_decode($tokenData, true);
+                        $userId = (int)($tokenData['user_id'] ?? 0);
+                        $attemptId = (int)($tokenData['attempt_id'] ?? 0);
+                        $testId = (int)($tokenData['test_id'] ?? 0);
+
+                        if ($userId && $attemptId && $testId) {
+                            $conn->userId = $userId;
+                            $conn->attemptId = $attemptId;
+                            $conn->testId = $testId;
+                            
+                            if (!isset($this->userConnections[$userId])) {
+                                $this->userConnections[$userId] = [];
+                            }
+                            $this->userConnections[$userId][] = $conn;
+                            
+                            // Send connected event
+                            $conn->send(json_encode([
+                                'event' => 'connected',
+                                'data' => [
+                                    'message' => 'WebSocket connected',
+                                    'attempt_id' => $attemptId
+                                ]
+                            ]));
+
+                            // Notify proctors that a student connected
+                            $this->broadcastToProctors([
+                                'event' => 'student_connected',
+                                'user_id' => $userId,
+                                'attempt_id' => $attemptId,
+                                'test_id' => $testId
+                            ], $testId);
+                        } else {
+                            $conn->close();
+                        }
+                    } else {
+                        // Invalid token
+                        $conn->close();
+                    }
+                })->catch(function (\Exception $e) use ($conn) {
+                    log_message('error', 'Async Redis error: ' . $e->getMessage());
+                    $conn->close();
+                });
+            } else {
+                $conn->close();
+            }
             return;
         } else {
             // Reject connection
@@ -103,7 +119,10 @@ class WebSocketServerHandler implements MessageComponentInterface
 
     public function onMessage(ConnectionInterface $from, $msg)
     {
-        // We don't process incoming messages from the client in this daemon.
+        $data = @json_decode($msg, true);
+        if ($data && ($data['event'] ?? '') === 'pong') {
+            $from->lastPong = time();
+        }
     }
 
     public function onClose(ConnectionInterface $conn)
@@ -224,6 +243,17 @@ class WebSocketServerHandler implements MessageComponentInterface
         
         foreach ($this->clients as $conn) {
             $conn->send($message);
+        }
+    }
+
+    public function pruneStaleConnections()
+    {
+        $now = time();
+        $staleThreshold = 90; // 3x heartbeat interval (30s)
+        foreach ($this->clients as $conn) {
+            if (($now - ($conn->lastPong ?? 0)) > $staleThreshold) {
+                $conn->close();
+            }
         }
     }
 }
