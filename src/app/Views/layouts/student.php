@@ -86,6 +86,13 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
             </button>
             <div class="collapse navbar-collapse" id="navbarStudent">
                 <ul class="navbar-nav ms-auto align-items-center">
+                    <?php if (in_array(session('role'), ['admin', 'guru'])): ?>
+                    <li class="nav-item me-3">
+                        <a href="<?= base_url('admin/dashboard') ?>" class="btn btn-warning btn-sm rounded-pill px-3 fw-bold shadow-sm">
+                            <i class="bi bi-shield-lock-fill me-1"></i> Admin Panel
+                        </a>
+                    </li>
+                    <?php endif; ?>
                     <li class="nav-item dropdown me-3">
                         <a class="nav-link dropdown-toggle text-white-50" href="#" id="langDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-globe"></i> <?= strtoupper(session('lang') ?? config('App')->defaultLocale) ?>
