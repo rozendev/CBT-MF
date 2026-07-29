@@ -12,7 +12,7 @@ $envPath = __DIR__ . '/../.env';
 $needsInstall = true;
 if (file_exists($envPath)) {
     $envContent = file_get_contents($envPath);
-    if (strpos($envContent, 'INSTALLER_LOCKED = true') !== false) {
+    if (strpos($envContent, 'INSTALLER_LOCKED=true') !== false || strpos($envContent, 'INSTALLER_LOCKED = true') !== false) {
         $needsInstall = false;
     }
 }
