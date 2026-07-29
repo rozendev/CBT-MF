@@ -457,7 +457,10 @@ run_install() {
     
     echo -e "\n${YELLOW}Memulai Docker Containers (membangun ulang jika perlu)...${NC}"
     cd "$PROJECT_DIR"
-    $COMPOSE up -d --build --remove-orphans
+    if ! $COMPOSE up -d --build --remove-orphans; then
+        echo -e "${RED}Error: Docker Compose gagal berjalan! Cek log di atas untuk detailnya.${NC}"
+        exit 1
+    fi
     
     echo -e "\n${YELLOW}Menunggu Database siap (estimasi 15 detik)...${NC}"
     sleep 15
