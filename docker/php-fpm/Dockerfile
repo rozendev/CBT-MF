@@ -1,4 +1,4 @@
-FROM php:8.5-fpm
+FROM php:8.3-fpm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -23,11 +23,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install gd
 RUN docker-php-ext-install exif pcntl bcmath zip intl
 
-# Install Redis extension from source (pecl not yet compatible with PHP 8.5)
-RUN mkdir -p /usr/src/php/ext/redis \
-    && curl -fsSL https://github.com/phpredis/phpredis/archive/refs/tags/6.1.0.tar.gz \
-       | tar xz -C /usr/src/php/ext/redis --strip-components=1 \
-    && docker-php-ext-install redis
+# Install Redis extension
+RUN pecl install redis \
+    && docker-php-ext-enable redis
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
