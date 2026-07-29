@@ -440,8 +440,11 @@ run_install() {
     
     # Reload environment variables so script knows the right container names
     export $(grep -v '^#' "$PROJECT_DIR/.env" | grep -v '^$' | xargs)
-    PHP_CONTAINER="${CONTAINER_PHP:-ujian_php}"
-    DB_CONTAINER="${CONTAINER_DB:-ujian_mariadb}"
+    PHP_CONTAINER="${CONTAINER_PHP:-${input_prefix}_php}"
+    DB_CONTAINER="${CONTAINER_DB:-${input_prefix}_mariadb}"
+    NGINX_CONTAINER="${CONTAINER_NGINX:-${input_prefix}_nginx}"
+    REDIS_CONTAINER="${CONTAINER_REDIS:-${input_prefix}_redis}"
+    WEBSOCKET_CONTAINER="${CONTAINER_WEBSOCKET:-${input_prefix}_websocket}"
     
     echo -e "${GREEN}✓ Konfigurasi database berhasil disimpan.${NC}"
     
@@ -457,21 +460,31 @@ run_install() {
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
     else
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
-        docker exec -it $PHP_CONTAINER php spark migrate
-        
-        echo -e "${CYAN}Membuat akun Admin awal...${NC}"
-        HASHED_ADMIN_PASS=$(docker exec -i $PHP_CONTAINER php -r "echo password_hash('$input_admin_pass', PASSWORD_BCRYPT);")
-        
-        docker exec -i $DB_CONTAINER mariadb -u $input_dbuser -p$input_dbpass $input_dbname -e "
-            INSERT INTO users (username, password, role, firstname) 
-            VALUES ('$input_admin_user', '$HASHED_ADMIN_PASS', 'admin', 'Administrator');
-        "
-        
-        echo -e "\n${GREEN}✅ Migrasi dan Setup Selesai!${NC}"
-        echo -e "\n=== 🛠️ DAFTAR CONTAINER ===\nPHP: ${input_prefix}_php\nMariaDB: ${input_prefix}_mariadb\nNginx: ${input_prefix}_nginx\nRedis: ${input_prefix}_redis\nWebSocket: ${input_prefix}_websocket"
-        echo -e "\nInstalasi berhasil. Silakan login ke aplikasi menggunakan:"
-        echo -e "URL: ${CYAN}$input_baseurl${NC}"
-        echo -e "Username: $input_admin_user"
+        if ! docker exec -i $PHP_CONTAINER php spark migrate; then
+            echo -e "${RED}Error: Migrasi database gagal!${NC}"
+        else
+            echo -e "${CYAN}Membuat akun Admin awal...${NC}"
+            HASHED_ADMIN_PASS=$(echo -n "$input_admin_pass" | docker exec -i $PHP_CONTAINER php -r "echo password_hash(file_get_contents('php://stdin'), PASSWORD_BCRYPT);")
+            
+            if [ -z "$HASHED_ADMIN_PASS" ]; then
+                echo -e "${RED}Error: Gagal melakukan hash password Admin!${NC}"
+            else
+                SAFE_ADMIN_USER=$(echo -n "$input_admin_user" | docker exec -i $PHP_CONTAINER php -r "echo addslashes(file_get_contents('php://stdin'));")
+                
+                if docker exec -i $DB_CONTAINER mariadb -u "$input_dbuser" -p"$input_dbpass" "$input_dbname" -e "
+                    INSERT INTO users (username, password, role, firstname) 
+                    VALUES ('$SAFE_ADMIN_USER', '$HASHED_ADMIN_PASS', 'admin', 'Administrator');
+                "; then
+                    echo -e "\n${GREEN}✅ Migrasi dan Setup Selesai!${NC}"
+                    echo -e "\n=== 🛠️ DAFTAR CONTAINER ===\nPHP: $PHP_CONTAINER\nMariaDB: $DB_CONTAINER\nNginx: $NGINX_CONTAINER\nRedis: $REDIS_CONTAINER\nWebSocket: $WEBSOCKET_CONTAINER"
+                    echo -e "\nInstalasi berhasil. Silakan login ke aplikasi menggunakan:"
+                    echo -e "URL: ${CYAN}$input_baseurl${NC}"
+                    echo -e "Username: $input_admin_user"
+                else
+                    echo -e "${RED}Error: Gagal membuat akun Admin di database!${NC}"
+                fi
+            fi
+        fi
     fi
     pause
 }
