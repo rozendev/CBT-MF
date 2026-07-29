@@ -478,7 +478,7 @@ run_install() {
         docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader
         
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
-        if ! echo -e "y\n" | docker exec -i $PHP_CONTAINER php spark migrate; then
+        if ! echo -e "y\n" | docker exec --user 33:33 -i $PHP_CONTAINER php spark migrate; then
             echo -e "${RED}Error: Migrasi database gagal!${NC}"
         else
             echo -e "${CYAN}Membuat akun Admin awal...${NC}"
