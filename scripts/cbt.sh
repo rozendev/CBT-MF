@@ -388,6 +388,12 @@ run_install() {
         else
             sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD=$input_redispass/" "$PROJECT_DIR/.env"
         fi
+
+        if ! grep -q "^CF_TUNNEL_TOKEN=" "$PROJECT_DIR/.env"; then
+            echo "CF_TUNNEL_TOKEN=$input_cf_token" >> "$PROJECT_DIR/.env"
+        else
+            sed -i "s|^CF_TUNNEL_TOKEN=.*|CF_TUNNEL_TOKEN=$input_cf_token|" "$PROJECT_DIR/.env"
+        fi
     fi
 
     # Setup App .env
@@ -398,20 +404,37 @@ run_install() {
     fi
     
     if [ -f "$PROJECT_DIR/src/.env" ]; then
-        # Jangan menulis credentials DB di sini karena Web Installer yang akan melakukannya
-        # Berikan hak akses tulis agar PHP (www-data) bisa memodifikasi file ini dari Web Installer
-        chmod 666 "$PROJECT_DIR/src/.env"
-        # Redis Host Configuration
+        # Set Base URL
+        sed -i "s|^[# ]*app.baseURL =.*|app.baseURL = '$input_baseurl'|" "$PROJECT_DIR/src/.env"
+        
+        # Set Database Credentials
+        sed -i "s/^[# ]*database.default.hostname.*/database.default.hostname = '${input_prefix}_mariadb'/" "$PROJECT_DIR/src/.env"
+        sed -i "s/^[# ]*database.default.database.*/database.default.database = '$input_dbname'/" "$PROJECT_DIR/src/.env"
+        sed -i "s/^[# ]*database.default.username.*/database.default.username = '$input_dbuser'/" "$PROJECT_DIR/src/.env"
+        sed -i "s/^[# ]*database.default.password.*/database.default.password = '$input_dbpass'/" "$PROJECT_DIR/src/.env"
+        
+        # Set Redis Configuration
         sed -i "s/^[# ]*cache.redis.host.*/cache.redis.host = '${input_prefix}_redis'/" "$PROJECT_DIR/src/.env"
         sed -i "s/^[# ]*redis.host.*/redis.host = '${input_prefix}_redis'/" "$PROJECT_DIR/src/.env"
-        
-        # Base URL to ensure web installer works
-        sed -i "s|^[# ]*app.baseURL =.*|app.baseURL = 'http://localhost:8080/'|" "$PROJECT_DIR/src/.env"
+        sed -i "s|^[# ]*session.savePath =.*|session.savePath = 'tcp://${input_prefix}_redis:6379'|" "$PROJECT_DIR/src/.env"
         
         if ! grep -q "^REDIS_PASSWORD=" "$PROJECT_DIR/src/.env"; then
-            echo "REDIS_PASSWORD=$input_redispass" >> "$PROJECT_DIR/src/.env"
+            echo "REDIS_PASSWORD='$input_redispass'" >> "$PROJECT_DIR/src/.env"
         else
-            sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD=$input_redispass/" "$PROJECT_DIR/src/.env"
+            sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD='$input_redispass'/" "$PROJECT_DIR/src/.env"
+        fi
+        
+        if ! grep -q "^cache.redis.password=" "$PROJECT_DIR/src/.env"; then
+            echo "cache.redis.password = '$input_redispass'" >> "$PROJECT_DIR/src/.env"
+        else
+            sed -i "s/^cache.redis.password=.*/cache.redis.password = '$input_redispass'/" "$PROJECT_DIR/src/.env"
+        fi
+        
+        # Lock installer
+        if ! grep -q "^INSTALLER_LOCKED=" "$PROJECT_DIR/src/.env"; then
+            echo "INSTALLER_LOCKED=true" >> "$PROJECT_DIR/src/.env"
+        else
+            sed -i "s/^INSTALLER_LOCKED=.*/INSTALLER_LOCKED=true/" "$PROJECT_DIR/src/.env"
         fi
     fi
     
