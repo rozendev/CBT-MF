@@ -369,30 +369,30 @@ run_install() {
     
     # Setup Root .env
     if [ -f "$PROJECT_DIR/.env" ]; then
-        sed -i "s/^[# ]*DB_HOST=.*/DB_HOST=${input_prefix}_mariadb/" "$PROJECT_DIR/.env"
-        sed -i "s/^[# ]*DB_DATABASE=.*/DB_DATABASE=$input_dbname/" "$PROJECT_DIR/.env"
-        sed -i "s/^[# ]*DB_USERNAME=.*/DB_USERNAME=$input_dbuser/" "$PROJECT_DIR/.env"
-        sed -i "s/^[# ]*DB_PASSWORD=.*/DB_PASSWORD=$input_dbpass/" "$PROJECT_DIR/.env"
-        sed -i "s/^[# ]*MYSQL_ROOT_PASSWORD=.*/MYSQL_ROOT_PASSWORD=$input_dbpass/" "$PROJECT_DIR/.env"
+        sed -i "s|^[# ]*DB_HOST=.*|DB_HOST=${input_prefix}_mariadb|" "$PROJECT_DIR/.env"
+        sed -i "s|^[# ]*DB_DATABASE=.*|DB_DATABASE=$input_dbname|" "$PROJECT_DIR/.env"
+        sed -i "s|^[# ]*DB_USERNAME=.*|DB_USERNAME=$input_dbuser|" "$PROJECT_DIR/.env"
+        sed -i "s|^[# ]*DB_PASSWORD=.*|DB_PASSWORD=$input_dbpass|" "$PROJECT_DIR/.env"
+        sed -i "s|^[# ]*MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=$input_dbpass|" "$PROJECT_DIR/.env"
         
-        sed -i "s/^CONTAINER_NGINX=.*/CONTAINER_NGINX=${input_prefix}_nginx/" "$PROJECT_DIR/.env"
-        sed -i "s/^CONTAINER_PHP=.*/CONTAINER_PHP=${input_prefix}_php/" "$PROJECT_DIR/.env"
-        sed -i "s/^CONTAINER_WEBSOCKET=.*/CONTAINER_WEBSOCKET=${input_prefix}_websocket/" "$PROJECT_DIR/.env"
-        sed -i "s/^CONTAINER_CLOUDFLARED=.*/CONTAINER_CLOUDFLARED=${input_prefix}_cloudflared/" "$PROJECT_DIR/.env"
-        sed -i "s/^CONTAINER_DB=.*/CONTAINER_DB=${input_prefix}_mariadb/" "$PROJECT_DIR/.env"
-        sed -i "s/^CONTAINER_PHPMYADMIN=.*/CONTAINER_PHPMYADMIN=${input_prefix}_phpmyadmin/" "$PROJECT_DIR/.env"
-        sed -i "s/^CONTAINER_REDIS=.*/CONTAINER_REDIS=${input_prefix}_redis/" "$PROJECT_DIR/.env"
+        sed -i "s|^CONTAINER_NGINX=.*|CONTAINER_NGINX=${input_prefix}_nginx|" "$PROJECT_DIR/.env"
+        sed -i "s|^CONTAINER_PHP=.*|CONTAINER_PHP=${input_prefix}_php|" "$PROJECT_DIR/.env"
+        sed -i "s|^CONTAINER_WEBSOCKET=.*|CONTAINER_WEBSOCKET=${input_prefix}_websocket|" "$PROJECT_DIR/.env"
+        sed -i "s|^CONTAINER_CLOUDFLARED=.*|CONTAINER_CLOUDFLARED=${input_prefix}_cloudflared|" "$PROJECT_DIR/.env"
+        sed -i "s|^CONTAINER_DB=.*|CONTAINER_DB=${input_prefix}_mariadb|" "$PROJECT_DIR/.env"
+        sed -i "s|^CONTAINER_PHPMYADMIN=.*|CONTAINER_PHPMYADMIN=${input_prefix}_phpmyadmin|" "$PROJECT_DIR/.env"
+        sed -i "s|^CONTAINER_REDIS=.*|CONTAINER_REDIS=${input_prefix}_redis|" "$PROJECT_DIR/.env"
         
-        if ! grep -q "^REDIS_PASSWORD=" "$PROJECT_DIR/.env"; then
+        if ! grep -q "^[# ]*REDIS_PASSWORD[ ]*=" "$PROJECT_DIR/.env"; then
             echo "REDIS_PASSWORD=$input_redispass" >> "$PROJECT_DIR/.env"
         else
-            sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD=$input_redispass/" "$PROJECT_DIR/.env"
+            sed -i "s|^[# ]*REDIS_PASSWORD[ ]*=.*|REDIS_PASSWORD=$input_redispass|" "$PROJECT_DIR/.env"
         fi
 
-        if ! grep -q "^CF_TUNNEL_TOKEN=" "$PROJECT_DIR/.env"; then
+        if ! grep -q "^[# ]*CF_TUNNEL_TOKEN[ ]*=" "$PROJECT_DIR/.env"; then
             echo "CF_TUNNEL_TOKEN=$input_cf_token" >> "$PROJECT_DIR/.env"
         else
-            sed -i "s|^CF_TUNNEL_TOKEN=.*|CF_TUNNEL_TOKEN=$input_cf_token|" "$PROJECT_DIR/.env"
+            sed -i "s|^[# ]*CF_TUNNEL_TOKEN[ ]*=.*|CF_TUNNEL_TOKEN=$input_cf_token|" "$PROJECT_DIR/.env"
         fi
     fi
 
@@ -408,33 +408,33 @@ run_install() {
         sed -i "s|^[# ]*app.baseURL =.*|app.baseURL = '$input_baseurl'|" "$PROJECT_DIR/src/.env"
         
         # Set Database Credentials
-        sed -i "s/^[# ]*database.default.hostname.*/database.default.hostname = '${input_prefix}_mariadb'/" "$PROJECT_DIR/src/.env"
-        sed -i "s/^[# ]*database.default.database.*/database.default.database = '$input_dbname'/" "$PROJECT_DIR/src/.env"
-        sed -i "s/^[# ]*database.default.username.*/database.default.username = '$input_dbuser'/" "$PROJECT_DIR/src/.env"
-        sed -i "s/^[# ]*database.default.password.*/database.default.password = '$input_dbpass'/" "$PROJECT_DIR/src/.env"
+        sed -i "s|^[# ]*database.default.hostname.*|database.default.hostname = '${input_prefix}_mariadb'|" "$PROJECT_DIR/src/.env"
+        sed -i "s|^[# ]*database.default.database.*|database.default.database = '$input_dbname'|" "$PROJECT_DIR/src/.env"
+        sed -i "s|^[# ]*database.default.username.*|database.default.username = '$input_dbuser'|" "$PROJECT_DIR/src/.env"
+        sed -i "s|^[# ]*database.default.password.*|database.default.password = '$input_dbpass'|" "$PROJECT_DIR/src/.env"
         
         # Set Redis Configuration
-        sed -i "s/^[# ]*cache.redis.host.*/cache.redis.host = '${input_prefix}_redis'/" "$PROJECT_DIR/src/.env"
-        sed -i "s/^[# ]*redis.host.*/redis.host = '${input_prefix}_redis'/" "$PROJECT_DIR/src/.env"
+        sed -i "s|^[# ]*cache.redis.host.*|cache.redis.host = '${input_prefix}_redis'|" "$PROJECT_DIR/src/.env"
+        sed -i "s|^[# ]*redis.host.*|redis.host = '${input_prefix}_redis'|" "$PROJECT_DIR/src/.env"
         sed -i "s|^[# ]*session.savePath =.*|session.savePath = 'tcp://${input_prefix}_redis:6379'|" "$PROJECT_DIR/src/.env"
         
-        if ! grep -q "^REDIS_PASSWORD=" "$PROJECT_DIR/src/.env"; then
+        if ! grep -q "^[# ]*REDIS_PASSWORD[ ]*=" "$PROJECT_DIR/src/.env"; then
             echo "REDIS_PASSWORD='$input_redispass'" >> "$PROJECT_DIR/src/.env"
         else
-            sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD='$input_redispass'/" "$PROJECT_DIR/src/.env"
+            sed -i "s|^[# ]*REDIS_PASSWORD[ ]*=.*|REDIS_PASSWORD='$input_redispass'|" "$PROJECT_DIR/src/.env"
         fi
         
-        if ! grep -q "^cache.redis.password=" "$PROJECT_DIR/src/.env"; then
+        if ! grep -q "^[# ]*cache\.redis\.password[ ]*=" "$PROJECT_DIR/src/.env"; then
             echo "cache.redis.password = '$input_redispass'" >> "$PROJECT_DIR/src/.env"
         else
-            sed -i "s/^cache.redis.password=.*/cache.redis.password = '$input_redispass'/" "$PROJECT_DIR/src/.env"
+            sed -i "s|^[# ]*cache\.redis\.password[ ]*=.*|cache.redis.password = '$input_redispass'|" "$PROJECT_DIR/src/.env"
         fi
         
         # Lock installer
-        if ! grep -q "^INSTALLER_LOCKED=" "$PROJECT_DIR/src/.env"; then
+        if ! grep -q "^[# ]*INSTALLER_LOCKED[ ]*=" "$PROJECT_DIR/src/.env"; then
             echo "INSTALLER_LOCKED=true" >> "$PROJECT_DIR/src/.env"
         else
-            sed -i "s/^INSTALLER_LOCKED=.*/INSTALLER_LOCKED=true/" "$PROJECT_DIR/src/.env"
+            sed -i "s|^[# ]*INSTALLER_LOCKED[ ]*=.*|INSTALLER_LOCKED=true|" "$PROJECT_DIR/src/.env"
         fi
     fi
     
