@@ -100,6 +100,7 @@ class LiveController extends BaseController
             (int)$testId,
             json_encode([
                 'student_id' => $userId,
+                'student_username' => $this->request->getPost('student_username'),
                 'proctor_name' => session('username'),
                 'suggested_action' => $action,
                 'reason' => $reason

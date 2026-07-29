@@ -53,15 +53,30 @@ class QueueController extends BaseController
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
-                // Update queue member heartbeat so we know they are still waiting
-                // Wait, if we update their score in ZSET, they lose their FIFO position!
-                // Instead of updating the main login_queue score, we can use a separate hash for queue heartbeats if we want to clean up dead queue members. 
-                // For simplicity, we just clean up active_sessions. Dead queue members will be ignored eventually, or popped and never enter.
+                // Update queue heartbeat
+                $redis->hSet('queue_heartbeats', $userId, time());
+                $redis->expire('queue_heartbeats', 3600);
                 
                 $redis->zRemRangeByScore('active_sessions', 0, time() - 300);
                 $activeCount = $redis->zCard('active_sessions');
                 
                 if ($activeCount < $maxConnections) {
+                    // Cleanup dead queue members (no ping in last 45s)
+                    while (true) {
+                        $firstInQueue = $redis->zRange('login_queue', 0, 0);
+                        if (empty($firstInQueue)) break;
+                        $firstId = $firstInQueue[0];
+                        if ($firstId == $userId) break; // Current user is obviously alive
+                        
+                        $lastPing = (int)$redis->hGet('queue_heartbeats', $firstId);
+                        if ($lastPing > 0 && time() - $lastPing <= 45) {
+                            break; // First in queue is alive
+                        }
+                        // Dead member, remove them and try next
+                        $redis->zRem('login_queue', $firstId);
+                        $redis->hDel('queue_heartbeats', $firstId);
+                    }
+                    
                     // Check if they are first in queue
                     $firstInQueue = $redis->zRange('login_queue', 0, 0);
                     

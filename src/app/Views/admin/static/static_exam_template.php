@@ -28,38 +28,37 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const renderMath = () => {
-                // 1. Render Quill Editor Formulas
-                document.querySelectorAll('.ql-formula').forEach(function(el) {
-                    if (!el.hasAttribute('data-rendered')) {
-                        var math = el.getAttribute('data-value');
-                        if(math) {
-                            try { katex.render(math, el, { throwOnError: false }); } catch(e){}
-                        }
-                        el.setAttribute('data-rendered', 'true');
-                    }
-                });
-                
-                // 2. Auto-Render Text Formulas (for Word Imports via $$)
-                if (typeof renderMathInElement !== 'undefined') {
-                    renderMathInElement(document.body, {
-                        delimiters: [
-                            {left: '$$', right: '$$', display: true},
-                            {left: '\\(', right: '\\)', display: false},
-                            {left: '\\[', right: '\\]', display: true}
-                        ],
-                        throwOnError: false
-                    });
-                }
-            };
-            const observer = new MutationObserver((mutations) => {
-                renderMath();
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
+        window.renderMath = () => {
+            const container = document.querySelector('.question-container');
+            if (!container) return;
             
+            // 1. Render Quill Editor Formulas
+            container.querySelectorAll('.ql-formula').forEach(function(el) {
+                if (!el.hasAttribute('data-rendered')) {
+                    var math = el.getAttribute('data-value');
+                    if(math) {
+                        try { katex.render(math, el, { throwOnError: false }); } catch(e){}
+                    }
+                    el.setAttribute('data-rendered', 'true');
+                }
+            });
+            
+            // 2. Auto-Render Text Formulas (for Word Imports via $$)
+            if (typeof renderMathInElement !== 'undefined') {
+                renderMathInElement(container, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '\\(', right: '\\)', display: false},
+                        {left: '\\[', right: '\\]', display: true}
+                    ],
+                    throwOnError: false
+                });
+            }
+        };
+        
+        document.addEventListener('DOMContentLoaded', function() {
             // Initial render delay to ensure auto-render is loaded
-            setTimeout(renderMath, 500);
+            setTimeout(window.renderMath, 500);
         });
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
@@ -490,12 +489,13 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             autoLogoutOnTimeout: <?= (int)$test->auto_logout_on_timeout ?>,
             hasPassword: <?= !empty($test->password) ? 'true' : 'false' ?>,
             antiCheat: <?= json_encode($antiCheat) ?>,
-            apiBaseUrl: (window.location.protocol === 'file:') ? <?= json_encode($apiBaseUrl) ?> : window.location.origin,
+            apiBaseUrl: '<?= esc($apiBaseUrl) ?>',
             questionsData: <?= json_encode($questionsData ?? []) ?>,
             answersData: <?= json_encode($answersData ?? []) ?>,
             randomQuestions: <?= $test->random_questions ? 'true' : 'false' ?>,
             randomAnswers: <?= $test->random_answers ? 'true' : 'false' ?>,
-            generatedAt: <?= $generatedAt ?>,
+            generatedAt: <?= (int)$generatedAt ?>,
+            wsUrl: '<?= esc($wsUrl ?? '') ?>'
         };
 
         if (EXAM_CONFIG.randomQuestions) {
@@ -945,6 +945,16 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         loading.style.display = 'flex';
 
         try {
+            // Because this is a static page, we must fetch the CSRF token first
+            try {
+                const csrfRes = await fetch(API + '/health', { credentials: 'same-origin' });
+                const csrfToken = csrfRes.headers.get('X-CSRF-TOKEN');
+                if (csrfToken) {
+                    CSRF_HASH = csrfToken;
+                    $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': csrfToken } });
+                }
+            } catch(e) {}
+
             const body = { test_id: EXAM_CONFIG.testId };
             if (CSRF_NAME) body[CSRF_NAME] = CSRF_HASH;
 
@@ -1118,6 +1128,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             init() {
                 window.addEventListener('offline', () => this.isOffline = true);
                 window.addEventListener('online', () => this.isOffline = false);
+                
+                this.$watch('currentIndex', () => {
+                    setTimeout(() => { if (typeof window.renderMath === 'function') window.renderMath(); }, 50);
+                });
+                
                 this.questions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData || []));
                 this.allAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData || {}));
                 this.parseMatching();
@@ -1187,15 +1202,24 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 if (!ATTEMPT_ID) {
                     return;
                 }
-                const urlObj = new URL(API);
-                const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsHost = urlObj.host;
                 const wsToken = window.__examData ? window.__examData.wsToken : null;
                 if (!wsToken) {
                     console.error('No WebSocket token available');
                     return;
                 }
-                const wsUrl = `${protocol}//${wsHost}/ws/?ws_token=${wsToken}`;
+                
+                let wsUrl = EXAM_CONFIG.wsUrl;
+                if (!wsUrl || wsUrl.includes('localhost')) {
+                    const urlObj = new URL(API);
+                    const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const wsHost = urlObj.host;
+                    if (wsHost.includes(':8080')) {
+                        wsUrl = `${protocol}//${wsHost.replace(':8080', ':8060')}`;
+                    } else {
+                        wsUrl = `${protocol}//${wsHost}/ws`;
+                    }
+                }
+                wsUrl = wsUrl.replace(/\/+$/, '') + `/?ws_token=${wsToken}`;
                 
                 this.connectWebSocket(wsUrl);
             },
@@ -1761,7 +1785,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
         // Use a getter so we always read the LATEST antiCheat config
         // (initExam overwrites EXAM_CONFIG.antiCheat after API response)
-        function getAC() { return EXAM_CONFIG.antiCheat || {}; }
+        window.getAC = function() { return EXAM_CONFIG.antiCheat || {}; };
 
         function clearSuspend() {
             isSuspended = false;
@@ -1888,7 +1912,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
 
             if (getAC().enabled === false && !getAC().auto_submit_on_cheat) {
-                reportCheat('fullscreen_exit');
                 return;
             }
 

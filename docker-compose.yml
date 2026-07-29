@@ -24,7 +24,8 @@ services:
     restart: unless-stopped
     volumes:
       - ./src:/var/www/html
-      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
+      - ./docker/php-fpm/security.ini:/usr/local/etc/php/conf.d/security.ini
+      - ./docker/php-fpm/opcache.ini:/usr/local/etc/php/conf.d/opcache.ini
     depends_on:
       mariadb:
         condition: service_healthy
@@ -54,7 +55,7 @@ services:
       - "127.0.0.1:8060:8060"
     volumes:
       - ./src:/var/www/html
-      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
+      - ./docker/php-fpm/security.ini:/usr/local/etc/php/conf.d/security.ini
     depends_on:
       mariadb:
         condition: service_healthy

@@ -278,6 +278,10 @@ class WordImportController extends BaseController
                     $raw = $textElement->getImageStringData();
                     if ($raw) {
                         $ext = $textElement->getImageExtension();
+                        $allowedImageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
+                        if (!in_array(strtolower($ext), $allowedImageExts, true)) {
+                            continue; // skip non-image embedded objects
+                        }
                         $filename = uniqid('img_') . '.' . $ext;
                         $uploadPath = FCPATH . 'uploads/questions/';
                         if (!is_dir($uploadPath)) {
@@ -315,6 +319,10 @@ class WordImportController extends BaseController
             $raw = $element->getImageStringData();
             if ($raw) {
                 $ext = $element->getImageExtension();
+                $allowedImageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
+                if (!in_array(strtolower($ext), $allowedImageExts, true)) {
+                    continue; // skip non-image embedded objects
+                }
                 $filename = uniqid('img_') . '.' . $ext;
                 $uploadPath = FCPATH . 'uploads/questions/';
                 if (!is_dir($uploadPath)) {

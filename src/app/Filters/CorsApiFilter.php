@@ -56,6 +56,30 @@ class CorsApiFilter implements FilterInterface
                      ->setStatusCode(200);
             return $response;
         }
+
+        // Strict Origin/Referer validation for state-changing requests (CSRF mitigation)
+        $method = strtoupper($request->getMethod());
+        if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
+            $referer = $request->getHeaderLine('Referer');
+            $baseURL = rtrim(config('App')->baseURL, '/');
+            
+            $isValid = false;
+            if (!empty($origin)) {
+                $isValid = $this->isOriginAllowed($origin);
+            } elseif (!empty($referer)) {
+                $isValid = str_starts_with($referer, $baseURL);
+            } else {
+                // Browsers send Origin for cross-origin POST. If both missing, assume safe client/same-origin.
+                $isValid = true;
+            }
+
+            if (!$isValid) {
+                return service('response')->setStatusCode(403)->setJSON([
+                    'status' => 'error',
+                    'message' => 'CSRF detected via Origin/Referer mismatch.'
+                ]);
+            }
+        }
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)

@@ -9,12 +9,9 @@
         <p class="text-muted small mt-1">Daftar seluruh siswa terdaftar. Admin dapat mem-ban, me-release, atau mereset seluruh sesi ujian siswa.</p>
     </div>
     <div class="card-body">
-        <form id="bulkForm" action="<?= base_url('/admin/suspend/bulk-action') ?>" method="POST">
-        <?= csrf_field() ?>
-        
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div class="d-flex gap-2 align-items-center">
-                <select id="bulkActionSelect" name="action" class="form-select form-select-sm" style="width: auto;">
+                <select id="bulkActionSelect" class="form-select form-select-sm" style="width: auto;">
                     <option value="">-- Aksi Massal --</option>
                     <option value="ban">Ban (Suspend)</option>
                     <option value="unban">Release (Unban)</option>
@@ -22,7 +19,22 @@
                 </select>
                 <button type="button" class="btn btn-sm btn-primary" onclick="submitBulkAction()">Terapkan</button>
             </div>
+
+            <!-- Search Form -->
+            <form action="<?= base_url('/admin/suspend') ?>" method="GET" class="m-0">
+                <div class="input-group input-group-sm">
+                    <input type="text" name="search" class="form-control" placeholder="Cari nama/username..." value="<?= esc($search ?? '') ?>" style="width: 200px;">
+                    <button class="btn btn-outline-secondary" type="submit" title="Cari"><i class="bi bi-search"></i></button>
+                    <?php if(!empty($search)): ?>
+                        <a href="<?= base_url('/admin/suspend') ?>" class="btn btn-outline-danger" title="Reset Pencarian"><i class="bi bi-x"></i></a>
+                    <?php endif; ?>
+                </div>
+            </form>
         </div>
+
+        <form id="bulkForm" action="<?= base_url('/admin/suspend/bulk-action') ?>" method="POST">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" id="bulkActionHidden">
 
         <div class="table-responsive">
             <table class="table table-hover align-middle">
@@ -80,26 +92,17 @@
                             <td>
                                 <div class="d-flex gap-1 flex-wrap">
                                     <?php if ($u->is_active): ?>
-                                        <form action="<?= base_url('/admin/suspend/ban/' . $u->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi', text: 'BAN user <?= esc($u->username) ?>? User tidak akan bisa login.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Ban', cancelButtonText: 'Batal', confirmButtonColor: '#dc3545'}).then((res) => { if(res.isConfirmed) this.submit(); });">
-                                            <?= csrf_field() ?>
-                                            <button type="submit" class="btn btn-sm btn-danger fw-bold" title="Ban Akun">
-                                                <i class="bi bi-ban"></i> Ban
-                                            </button>
-                                        </form>
+                                        <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/ban/' . $u->id) ?>', 'Konfirmasi', 'BAN user <?= esc(addslashes($u->username)) ?>? User tidak akan bisa login.', 'Ya, Ban', '#dc3545')" class="btn btn-sm btn-danger fw-bold" title="Ban Akun">
+                                            <i class="bi bi-ban"></i> Ban
+                                        </button>
 
-                                        <form action="<?= base_url('/admin/suspend/reset-login/' . $u->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi Reset Sesi', text: 'Hapus sesi login <?= esc($u->username) ?>? Jika diblokir karena multi-login, ini akan mengizinkannya login lagi.', icon: 'info', showCancelButton: true, confirmButtonText: 'Ya, Reset', cancelButtonText: 'Batal', confirmButtonColor: '#0d6efd'}).then((res) => { if(res.isConfirmed) this.submit(); });">
-                                            <?= csrf_field() ?>
-                                            <button type="submit" class="btn btn-sm btn-info text-white fw-bold" title="Reset Sesi Login (Multi-Login)">
-                                                <i class="bi bi-box-arrow-right"></i> Reset Sesi
-                                            </button>
-                                        </form>
+                                        <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/reset-login/' . $u->id) ?>', 'Konfirmasi Reset Sesi', 'Hapus sesi login <?= esc(addslashes($u->username)) ?>?', 'Ya, Reset', '#0d6efd')" class="btn btn-sm btn-info text-white fw-bold" title="Reset Sesi Login (Multi-Login)">
+                                            <i class="bi bi-box-arrow-right"></i> Reset Sesi
+                                        </button>
                                     <?php else: ?>
-                                        <form action="<?= base_url('/admin/suspend/release/' . $u->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi', text: 'RELEASE user <?= esc($u->username) ?>?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Release', cancelButtonText: 'Batal'}).then((res) => { if(res.isConfirmed) this.submit(); });">
-                                            <?= csrf_field() ?>
-                                            <button type="submit" class="btn btn-sm btn-success fw-bold" title="Lepas Ban">
-                                                <i class="bi bi-unlock-fill"></i> Release
-                                            </button>
-                                        </form>
+                                        <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/release/' . $u->id) ?>', 'Konfirmasi', 'RELEASE user <?= esc(addslashes($u->username)) ?>?', 'Ya, Release', '#198754')" class="btn btn-sm btn-success fw-bold" title="Lepas Ban">
+                                            <i class="bi bi-unlock-fill"></i> Release
+                                        </button>
                                     <?php endif; ?>
 
                                     <?php if ($u->total_attempts > 0): ?>
@@ -171,6 +174,33 @@
 
 <?= $this->section('scripts') ?>
 <script>
+    function singleAction(url, confirmTitle, confirmText, confirmBtnText, btnColor) {
+        Swal.fire({
+            title: confirmTitle,
+            text: confirmText,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: confirmBtnText,
+            cancelButtonText: 'Batal',
+            confirmButtonColor: btnColor || '#3085d6'
+        }).then((res) => {
+            if (res.isConfirmed) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = url;
+                
+                const csrfInput = document.createElement('input');
+                csrfInput.type = 'hidden';
+                csrfInput.name = '<?= csrf_token() ?>';
+                csrfInput.value = '<?= csrf_hash() ?>';
+                form.appendChild(csrfInput);
+                
+                document.body.appendChild(form);
+                form.submit();
+            }
+        });
+    }
+
     let currentUserId = null;
     let currentUsername = '';
 
@@ -205,6 +235,7 @@
             confirmButtonColor: '#0d6efd'
         }).then((res) => {
             if (res.isConfirmed) {
+                document.getElementById('bulkActionHidden').value = select;
                 document.getElementById('bulkForm').submit();
             }
         });

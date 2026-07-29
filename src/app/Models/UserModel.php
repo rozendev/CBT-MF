@@ -26,7 +26,7 @@ class UserModel extends Model
 
     protected $validationRules = [
         'username' => 'required|min_length[3]|max_length[100]|is_unique[users.active_username,id,{id}]',
-        'password' => 'required|min_length[6]',
+        'password' => 'required|min_length[8]',
         'role'     => 'required|in_list[admin,guru,siswa,proctor]',
     ];
 
@@ -38,7 +38,7 @@ class UserModel extends Model
         ],
         'password' => [
             'required'   => 'Password wajib diisi.',
-            'min_length' => 'Password minimal 6 karakter.',
+            'min_length' => 'Password minimal 8 karakter.',
         ],
     ];
 

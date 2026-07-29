@@ -21,38 +21,37 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const renderMath = () => {
-                // 1. Render Quill Editor Formulas
-                document.querySelectorAll('.ql-formula').forEach(function(el) {
-                    if (!el.hasAttribute('data-rendered')) {
-                        var math = el.getAttribute('data-value');
-                        if(math) {
-                            try { katex.render(math, el, { throwOnError: false }); } catch(e){}
-                        }
-                        el.setAttribute('data-rendered', 'true');
-                    }
-                });
-                
-                // 2. Auto-Render Text Formulas (for Word Imports via $$)
-                if (typeof renderMathInElement !== 'undefined') {
-                    renderMathInElement(document.body, {
-                        delimiters: [
-                            {left: '$$', right: '$$', display: true},
-                            {left: '\\(', right: '\\)', display: false},
-                            {left: '\\[', right: '\\]', display: true}
-                        ],
-                        throwOnError: false
-                    });
-                }
-            };
-            const observer = new MutationObserver((mutations) => {
-                renderMath();
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
+        window.renderMath = () => {
+            const container = document.querySelector('.question-container');
+            if (!container) return;
             
+            // 1. Render Quill Editor Formulas
+            container.querySelectorAll('.ql-formula').forEach(function(el) {
+                if (!el.hasAttribute('data-rendered')) {
+                    var math = el.getAttribute('data-value');
+                    if(math) {
+                        try { katex.render(math, el, { throwOnError: false }); } catch(e){}
+                    }
+                    el.setAttribute('data-rendered', 'true');
+                }
+            });
+            
+            // 2. Auto-Render Text Formulas (for Word Imports via $$)
+            if (typeof renderMathInElement !== 'undefined') {
+                renderMathInElement(container, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '\\(', right: '\\)', display: false},
+                        {left: '\\[', right: '\\]', display: true}
+                    ],
+                    throwOnError: false
+                });
+            }
+        };
+        
+        document.addEventListener('DOMContentLoaded', function() {
             // Initial render delay to ensure auto-render is loaded
-            setTimeout(renderMath, 500);
+            setTimeout(window.renderMath, 500);
         });
     </script>
     <script defer src="<?= base_url('vendor/alpinejs/alpine.min.js') ?>"></script>
@@ -927,6 +926,11 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 init() {
                     window.addEventListener('offline', () => this.isOffline = true);
                     window.addEventListener('online', () => this.isOffline = false);
+                    
+                    this.$watch('currentIndex', () => {
+                        setTimeout(() => { if (typeof window.renderMath === 'function') window.renderMath(); }, 50);
+                    });
+                    
                     // Parse Matching Options for Type 4 and Type 5
                     if (Array.isArray(this.questions)) {
                         this.questions.forEach(q => {
@@ -1019,9 +1023,17 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                  * Automatically reconnects on connection loss.
                  */
                 initWebSocket() {
-                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                    const wsHost = window.location.host;
-                    const wsUrl = `${protocol}//${wsHost}/ws/?ws_token=<?= esc($wsToken) ?>`;
+                    let wsUrl = '<?= esc($wsUrl ?? '') ?>';
+                    if (!wsUrl || wsUrl.includes('localhost')) {
+                        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                        const wsHost = window.location.host;
+                        if (wsHost.includes(':8080')) {
+                            wsUrl = `${protocol}//${wsHost.replace(':8080', ':8060')}`;
+                        } else {
+                            wsUrl = `${protocol}//${wsHost}/ws`;
+                        }
+                    }
+                    wsUrl = wsUrl.replace(/\/+$/, '') + '/?ws_token=<?= esc($wsToken) ?>';
                     
                     this.connectWebSocket(wsUrl);
                 },
@@ -1591,7 +1603,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
                 
                 <?php if (!$isAntiCheatEnabled && empty($test->auto_submit_on_cheat)): ?>
-                $.post(REPORT_CHEAT_URL, { attempt_id: ATTEMPT_ID, type: 'fullscreen_exit' });
                 return;
                 <?php endif; ?>
 

@@ -157,7 +157,7 @@ class App extends BaseConfig
      * secure, the user will be redirected to a secure version of the page
      * and the HTTP Strict Transport Security (HSTS) header will be set.
      */
-    public bool $forceGlobalSecureRequests = false;
+    public bool $forceGlobalSecureRequests = true;
 
     /**
      * --------------------------------------------------------------------------
@@ -204,25 +204,39 @@ class App extends BaseConfig
     {
         parent::__construct();
 
-        // Dynamically set baseURL if HTTP_HOST is set to support dynamic local/LAN/WAN access
+        // Dynamically set baseURL only from WHITELISTED hosts to prevent Host Header Injection
         if (isset($_SERVER['HTTP_HOST'])) {
-            $protocol = 'http';
-            
-            // 1. Standard protocol headers
-            if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
-                (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') ||
-                (isset($_SERVER['HTTP_FRONT_END_HTTPS']) && $_SERVER['HTTP_FRONT_END_HTTPS'] === 'on') ||
-                (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)) {
-                $protocol = 'https';
-            }
-            
-            // 2. Fallback: If accessed via production domain, align with env base_url configuration
             $envBaseURL = env('app.baseURL') ?: '';
-            if (strpos($envBaseURL, 'https://') === 0 && $_SERVER['HTTP_HOST'] === parse_url($envBaseURL, PHP_URL_HOST)) {
-                $protocol = 'https';
-            }
+            $envHost = parse_url($envBaseURL, PHP_URL_HOST) ?: '';
             
-            $this->baseURL = $protocol . '://' . $_SERVER['HTTP_HOST'] . '/';
+            // Whitelist: env-configured host + allowedHostnames + common local access
+            $trustedHosts = array_merge(
+                [$envHost],
+                $this->allowedHostnames,
+                ['localhost', '127.0.0.1']
+            );
+            
+            // Extract hostname (strip port)
+            $requestHost = strtolower(explode(':', $_SERVER['HTTP_HOST'])[0]);
+            
+            // Also allow private/LAN IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+            $isPrivateIP = filter_var($requestHost, FILTER_VALIDATE_IP, 
+                FILTER_FLAG_IPV4 | FILTER_FLAG_NO_RES_RANGE) 
+                && !filter_var($requestHost, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE);
+            
+            if (in_array($requestHost, $trustedHosts, true) || $isPrivateIP) {
+                $protocol = 'http';
+                if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || 
+                    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') ||
+                    (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443)) {
+                    $protocol = 'https';
+                }
+                if (strpos($envBaseURL, 'https://') === 0 && $requestHost === $envHost) {
+                    $protocol = 'https';
+                }
+                $this->baseURL = $protocol . '://' . $_SERVER['HTTP_HOST'] . '/';
+            }
+            // If host is not trusted, baseURL stays as configured in .env/default
         }
 
         // Automatically configure Cloudflare IPs if enabled

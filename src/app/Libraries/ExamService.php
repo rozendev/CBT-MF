@@ -143,7 +143,7 @@ class ExamService
             }
 
             // Deterministic question pool selection per test & subject set (always fixed set of questions for the test)
-            mt_srand($test->id + $set->id);
+            mt_srand($test->id * 100000 + $set->id);
             shuffle($questionIds);
             mt_srand(); // reset seed
 
@@ -260,6 +260,9 @@ class ExamService
             $db = Database::connect();
             $db->transStart();
 
+            // C-1 Fix: Acquire row lock to prevent concurrent flushes from corrupting data
+            $db->query("SELECT id FROM test_attempts WHERE id = ? FOR UPDATE", [$attemptId]);
+
             $logsBatch = [];
             $mcLogIds = [];
             $allSelectedAnswerIds = [];
@@ -373,6 +376,13 @@ LUA;
         $settingModel = new \App\Models\SettingModel();
         $isAntiCheatEnabled = $settingModel->getValue('anti_cheat_enabled', false);
 
+        // ─── ADMIN BYPASS ───
+        $userModel = new \App\Models\UserModel();
+        $user = $userModel->find($userId);
+        if ($user && $user->role === 'admin') {
+            return ['status' => 'success', 'action' => 'none', 'current_strikes' => (int)($attempt->cheat_strikes ?? 0)];
+        }
+
         // ─── Early Violation Bypass Detection ───
         // Jika pelanggaran terjadi di 30 detik pertama, ini adalah anomali "race condition"
         // yang disebabkan oleh aplikasi floating window/split screen saat memaksa masuk fullscreen.
@@ -440,6 +450,7 @@ LUA;
                     $iterator = null;
                     do {
                         $keys = $redis->scan($iterator, 'ci_session:*', 100);
+                        if ($keys === false) break;
                         if ($keys) {
                             foreach ($keys as $key) {
                                 if ($key === $currentSessionKey) continue;
@@ -541,15 +552,13 @@ LUA;
 
         $currentStrikes = (int)($attempt->cheat_strikes ?? 0);
 
-        if ($currentStrikes >= $maxStrikes || $attempt->status == 2) {
+        if ($attempt->status == 2) {
             $currentStrikes++;
             $this->attemptModel->update($attemptId, [
                 'cheat_strikes' => $currentStrikes,
             ]);
 
-            $reason = $forceLogout
-                ? 'melakukan pelanggaran saat ujian (Auto-Lock)'
-                : 'melewati batas maksimal peringatan (' . $currentStrikes . '/' . $maxStrikes . ')';
+            $reason = 'melakukan pelanggaran tambahan saat ujian sudah dikunci';
 
             $this->activityLog->log('exam_violation', $userId, 'test', $attempt->test_id,
                 "Additional violation while banned (Strike: $currentStrikes/$maxStrikes)");
@@ -604,6 +613,9 @@ LUA;
         $db = \Config\Database::connect();
         $userModel = new \App\Models\UserModel();
         $maxStrikes = (int) (new \App\Models\SettingModel())->getValue('max_cheat_strikes', 2);
+        
+        $attempt = $this->attemptModel->find($attemptId);
+        $testId = $attempt ? (int)$attempt->test_id : 0;
 
         $db->transStart();
 
@@ -636,7 +648,7 @@ LUA;
                     'event' => 'proctor_alert',
                     'data' => [
                         'user_id' => $userId,
-                        'test_id' => (int)$this->attemptModel->find($attemptId)->test_id,
+                        'test_id' => $testId,
                         'event'   => 'ban'
                     ]
                 ]));
@@ -645,6 +657,7 @@ LUA;
                 $iterator = null;
                 do {
                     $keys = $redis->scan($iterator, 'ci_session:*', 100);
+                    if ($keys === false) break;
                     if ($keys) {
                         foreach ($keys as $key) {
                             // Do not manually delete the current request's session key!
@@ -671,7 +684,7 @@ LUA;
             log_message('error', 'Redis error on ban: ' . $e->getMessage());
         }
 
-        $this->activityLog->log('exam_locked', $userId, 'test', $this->attemptModel->find($attemptId)->test_id,
+        $this->activityLog->log('exam_locked', $userId, 'test', $testId,
             "AUTO-BAN: System reported $serverStrikes strikes (violation: $violationType)");
 
         return [

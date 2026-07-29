@@ -247,7 +247,8 @@ class ExamController extends BaseController
             'questions' => $questions,
             'answers' => $answers,
             'isAntiCheatEnabled' => $isAntiCheatEnabled,
-            'wsToken' => $wsToken
+            'wsToken' => $wsToken,
+            'wsUrl' => $settingModel->getValue('websocket_url', '')
         ]);
     }
 
@@ -324,7 +325,8 @@ class ExamController extends BaseController
                 return $this->response->setJSON(['status' => 'error', 'message' => 'Redis connection failed']);
             }
         } catch (\Exception $e) {
-            return $this->response->setJSON(['status' => 'error', 'message' => $e->getMessage()]);
+            log_message('error', 'Redis error in exam save answer: ' . $e->getMessage());
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to save answer due to internal error.']);
         }
 
         // Update answered_at timestamp directly on DB for simple tracking

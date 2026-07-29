@@ -28,22 +28,34 @@ class ApiRateLimitFilter implements FilterInterface
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
-                $requests = (int)$redis->get($key);
-                if ($requests >= $limit) {
+                $currentCount = (int)$redis->incr($key);
+                if ($currentCount === 1) {
+                    $redis->expire($key, $window);
+                }
+
+                if ($currentCount > $limit) {
                     $response = service('response');
                     return $response->setStatusCode(429)->setJSON([
                         'status'  => 'error',
                         'message' => 'Terlalu banyak permintaan (Rate limit exceeded). Silakan tunggu beberapa detik.'
                     ]);
                 }
-
-                $redis->multi();
-                $redis->incr($key);
-                $redis->expire($key, $window);
-                $redis->exec();
             }
         } catch (\Exception $e) {
             log_message('error', 'ApiRateLimitFilter Redis error: ' . $e->getMessage());
+            // Fallback for API
+            $ip = $request->getIPAddress();
+            $cacheKey = 'api_fallback_' . md5($ip);
+            $cache = service('cache');
+            $attempts = (int)$cache->get($cacheKey);
+            $cache->save($cacheKey, $attempts + 1, $window);
+            if ($attempts > $limit) {
+                $response = service('response');
+                return $response->setStatusCode(429)->setJSON([
+                    'status'  => 'error',
+                    'message' => 'Terlalu banyak permintaan (Rate limit exceeded). Silakan tunggu beberapa detik.'
+                ]);
+            }
         }
     }
 

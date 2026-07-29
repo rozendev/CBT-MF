@@ -137,7 +137,11 @@ class WebSocketServerHandler implements MessageComponentInterface
                         unset($this->proctorRooms[$testId][$key]);
                     }
                 }
-                $this->proctorRooms[$testId] = array_values($this->proctorRooms[$testId]);
+                if (empty($this->proctorRooms[$testId])) {
+                    unset($this->proctorRooms[$testId]);
+                } else {
+                    $this->proctorRooms[$testId] = array_values($this->proctorRooms[$testId]);
+                }
             }
         } elseif (isset($conn->userId)) {
             $userId = $conn->userId;
@@ -148,8 +152,12 @@ class WebSocketServerHandler implements MessageComponentInterface
                         unset($this->userConnections[$userId][$key]);
                     }
                 }
-                // Reindex array
-                $this->userConnections[$userId] = array_values($this->userConnections[$userId]);
+                if (empty($this->userConnections[$userId])) {
+                    unset($this->userConnections[$userId]);
+                } else {
+                    // Reindex array
+                    $this->userConnections[$userId] = array_values($this->userConnections[$userId]);
+                }
             }
 
             // Notify proctors that a student disconnected

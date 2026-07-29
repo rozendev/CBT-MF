@@ -104,7 +104,7 @@
                                 </td>
                                 <td class="text-end pe-4 border-0 text-secondary fw-medium py-3">
                                     <?php if(session('role') === 'admin'): ?>
-                                    <a :href="'<?= base_url('admin/suspend') ?>?q=' + encodeURIComponent(student.username)" class="btn btn-sm btn-outline-danger" title="Tindak Lanjut / Blokir via Suspend">
+                                    <a :href="'<?= base_url('admin/suspend') ?>?search=' + encodeURIComponent(student.username)" class="btn btn-sm btn-outline-danger" title="Tindak Lanjut / Blokir via Suspend">
                                         <i class="bi bi-shield-lock"></i> Suspend Menu
                                     </a>
                                     <?php else: ?>
@@ -162,7 +162,15 @@
 <script>
 function proctorLiveDashboard() {
     return {
-        wsUrl: '<?= esc($wsUrl) ?>?proctor_token=<?= esc($proctorToken) ?>',
+        get wsUrl() {
+            let url = '<?= esc($wsUrl ?? '') ?>';
+            if (!url || url.includes('localhost')) {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.host;
+                url = `${protocol}//${host}/ws`;
+            }
+            return url.replace(/\/+$/, '') + '/?proctor_token=<?= esc($proctorToken) ?>';
+        },
         ws: null,
         isConnected: false,
         reconnectTimer: null,
@@ -283,7 +291,7 @@ function proctorLiveDashboard() {
                 cancelButtonText: 'Tutup'
             }).then((result) => {
                 if(result.isConfirmed) {
-                    window.open('<?= base_url('admin/suspend') ?>?q=' + encodeURIComponent(reportData.student_username || ''), '_blank');
+                    window.location.href = '<?= base_url('admin/suspend') ?>?search=' + encodeURIComponent(reportData.student_username || '');
                 }
             });
             <?php endif; ?>

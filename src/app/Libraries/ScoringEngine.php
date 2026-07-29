@@ -314,8 +314,8 @@ class ScoringEngine
         $correctAnswer = reset($answers);
         if (!$correctAnswer || empty(trim($correctAnswer->answer_text ?? ''))) return 0;
 
-        $correctStr = strtolower(trim($correctAnswer->answer_text));
-        $studentStr = strtolower(trim($studentAnswer));
+        $correctStr = preg_replace('/\s+/u', ' ', strtolower(trim(html_entity_decode($correctAnswer->answer_text ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8'))));
+        $studentStr = preg_replace('/\s+/u', ' ', strtolower(trim(html_entity_decode($studentAnswer ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8'))));
 
         return ($correctStr === $studentStr) ? $test->score_right : 0;
     }

@@ -21,20 +21,30 @@ class LoginRateLimitFilter implements FilterInterface
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
-                $attempts = (int)$redis->get($key);
-                if ($attempts >= 20) { // 20 attempts per window
+                $currentAttempts = (int)$redis->incr($key);
+                if ($currentAttempts === 1) {
+                    $redis->expire($key, 900); // 15-minute window
+                }
+                
+                if ($currentAttempts > 20) { // 20 attempts per window
                     return redirect()->back()
                         ->withInput()
                         ->with('error', 'Terlalu banyak percobaan login dari koneksi Anda. Silakan coba lagi dalam 15 menit.');
                 }
-                
-                $redis->multi();
-                $redis->incr($key);
-                $redis->expire($key, 900); // 15-minute window
-                $redis->exec();
             }
         } catch (\Exception $e) {
             log_message('error', 'LoginRateLimitFilter Redis error: ' . $e->getMessage());
+            // Fallback: use in-memory file-based rate limiting when Redis is down
+            $ip = $request->getIPAddress();
+            $cacheKey = 'login_fallback_' . md5($ip);
+            $cache = service('cache');
+            $attempts = (int)$cache->get($cacheKey);
+            $cache->save($cacheKey, $attempts + 1, 900);
+            if ($attempts > 20) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Terlalu banyak percobaan login. Silakan coba lagi dalam 15 menit.');
+            }
         }
     }
 

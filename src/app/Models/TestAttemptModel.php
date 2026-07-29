@@ -21,8 +21,8 @@ class TestAttemptModel extends Model
     ];
 
     protected $afterInsert = ['clearAttemptCache'];
-    protected $beforeUpdate = ['clearAttemptCacheBeforeUpdate'];
-    protected $beforeDelete = ['clearAttemptCacheBeforeDelete'];
+    protected $afterUpdate = ['clearAttemptCacheAfterUpdate'];
+    protected $afterDelete = ['clearAttemptCacheAfterDelete'];
 
     /**
      * Get active or uncompleted attempt for a user and test
@@ -82,7 +82,7 @@ class TestAttemptModel extends Model
         return $data;
     }
 
-    protected function clearAttemptCacheBeforeUpdate(array $data)
+    protected function clearAttemptCacheAfterUpdate(array $data)
     {
         if (isset($data['id'])) {
             $ids = is_array($data['id']) ? $data['id'] : [$data['id']];
@@ -96,7 +96,7 @@ class TestAttemptModel extends Model
         return $data;
     }
 
-    protected function clearAttemptCacheBeforeDelete(array $data)
+    protected function clearAttemptCacheAfterDelete(array $data)
     {
         if (isset($data['id'])) {
             $ids = is_array($data['id']) ? $data['id'] : [$data['id']];

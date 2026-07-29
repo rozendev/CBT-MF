@@ -15,16 +15,11 @@ class SettingModel extends Model
     protected $beforeDelete = ['clearCacheBeforeDelete'];
     protected $afterInsert  = ['clearCacheAfterInsert'];
 
-    private static array $cache = [];
-
     /**
      * Get a setting value by key
      */
     public function getValue(string $key, $default = null)
     {
-        if (array_key_exists($key, self::$cache)) {
-            return self::$cache[$key];
-        }
 
         $cache = service('cache');
         $cacheKey = "setting_{$key}";
@@ -33,7 +28,6 @@ class SettingModel extends Model
         if ($value === null) {
             $setting = $this->where('key', $key)->first();
             if (!$setting) {
-                self::$cache[$key] = $default;
                 try {
                     $cache->save($cacheKey, $default, 3600);
                 } catch (\Exception $e) {}
@@ -60,8 +54,6 @@ class SettingModel extends Model
                 $cache->save($cacheKey, $value, 3600);
             } catch (\Exception $e) {}
         }
-
-        self::$cache[$key] = $value;
 
         // Auto-correction for websocket_url if it still uses localhost on a remote server
         if ($key === 'websocket_url' && (empty($value) || strpos($value, 'localhost') !== false)) {
@@ -91,17 +83,23 @@ class SettingModel extends Model
             $type = 'boolean';
         }
 
+        $db = \Config\Database::connect();
+        $db->transStart();
+        
         $existing = $this->where('key', $key)->first();
         if ($existing) {
-            return $this->update($existing['id'], ['value' => $value]);
+            $result = $this->update($existing['id'], ['value' => $value]);
+        } else {
+            $result = $this->insert([
+                'key' => $key,
+                'value' => $value,
+                'type' => $type,
+                'group' => $group
+            ]);
         }
-
-        return $this->insert([
-            'key' => $key,
-            'value' => $value,
-            'type' => $type,
-            'group' => $group
-        ]);
+        
+        $db->transComplete();
+        return $result;
     }
 
     protected function clearCacheBeforeUpdate(array $data)
@@ -142,9 +140,6 @@ class SettingModel extends Model
 
     private function clearCacheByKey(string $key)
     {
-        if (array_key_exists($key, self::$cache)) {
-            unset(self::$cache[$key]);
-        }
         try {
             service('cache')->delete("setting_{$key}");
         } catch (\Exception $e) {

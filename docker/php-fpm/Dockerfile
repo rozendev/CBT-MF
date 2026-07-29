@@ -25,7 +25,7 @@ RUN docker-php-ext-install exif pcntl bcmath zip intl
 
 # Install Redis extension from source (pecl not yet compatible with PHP 8.5)
 RUN mkdir -p /usr/src/php/ext/redis \
-    && curl -fsSL https://github.com/phpredis/phpredis/archive/develop.tar.gz \
+    && curl -fsSL https://github.com/phpredis/phpredis/archive/refs/tags/6.1.0.tar.gz \
        | tar xz -C /usr/src/php/ext/redis --strip-components=1 \
     && docker-php-ext-install redis
 

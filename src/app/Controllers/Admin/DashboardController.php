@@ -11,15 +11,21 @@ class DashboardController extends BaseController
     {
         $db = \Config\Database::connect();
 
-        $stats = [
-            'users'        => $db->table('users')->where('deleted_at', null)->countAllResults(),
-            'tests'        => $db->table('tests')->where('deleted_at', null)->countAllResults(),
-            'questions'    => $db->table('questions')->where('deleted_at', null)->countAllResults(),
-            'active_tests' => $db->table('tests')
-                                 ->where('is_enabled', 1)
-                                 ->where('deleted_at', null)
-                                 ->countAllResults(),
-        ];
+        $cache = \Config\Services::cache();
+        
+        $stats = $cache->get('admin_dashboard_stats');
+        if ($stats === null) {
+            $stats = [
+                'users'        => $db->table('users')->where('deleted_at', null)->countAllResults(),
+                'tests'        => $db->table('tests')->where('deleted_at', null)->countAllResults(),
+                'questions'    => $db->table('questions')->where('deleted_at', null)->countAllResults(),
+                'active_tests' => $db->table('tests')
+                                     ->where('is_enabled', 1)
+                                     ->where('deleted_at', null)
+                                     ->countAllResults(),
+            ];
+            $cache->save('admin_dashboard_stats', $stats, 120);
+        }
 
         $activityLog = new ActivityLogModel();
         $activities = $activityLog->getRecent(10);
@@ -34,25 +40,29 @@ class DashboardController extends BaseController
                           ->getResultArray();
 
         // Fetch Chart Data (Pie Chart: Belum vs Sudah Mengerjakan)
-        $totalStudents = $db->table('users')
-                            ->where('role', 'siswa')
-                            ->where('deleted_at', null)
-                            ->countAllResults();
+        $chartData = $cache->get('admin_dashboard_chart');
+        if ($chartData === null) {
+            $totalStudents = $db->table('users')
+                                ->where('role', 'siswa')
+                                ->where('deleted_at', null)
+                                ->countAllResults();
 
-        $studentsTakenQuery = $db->query("
-            SELECT COUNT(DISTINCT user_id) as total 
-            FROM test_attempts ta
-            JOIN users u ON u.id = ta.user_id
-            WHERE u.role = 'siswa' AND u.deleted_at IS NULL
-        ")->getRow();
-        
-        $studentsTaken = $studentsTakenQuery ? (int)$studentsTakenQuery->total : 0;
-        $studentsNotTaken = max(0, $totalStudents - $studentsTaken);
+            $studentsTakenQuery = $db->query("
+                SELECT COUNT(DISTINCT user_id) as total 
+                FROM test_attempts ta
+                JOIN users u ON u.id = ta.user_id
+                WHERE u.role = 'siswa' AND u.deleted_at IS NULL
+            ")->getRow();
+            
+            $studentsTaken = $studentsTakenQuery ? (int)$studentsTakenQuery->total : 0;
+            $studentsNotTaken = max(0, $totalStudents - $studentsTaken);
 
-        $chartData = [
-            'labels' => ['Sudah Mengerjakan', 'Belum Mengerjakan'],
-            'data'   => [$studentsTaken, $studentsNotTaken]
-        ];
+            $chartData = [
+                'labels' => ['Sudah Mengerjakan', 'Belum Mengerjakan'],
+                'data'   => [$studentsTaken, $studentsNotTaken]
+            ];
+            $cache->save('admin_dashboard_chart', $chartData, 120);
+        }
 
         return view('admin/dashboard', [
             'stats'      => $stats,

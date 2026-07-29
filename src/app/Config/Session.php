@@ -28,7 +28,7 @@ class Session extends BaseConfig
         'lifetime' => 7200,
         'path'     => '/',
         'domain'   => '',
-        'secure'   => false,  // Set to true in production with HTTPS
+        'secure'   => true,
         'httponly'  => true,
         'samesite'  => 'Lax',
     ];

@@ -85,10 +85,7 @@ class Filters extends BaseFilters
         'before' => [
             'csrf' => ['except' => [
                 'student/exam/stream/*',
-                'api/exam/stream/*',
-                'api/exam/init',
-                'api/keep-alive',
-                'queue/ping'
+                'api/exam/stream/*'
             ]],
             'multilogin' => ['except' => ['login', 'logout', 'maintenance', 'health', 'student/exam/stream/*', 'api/exam/stream/*']],
         ],

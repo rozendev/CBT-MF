@@ -487,8 +487,13 @@ else $greeting = 'Malam';
         // ── Proctor Report Polling ─────────────────────────
         // Allows admin to receive teacher reports from ANY admin page
         (function() {
-            let lastCheckTime = '';
-            const seenReportIds = new Set();
+            let lastCheckTime = sessionStorage.getItem('lastCheckTime') || '';
+            let seenReportIds;
+            try {
+                seenReportIds = new Set(JSON.parse(sessionStorage.getItem('seenReportIds') || '[]'));
+            } catch(e) {
+                seenReportIds = new Set();
+            }
 
             function checkProctorReports() {
                 const url = '<?= base_url('admin/notifications/proctor-reports') ?>' + 
@@ -499,10 +504,12 @@ else $greeting = 'Malam';
                 .then(res => {
                     if (res.status === 'success' && res.reports && res.reports.length > 0) {
                         lastCheckTime = res.server_time;
+                        sessionStorage.setItem('lastCheckTime', lastCheckTime);
 
                         res.reports.forEach(report => {
                             if (seenReportIds.has(report.id)) return;
                             seenReportIds.add(report.id);
+                            sessionStorage.setItem('seenReportIds', JSON.stringify(Array.from(seenReportIds)));
 
                             try {
                                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -530,13 +537,14 @@ else $greeting = 'Malam';
                                     customClass: { popup: 'rounded-4' }
                                 }).then((result) => {
                                     if (result.isConfirmed) {
-                                        window.open('<?= base_url('admin/suspend') ?>?q=' + encodeURIComponent(report.student_username || ''), '_blank');
+                                        window.location.href = '<?= base_url('admin/suspend') ?>?search=' + encodeURIComponent(report.student_username || '');
                                     }
                                 });
                             }
                         });
                     } else if (res.server_time) {
                         lastCheckTime = res.server_time;
+                        sessionStorage.setItem('lastCheckTime', lastCheckTime);
                     }
                 })
                 .catch(() => {});

@@ -289,25 +289,70 @@ class SettingController extends BaseController
             return;
         }
         $content = file_get_contents($filePath);
-        
-        // Remove <script> elements
-        $content = preg_replace('/<\s*script[^>]*>.*?<\s*\/\s*script\s*>/is', '', $content);
-        $content = preg_replace('/<\s*script[^>]*\/>/is', '', $content);
-        
-        // Remove XML/HTML comments containing potential scripts
-        $content = preg_replace('/<!--.*?-->/s', '', $content);
-        
-        // Remove event handlers (onload, onerror, etc.)
-        $content = preg_replace('/\s+on[a-zA-Z]+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]*)/i', '', $content);
-        
-        // Remove javascript: URIs
-        $content = preg_replace('/\s+href\s*=\s*("javascript:[^"]*"|\'javascript:[^\']*\'|javascript:[^\s>]*)/i', ' href="#"', $content);
-        $content = preg_replace('/\s+xlink:href\s*=\s*("javascript:[^"]*"|\'javascript:[^\']*\'|javascript:[^\s>]*)/i', ' xlink:href="#"', $content);
 
-        // Remove foreignObject tags
-        $content = preg_replace('/<\s*foreignObject[^>]*>.*?<\s*\/\s*foreignObject\s*>/is', '', $content);
+        // Use DOMDocument for proper XML parsing instead of regex
+        $dom = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadXML($content, LIBXML_NONET | LIBXML_NOENT);
+        libxml_clear_errors();
+
+        if (!$dom->documentElement) {
+            // Invalid SVG — delete entirely
+            @unlink($filePath);
+            return;
+        }
+
+        $xpath = new \DOMXPath($dom);
         
-        file_put_contents($filePath, $content);
+        // Dangerous elements to remove completely
+        $dangerousTags = [
+            'script', 'foreignObject', 'set', 'animate', 'animateTransform',
+            'animateMotion', 'iframe', 'embed', 'object', 'applet',
+            'math', 'handler', 'listener',
+        ];
+        
+        foreach ($dangerousTags as $tag) {
+            $nodes = $xpath->query('//*[local-name()="' . $tag . '"]');
+            foreach ($nodes as $node) {
+                $node->parentNode->removeChild($node);
+            }
+        }
+        
+        // Remove ALL event handler attributes (on*)
+        $allElements = $xpath->query('//*');
+        foreach ($allElements as $element) {
+            $attrsToRemove = [];
+            foreach ($element->attributes as $attr) {
+                $attrName = strtolower($attr->localName);
+                // Remove event handlers
+                if (str_starts_with($attrName, 'on')) {
+                    $attrsToRemove[] = $attr->nodeName;
+                }
+                // Remove javascript:/data: URIs from any href-like attribute
+                $val = strtolower(trim(preg_replace('/[\x00-\x1f\x7f]+/', '', $attr->value)));
+                if (in_array($attrName, ['href', 'xlink:href', 'src', 'action', 'formaction']) 
+                    && (str_starts_with($val, 'javascript:') || str_starts_with($val, 'data:text'))) {
+                    $attrsToRemove[] = $attr->nodeName;
+                }
+            }
+            foreach ($attrsToRemove as $name) {
+                $element->removeAttribute($name);
+            }
+        }
+        
+        // Remove <style> elements (CSS-based XSS via @import, expression(), etc.)
+        $styleNodes = $xpath->query('//*[local-name()="style"]');
+        foreach ($styleNodes as $node) {
+            $node->parentNode->removeChild($node);
+        }
+
+        // Remove comments
+        $comments = $xpath->query('//comment()');
+        foreach ($comments as $comment) {
+            $comment->parentNode->removeChild($comment);
+        }
+        
+        file_put_contents($filePath, $dom->saveXML());
     }
 
     private function updateEnv($key, $value)
@@ -321,8 +366,9 @@ class SettingController extends BaseController
             return;
         }
         $contents = file_get_contents($path);
-        if (preg_match("/^{$key}\s*=/m", $contents)) {
-            $contents = preg_replace("/^{$key}\s*=.*/m", "{$key} = {$value}", $contents);
+        $quotedKey = preg_quote($key, '/');
+        if (preg_match("/^{$quotedKey}\s*=/m", $contents)) {
+            $contents = preg_replace("/^{$quotedKey}\s*=.*/m", "{$key} = {$value}", $contents);
         } else {
             $contents .= "\n{$key} = {$value}\n";
         }

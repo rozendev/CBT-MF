@@ -19,12 +19,23 @@ class SuspendController extends BaseController
 
     public function index()
     {
+        $search = $this->request->getGet('search');
+
         $this->userModel->select('users.id, users.username, users.firstname, users.lastname, users.is_active, users.created_at')
             ->select('(SELECT COUNT(*) FROM test_attempts ta WHERE ta.user_id = users.id) as total_attempts')
             ->select('(SELECT COUNT(*) FROM test_attempts ta2 WHERE ta2.user_id = users.id AND ta2.status IN (1,2)) as active_attempts')
             ->select('(SELECT SUM(ta3.cheat_strikes) FROM test_attempts ta3 WHERE ta3.user_id = users.id) as total_strikes')
-            ->where('users.role', 'siswa')
-            ->orderBy('users.is_active', 'ASC')
+            ->where('users.role', 'siswa');
+
+        if (!empty($search)) {
+            $this->userModel->groupStart()
+                ->like('users.username', $search)
+                ->orLike('users.firstname', $search)
+                ->orLike('users.lastname', $search)
+                ->groupEnd();
+        }
+
+        $this->userModel->orderBy('users.is_active', 'ASC')
             ->orderBy('users.username', 'ASC');
 
         $users = $this->userModel->paginate(20, 'users');
@@ -32,7 +43,8 @@ class SuspendController extends BaseController
 
         return view('admin/suspend/index', [
             'users' => $users,
-            'pager' => $pager
+            'pager' => $pager,
+            'search' => $search
         ]);
     }
 

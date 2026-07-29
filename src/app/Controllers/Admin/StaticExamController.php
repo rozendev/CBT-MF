@@ -68,7 +68,7 @@ class StaticExamController extends BaseController
             if (empty($questionIds)) continue;
 
             // Deterministic PHP shuffle using test->id + set->id to match ExamService
-            mt_srand($test->id + $set->id);
+            mt_srand($test->id * 100000 + $set->id);
             shuffle($questionIds);
             mt_srand(); // reset seed
 
@@ -136,6 +136,8 @@ class StaticExamController extends BaseController
         }
         */
 
+        $settingModel = new \App\Models\SettingModel();
+        
         // Render the static template
         $html = view('admin/static/static_exam_template', [
             'test' => $test,
@@ -144,6 +146,7 @@ class StaticExamController extends BaseController
             'questionsData' => $questionsData,
             'answersData' => $answersData,
             'generatedAt' => time(),
+            'wsUrl' => $settingModel->getValue('websocket_url', ''),
         ]);
 
         // Create output directory
@@ -262,7 +265,11 @@ class StaticExamController extends BaseController
         // Find all img tags with data:image src
         return preg_replace_callback('/<img\s+[^>]*src=["\'](data:image\/([^;]+);base64,([^"\']+)?)["\'][^>]*>/i', function($matches) {
             $fullMatch = $matches[0];
-            $ext = $matches[2]; // e.g., png, jpeg
+            $ext = strtolower($matches[2]); // e.g., png, jpeg
+            $allowedImageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
+            if (!in_array($ext, $allowedImageExts, true)) {
+                return $fullMatch;
+            }
             $base64Data = $matches[3];
 
             // Decode base64

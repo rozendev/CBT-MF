@@ -103,7 +103,7 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var list<string>|string
      */
-    public $imageSrc = ['self', 'data:', '*'];
+    public $imageSrc = ['self', 'data:', 'https://cdn.jsdelivr.net'];
 
     /**
      * Restricts the URLs that can appear in a page's `<base>` element.
@@ -127,7 +127,7 @@ class ContentSecurityPolicy extends BaseConfig
      *
      * @var list<string>|string
      */
-    public $connectSrc = ['self', '*'];
+    public $connectSrc = ['self', 'wss:', 'https://api.cloudflare.com'];
 
     /**
      * Specifies the origins that can serve web fonts.

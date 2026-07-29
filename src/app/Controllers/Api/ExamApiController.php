@@ -295,7 +295,7 @@ class ExamApiController extends BaseController
         if (!$log) return $this->response->setJSON(['status' => 'error']);
         $logId = $log->id ?? $log->log_id;
 
-        $attempt = $this->attemptModel->findCached($log->test_attempt_id);
+        $attempt = $this->attemptModel->find($log->test_attempt_id);
         if (!$attempt || (string)$attempt->user_id !== (string)$userId) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Unauthorized']);
         }
@@ -347,15 +347,15 @@ class ExamApiController extends BaseController
             }
         }
 
-        session_write_close();
-
         $payload = [];
         if ($questionType == 3) {
             $answerText = $this->request->getPost('answer_text') ?? '';
             $sanitized = strip_tags($answerText);
             $payload['answer_text'] = mb_substr($sanitized, 0, 5000);
         } elseif ($questionType == 4 || $questionType == 5) {
-            $payload['matching_answers'] = json_decode($this->request->getPost('matching_answers_json') ?? '{}', true) ?: [];
+            $jsonStr = (string)($this->request->getPost('matching_answers_json') ?? '{}');
+            if (strlen($jsonStr) > 10000) $jsonStr = '{}';
+            $payload['matching_answers'] = json_decode($jsonStr, true, 50) ?: [];
         } else {
             $selectedIds = $this->request->getPost('selected_answers') ?? [];
             if (!is_array($selectedIds)) $selectedIds = [$selectedIds];
@@ -372,7 +372,8 @@ class ExamApiController extends BaseController
                 $redis->expire($redisKey, 86400);
             }
         } catch (\Exception $e) {
-            return $this->response->setJSON(['status' => 'error', 'message' => $e->getMessage()]);
+            log_message('error', 'Redis error in autosave: ' . $e->getMessage());
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to save answer due to internal error.']);
         }
 
         $testLogModel->update($logId, ['answered_at' => date('Y-m-d H:i:s')]);
@@ -398,9 +399,8 @@ class ExamApiController extends BaseController
         }
 
         $attemptId = $this->request->getPost('attempt_id');
-        session_write_close();
 
-        $attempt = $this->attemptModel->findCached($attemptId);
+        $attempt = $this->attemptModel->find($attemptId);
         if (!$attempt || (string)$attempt->user_id !== (string)$userId) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
         }
@@ -457,9 +457,8 @@ class ExamApiController extends BaseController
         }
 
         $attemptId = $this->request->getPost('attempt_id');
-        session_write_close();
 
-        $attempt = $this->attemptModel->findCached($attemptId);
+        $attempt = $this->attemptModel->find($attemptId);
         if (!$attempt || (string)$attempt->user_id !== (string)$userId) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
         }
@@ -494,9 +493,7 @@ class ExamApiController extends BaseController
             log_message('error', 'reportCheat ERROR: ' . $e->getMessage());
             return $this->response->setStatusCode(500)->setJSON([
                 'status' => 'error',
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
+                'message' => 'An internal error occurred while reporting.'
             ]);
         }
     }
