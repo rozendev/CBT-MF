@@ -441,6 +441,7 @@ run_install() {
     # Reload environment variables so script knows the right container names
     export $(grep -v '^#' "$PROJECT_DIR/.env" | grep -v '^$' | xargs)
     PHP_CONTAINER="${CONTAINER_PHP:-ujian_php}"
+    DB_CONTAINER="${CONTAINER_DB:-ujian_mariadb}"
     
     echo -e "${GREEN}✓ Konfigurasi database berhasil disimpan.${NC}"
     
@@ -455,23 +456,22 @@ run_install() {
     if ! docker ps | grep -q "$PHP_CONTAINER"; then
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
     else
-        echo -e "${CYAN}Menyiapkan kredensial sementara untuk migrasi...${NC}"
-        cp "$PROJECT_DIR/src/.env" "$PROJECT_DIR/src/.env.bak"
-        cp "$PROJECT_DIR/src/env" "$PROJECT_DIR/src/.env"
-        sed -i "s/^[# ]*database.default.hostname.*/database.default.hostname = '${input_prefix}_mariadb'/" "$PROJECT_DIR/src/.env"
-        sed -i "s/^[# ]*database.default.database.*/database.default.database = '$input_dbname'/" "$PROJECT_DIR/src/.env"
-        sed -i "s/^[# ]*database.default.username.*/database.default.username = '$input_dbuser'/" "$PROJECT_DIR/src/.env"
-        sed -i "s/^[# ]*database.default.password.*/database.default.password = '$input_dbpass'/" "$PROJECT_DIR/src/.env"
-        
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
         docker exec -it $PHP_CONTAINER php spark migrate
         
-        echo -e "${CYAN}Membersihkan jejak kredensial dari src/.env...${NC}"
-        mv "$PROJECT_DIR/src/.env.bak" "$PROJECT_DIR/src/.env"
-        echo -e "\n${GREEN}✅ Migrasi Selesai! Struktur tabel telah dibuat.${NC}"
+        echo -e "${CYAN}Membuat akun Admin awal...${NC}"
+        HASHED_ADMIN_PASS=$(docker exec -i $PHP_CONTAINER php -r "echo password_hash('$input_admin_pass', PASSWORD_BCRYPT);")
+        
+        docker exec -i $DB_CONTAINER mariadb -u $input_dbuser -p$input_dbpass $input_dbname -e "
+            INSERT INTO users (username, password, role, firstname) 
+            VALUES ('$input_admin_user', '$HASHED_ADMIN_PASS', 'admin', 'Administrator');
+        "
+        
+        echo -e "\n${GREEN}✅ Migrasi dan Setup Selesai!${NC}"
         echo -e "\n=== 🛠️ DAFTAR CONTAINER ===\nPHP: ${input_prefix}_php\nMariaDB: ${input_prefix}_mariadb\nNginx: ${input_prefix}_nginx\nRedis: ${input_prefix}_redis\nWebSocket: ${input_prefix}_websocket"
-        echo -e "\nSilakan buka Web Installer di browser Anda untuk membuat akun Admin."
-        echo -e "URL: ${CYAN}http://localhost:8080/install${NC} (atau sesuai IP server Anda)."
+        echo -e "\nInstalasi berhasil. Silakan login ke aplikasi menggunakan:"
+        echo -e "URL: ${CYAN}$input_baseurl${NC}"
+        echo -e "Username: $input_admin_user"
     fi
     pause
 }
