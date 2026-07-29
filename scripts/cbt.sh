@@ -470,15 +470,14 @@ run_install() {
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
     else
         echo -e "\n${CYAN}🔒 Mengamankan permissions folder (tanpa 777)...${NC}"
-        chown -R 33:33 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads"
-        chmod -R 755 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads"
+        docker exec -i $PHP_CONTAINER sh -c "chown -R www-data:www-data writable public/uploads && chmod -R 775 writable public/uploads"
 
         echo -e "${CYAN}Mengupdate dan Menginstall dependensi Composer...${NC}"
         docker exec -i $PHP_CONTAINER composer update --no-dev --optimize-autoloader
         docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader
         
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
-        if ! echo -e "y\n" | docker exec --user 33:33 -i $PHP_CONTAINER php spark migrate; then
+        if ! docker exec -i -e CI_ENVIRONMENT=development --user 33:33 $PHP_CONTAINER php spark migrate; then
             echo -e "${RED}Error: Migrasi database gagal!${NC}"
         else
             echo -e "${CYAN}Membuat akun Admin awal...${NC}"
