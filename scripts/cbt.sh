@@ -469,6 +469,9 @@ run_install() {
     if ! docker ps | grep -q "$PHP_CONTAINER"; then
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
     else
+        echo -e "${CYAN}Menginstall dependensi Composer...${NC}"
+        docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader
+        
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
         if ! docker exec -i $PHP_CONTAINER php spark migrate; then
             echo -e "${RED}Error: Migrasi database gagal!${NC}"
