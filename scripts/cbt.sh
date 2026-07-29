@@ -15,6 +15,13 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# --- Security Check ---
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error: Script ini harus dijalankan sebagai root (gunakan sudo).${NC}"
+    echo "Contoh: sudo bash scripts/cbt.sh"
+    exit 1
+fi
+
 # --- Environment Setup ---
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -475,6 +482,10 @@ run_install() {
                     INSERT INTO users (username, password, role, firstname) 
                     VALUES ('$SAFE_ADMIN_USER', '$HASHED_ADMIN_PASS', 'admin', 'Administrator');
                 "; then
+                    echo -e "\n${CYAN}🔒 Mengamankan permissions folder (tanpa 777)...${NC}"
+                    chown -R 33:33 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads"
+                    chmod -R 755 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads"
+                    
                     echo -e "\n${GREEN}✅ Migrasi dan Setup Selesai!${NC}"
                     echo -e "\n=== 🛠️ DAFTAR CONTAINER ===\nPHP: $PHP_CONTAINER\nMariaDB: $DB_CONTAINER\nNginx: $NGINX_CONTAINER\nRedis: $REDIS_CONTAINER\nWebSocket: $WEBSOCKET_CONTAINER"
                     echo -e "\nInstalasi berhasil. Silakan login ke aplikasi menggunakan:"
