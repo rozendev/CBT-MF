@@ -85,5 +85,9 @@ class Session extends BaseConfig
         if (!empty($password)) {
             $this->savePath = 'tcp://redis:6379?auth=' . $password;
         }
+
+        // Dynamically set session cookie secure flag based on base_url scheme
+        // to prevent SecurityException when accessed via HTTP.
+        $this->cookie['secure'] = (strpos(base_url(), 'https://') === 0);
     }
 }
