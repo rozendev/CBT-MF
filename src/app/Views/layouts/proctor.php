@@ -113,6 +113,13 @@
         <?php endif; ?>
 
         <?= $this->renderSection('content') ?>
+        
+        <!-- Footer -->
+        <footer class="text-center mt-auto py-3">
+            <span class="text-muted small">
+                &copy; <?= date('Y') ?> <strong>CBT-MF</strong>. All rights reserved. | Ver 1.30
+            </span>
+        </footer>
     </div>
 
     <!-- Bootstrap JS -->

@@ -123,11 +123,11 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     </div>
 
     <!-- Footer -->
-    <footer class="footer text-center mt-auto">
+    <footer class="footer text-center mt-auto py-3">
         <div class="container">
             <span class="text-muted small">
-                &copy; <?= date('Y') ?> <strong><?= esc($siteAuthor) ?></strong>. All rights reserved.<br>
-                <?= esc($appDescription) ?>
+                &copy; <?= date('Y') ?> <strong><?= esc($siteAuthor ?? 'CBT-MF') ?></strong>. All rights reserved.<br>
+                <?= esc($appDescription ?? 'Computer Based Test') ?> | Ver 1.30
             </span>
         </div>
     </footer>
