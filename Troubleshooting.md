@@ -33,5 +33,11 @@
 ## [2026-07-30] Maximum execution time exceeded during Bulk Import
 - **Symptom**: Importing a large number of students (e.g. 100 rows) causes a `Maximum execution time of 30 seconds exceeded` error at `UserModel.php` because Argon2id password hashing is slow and synchronous.
 - **Root cause**: The previous implementation looped over all imported rows and inserted them sequentially within a single HTTP request, causing the script to exceed the default 30s timeout on larger files.
-- **Fix**: Migrated to a Redis-backed batch processing architecture. The initial file upload now merely parses rows into a Redis List (`RPUSH`) with a 1-hour TTL, and the frontend sequentially issues AJAX requests to a new `/admin/users/import-batch` endpoint to process users in chunks of 10. Added 3-strike frontend timeout abort logic to handle network or execution delays without race conditions.
+- **Fix**: Migrated to a Redis-backed batch processing architecture. The initial file upload now merely parses rows into a Redis List (`RPUSH`) with a 1-hour TTL, and the frontend sequentially issues AJAX requests to a new `/admin/users/import-batch` endpoint to process users in chunks of 5. Added 3-strike frontend timeout abort logic to handle network or execution delays without race conditions.
+- **Status**: [ ] Unverified
+
+## [2026-07-30] Batch Import Frontend Timeout (403 Forbidden CSRF)
+- **Symptom**: The new batch import logic fails abruptly with a "timeout" message even on fast systems. The backend Nginx logs show `403` responses for `POST /index.php`.
+- **Root cause**: The frontend `fetch` request was sending the CSRF token using the input name (`csrf_test_name`) as the header key, but CodeIgniter's Security component strictly requires the header name to be `X-CSRF-TOKEN` (defined in `Config\Security.php`). This caused CI4 to reject the request with a 403 Forbidden, which triggered the `catch` block in JS, eventually accumulating 3 strikes and aborting as a "timeout".
+- **Fix**: Updated `index.php` to use `<?= csrf_header() ?>` (which outputs `X-CSRF-TOKEN`) for the header key in the `fetch` request. Additionally, lowered the batch size from 10 to 5 in `UserController.php` to provide an extra safety buffer against PHP 30s timeouts on slower hardware.
 - **Status**: [ ] Unverified

@@ -451,7 +451,7 @@ class UserController extends BaseController
         $redisKey = "import_job_{$jobId}";
         $groupId = $redis->get("import_job_group_{$jobId}");
         
-        $batchSize = 10;
+        $batchSize = 5;
         $successCount = 0;
         $duplicateCount = 0;
         

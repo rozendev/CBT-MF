@@ -363,16 +363,15 @@
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
                         
-                        // We extract CSRF Token dynamically in case we need it, though regeneration is false
-                        let csrfName = '<?= csrf_token() ?>';
-                        let csrfValue = document.querySelector(`input[name="${csrfName}"]`).value;
+                        let csrfHeader = '<?= csrf_header() ?>';
+                        let csrfValue = document.querySelector('input[name="<?= csrf_token() ?>"]').value;
                         
                         const batchRes = await fetch('<?= base_url('/admin/users/import-batch') ?>', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                                 'X-Requested-With': 'XMLHttpRequest',
-                                [csrfName]: csrfValue
+                                [csrfHeader]: csrfValue
                             },
                             body: JSON.stringify({ job_id: jobId }),
                             signal: controller.signal
