@@ -1,5 +1,4 @@
 # Dependencies
-vendor/
 src/vendor/
 composer.lock
 

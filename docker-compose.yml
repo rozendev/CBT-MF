@@ -1,3 +1,4 @@
+name: cbt-mf
 services:
   # ─── Nginx ──────────────────────────────────────────────────
   nginx:
@@ -111,24 +112,6 @@ services:
     networks:
       - ujian_network
 
-  # ─── phpMyAdmin ─────────────────────────────────────────────
-  phpmyadmin:
-    image: phpmyadmin:latest
-    container_name: ${CONTAINER_PHPMYADMIN}
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8081:80"      # localhost only, JANGAN lewat tunnel
-    environment:
-      PMA_HOST: ${DB_HOST}
-      PMA_PORT: ${DB_PORT}
-      PMA_USER: ${DB_USERNAME}
-      PMA_PASSWORD: ${DB_PASSWORD}
-      UPLOAD_LIMIT: 64M
-    depends_on:
-      mariadb:
-        condition: service_healthy
-    networks:
-      - ujian_network
 
   # ─── Redis ──────────────────────────────────────────────────
   redis:
@@ -150,11 +133,7 @@ services:
 
 volumes:
   mariadb_data:
-    external: true
-    name: sistem-ujian_mariadb_data
   redis_data:
-    external: true
-    name: sistem-ujian_redis_data
 
 networks:
   ujian_network:

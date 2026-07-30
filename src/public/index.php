@@ -12,7 +12,7 @@ $envPath = __DIR__ . '/../.env';
 $needsInstall = true;
 if (file_exists($envPath)) {
     $envContent = file_get_contents($envPath);
-    if (strpos($envContent, 'INSTALLER_LOCKED = true') !== false) {
+    if (strpos($envContent, 'INSTALLER_LOCKED=true') !== false || strpos($envContent, 'INSTALLER_LOCKED = true') !== false) {
         $needsInstall = false;
     }
 }
@@ -23,8 +23,10 @@ $healthPath = parse_url($requestUri, PHP_URL_PATH);
 $isHealthCheck = ($healthPath === '/health');
 
 if ($needsInstall && !$isHealthCheck) {
-    header('Location: /install/index.php');
-    exit;
+    header('HTTP/1.1 503 Service Unavailable', true, 503);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html><head><title>Installation Required</title><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#f8f9fa;color:#333}h1{color:#dc3545}.card{background:#fff;padding:30px;border-radius:8px;display:inline-block;box-shadow:0 2px 10px rgba(0,0,0,0.1);max-width:500px}code{background:#eef;padding:4px 8px;border-radius:4px}</style></head><body><div class="card"><h1>Installation Required</h1><p>Aplikasi belum diinstall. Silakan jalankan installer via terminal:</p><p><code>./install.sh</code> atau <code>bash scripts/cbt.sh install</code></p></div></body></html>';
+    exit(1);
 }
 
 /*
