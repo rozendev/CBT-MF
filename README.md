@@ -114,6 +114,17 @@ exit
 ### 7. PHP-FPM Resource Exhausted / Server Terasa Lambat
 - **Solusi**: Jika Anda baru saja beralih dari versi lawas (yang masih menggunakan Server-Sent Events / EventSource), pastikan Anda telah sepenuhnya mendeploy Daemon WebSocket. Cara termudahnya adalah periksa *Network tab* di *DevTools* Browser. Anda harusnya melihat aktivitas ke `wss://domain.com/ws/` dengan status kode `101 Switching Protocols`, bukan request yang terus-menerus "*Pending*" (itu adalah sisa SSE FPM).
 
+### 8. Error Migrasi: Access denied for user (Gagal Konek Database)
+- **Gejala**: Saat menjalankan instalasi atau migrasi, muncul error `[CodeIgniter\Database\Exceptions\DatabaseException] Unable to connect to the database. Main connection [MySQLi]: Access denied for user...` padahal password yang dimasukkan saat prompt sudah benar.
+- **Penyebab**: MariaDB di Docker hanya mengatur *username* dan *password* satu kali pada saat pertama kali container dijalankan dan volume dibuat. Jika Anda sebelumnya pernah menginstal atau menjalankan container dengan kredensial lama, lalu mencoba menginstal ulang dengan kredensial baru, MariaDB akan tetap menggunakan kredensial lama yang tersimpan di volume.
+- **Solusi**: Anda harus menghapus volume database lama secara total agar MariaDB dapat diinisialisasi ulang dengan kredensial baru. **PERINGATAN: Ini akan menghapus semua data di database!**
+Jalankan perintah berikut:
+```bash
+docker compose down -v
+# Kemudian ulangi proses instalasi
+sudo bash scripts/cbt.sh install
+```
+
 ## Struktur Repositori
 - `src/` - Kode aplikasi CodeIgniter 4
 - `docker/` - Dockerfiles (Nginx, PHP-FPM, MariaDB init scripts)
