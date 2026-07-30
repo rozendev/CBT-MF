@@ -469,8 +469,11 @@ run_install() {
     if ! docker ps | grep -q "$PHP_CONTAINER"; then
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
     else
-        echo -e "\n${CYAN}🔒 Mengamankan permissions folder (tanpa 777)...${NC}"
-        docker exec -i $PHP_CONTAINER sh -c "chown -R www-data:www-data writable public/uploads && chmod -R 775 writable public/uploads"
+        echo -e "\n${CYAN}🔒 Memastikan folder sistem ada dan mengamankan permissions (tanpa 777)...${NC}"
+        if ! docker exec -i $PHP_CONTAINER sh -c "mkdir -p writable/cache writable/session writable/debugbar writable/uploads writable/logs public/uploads && chown -R www-data:www-data writable public/uploads && chmod -R 775 writable public/uploads"; then
+            echo -e "${RED}Error: Gagal mengatur permission folder!${NC}"
+            exit 1
+        fi
 
         echo -e "${CYAN}Mengupdate dan Menginstall dependensi Composer...${NC}"
         docker exec -i $PHP_CONTAINER composer update --no-dev --optimize-autoloader
