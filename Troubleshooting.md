@@ -17,3 +17,9 @@
 - **Root cause**: Executing permission changes inside the container is less robust than setting them on the host, especially since `cbt.sh` is already required to be run as root (`sudo`).
 - **Fix**: Modified `scripts/cbt.sh` to execute `mkdir`, `chown -R :33`, and `chmod -R 775` directly on the host targeting `$PROJECT_DIR/src/...` instead of using `docker exec`.
 - **Status**: [ ] Unverified
+
+## [2026-07-30] Bootstrap CSS fails to load with strict MIME checking
+- **Symptom**: Requesting `/vendor/bootstrap/css/bootstrap.min.css` returns `Content-Type: text/html` causing the browser to reject it, resulting in an unstyled dashboard UI.
+- **Root cause**: The `src/public/vendor/` directory (which contains Bootstrap and other frontend static assets) was accidentally excluded from version control by a `vendor/` rule in the root `.gitignore`. As a result, the files were missing in fresh deployments. When Nginx encounters a missing static file, it returns its default 404 error page, which is HTML format (`text/html`), causing the MIME type mismatch in the browser.
+- **Fix**: Replaced the overly broad `vendor/` rule in the root `.gitignore` with `src/vendor/` to correctly ignore only Composer dependencies. This allowed the missing `src/public/vendor/` assets to be tracked by Git and deployed.
+- **Status**: [ ] Unverified
