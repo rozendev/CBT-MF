@@ -29,3 +29,9 @@
 - **Root cause**: A `continue` statement was incorrectly placed inside an `if` block within a standalone function (`processPhpWordElement`), instead of being inside a loop (`foreach`, `for`, `while`). PHP strictly enforces that `continue` can only be used inside loops or switch statements.
 - **Fix**: Replaced `continue;` with `return $blocks;` to safely exit the function early and skip the invalid image embedded object without triggering a PHP parsing error.
 - **Status**: [ ] Unverified
+
+## [2026-07-30] Maximum execution time exceeded during Bulk Import
+- **Symptom**: Importing a large number of students (e.g. 100 rows) causes a `Maximum execution time of 30 seconds exceeded` error at `UserModel.php` because Argon2id password hashing is slow and synchronous.
+- **Root cause**: The previous implementation looped over all imported rows and inserted them sequentially within a single HTTP request, causing the script to exceed the default 30s timeout on larger files.
+- **Fix**: Migrated to a Redis-backed batch processing architecture. The initial file upload now merely parses rows into a Redis List (`RPUSH`) with a 1-hour TTL, and the frontend sequentially issues AJAX requests to a new `/admin/users/import-batch` endpoint to process users in chunks of 10. Added 3-strike frontend timeout abort logic to handle network or execution delays without race conditions.
+- **Status**: [ ] Unverified

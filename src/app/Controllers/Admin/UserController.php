@@ -354,7 +354,7 @@ class UserController extends BaseController
         $groupId = $this->request->getPost('group_id');
 
         if (!$file || !$file->isValid() || $file->hasMoved()) {
-            return redirect()->back()->with('error', 'File tidak valid atau gagal diunggah.');
+            return $this->response->setJSON(['status' => 'error', 'message' => 'File tidak valid atau gagal diunggah.']);
         }
 
         $fileMime = $file->getMimeType();
@@ -368,7 +368,7 @@ class UserController extends BaseController
         $ext = strtolower($file->getClientExtension());
         if (!in_array($ext, ['xls', 'xlsx']) || !in_array($fileMime, $allowedMimes)) {
             log_message('warning', "Import file validation failed. Extension: {$ext}, Mime: {$fileMime}");
-            return redirect()->back()->with('error', 'Format file harus .xls atau .xlsx');
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Format file harus .xls atau .xlsx']);
         }
 
         try {
@@ -379,12 +379,15 @@ class UserController extends BaseController
             // Skip header (row 0)
             array_shift($rows);
 
-            $successCount = 0;
-            $duplicateCount = 0;
+            $jobId = uniqid('import_');
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if (!$redis) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal terhubung ke Redis.']);
+            }
             
-            $db = \Config\Database::connect();
-            $db->transStart();
-
+            $validRows = 0;
+            $redisKey = "import_job_{$jobId}";
+            
             foreach ($rows as $row) {
                 $username  = trim((string)($row[0] ?? ''));
                 $password  = trim((string)($row[1] ?? ''));
@@ -396,12 +399,9 @@ class UserController extends BaseController
                     continue; // Skip invalid row
                 }
 
-                // Check duplicate username (including soft deleted)
-                $existingUser = $this->userModel->withDeleted()->where('username', $username)->first();
-                
                 $userData = [
                     'username'  => $username,
-                    'password'  => $password, // reuseDeletedUser will hash it
+                    'password'  => $password,
                     'firstname' => $firstname,
                     'lastname'  => $lastname,
                     'email'     => empty($email) ? null : $email,
@@ -409,59 +409,119 @@ class UserController extends BaseController
                     'is_active' => 1
                 ];
 
-                if ($existingUser) {
-                    if (empty($existingUser->deleted_at)) {
-                        // User is active: real duplicate
-                        $duplicateCount++;
-                        continue;
-                    } else {
-                        // User is soft deleted: reuse/override this row!
-                        try {
-                            if ($this->userModel->reuseDeletedUser($existingUser->id, $userData)) {
-                                if (!empty($groupId)) {
-                                    $db->table('user_groups')->where('user_id', $existingUser->id)->delete();
-                                    $this->groupModel->addUserToGroup($existingUser->id, $groupId);
-                                }
-                                $successCount++;
-                            }
-                        } catch (\Exception $e) {
-                            // Ignore exception for this specific row and continue
-                        }
-                        continue;
-                    }
-                }
-
-                // If not exists at all, insert new user
-                try {
-                    if ($this->userModel->skipValidation(true)->insert($userData)) {
-                        $userId = $this->userModel->getInsertID();
-                        if (!empty($groupId)) {
-                            $this->groupModel->addUserToGroup($userId, $groupId);
-                        }
-                        $successCount++;
-                    }
-                } catch (\Exception $e) {
-                    // Ignore exception for this specific row and continue
-                }
+                $redis->rPush($redisKey, json_encode($userData));
+                $validRows++;
             }
 
-            $db->transComplete();
-
-            if ($db->transStatus() === false) {
-                return redirect()->back()->with('error', 'Gagal memproses transaksi database saat import. Pastikan file sesuai format.');
+            if ($validRows === 0) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'File kosong atau format salah.']);
             }
 
-            $this->activityLog->log('import', session('user_id'), 'user', 0, "Mengimport $successCount siswa baru.");
-
-            $msg = "Berhasil mengimport $successCount siswa.";
-            if ($duplicateCount > 0) {
-                $msg .= " ($duplicateCount siswa dilewati karena username/email sudah pernah digunakan/duplikat).";
+            // Set TTL to 1 hour
+            $redis->expire($redisKey, 3600);
+            if (!empty($groupId)) {
+                $redis->setex("import_job_group_{$jobId}", 3600, $groupId);
             }
-            return redirect()->back()->with('success', $msg);
+
+            return $this->response->setJSON([
+                'status' => 'success',
+                'job_id' => $jobId,
+                'total'  => $validRows
+            ]);
 
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal memproses file Excel: ' . $e->getMessage());
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal memproses file Excel: ' . $e->getMessage()]);
         }
+    }
+
+    public function importBatch()
+    {
+        $json = $this->request->getJSON();
+        $jobId = $json->job_id ?? '';
+        
+        if (empty($jobId)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Job ID tidak ditemukan.']);
+        }
+
+        $redis = \App\Libraries\RedisClient::getInstance();
+        if (!$redis) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal terhubung ke Redis.']);
+        }
+
+        $redisKey = "import_job_{$jobId}";
+        $groupId = $redis->get("import_job_group_{$jobId}");
+        
+        $batchSize = 10;
+        $successCount = 0;
+        $duplicateCount = 0;
+        
+        $db = \Config\Database::connect();
+        $db->transStart();
+
+        for ($i = 0; $i < $batchSize; $i++) {
+            $item = $redis->lPop($redisKey);
+            if (!$item) break; // Queue empty
+            
+            $userData = json_decode($item, true);
+            if (!$userData) continue;
+
+            // Check duplicate username (including soft deleted)
+            $existingUser = $this->userModel->withDeleted()->where('username', $userData['username'])->first();
+            
+            if ($existingUser) {
+                if (empty($existingUser->deleted_at)) {
+                    // User is active: real duplicate
+                    $duplicateCount++;
+                    continue;
+                } else {
+                    // User is soft deleted: reuse/override this row!
+                    try {
+                        if ($this->userModel->reuseDeletedUser($existingUser->id, $userData)) {
+                            if (!empty($groupId)) {
+                                $db->table('user_groups')->where('user_id', $existingUser->id)->delete();
+                                $this->groupModel->addUserToGroup($existingUser->id, $groupId);
+                            }
+                            $successCount++;
+                        }
+                    } catch (\Exception $e) {
+                        // Ignore exception for this specific row and continue
+                    }
+                    continue;
+                }
+            }
+
+            // If not exists at all, insert new user
+            try {
+                if ($this->userModel->skipValidation(true)->insert($userData)) {
+                    $userId = $this->userModel->getInsertID();
+                    if (!empty($groupId)) {
+                        $this->groupModel->addUserToGroup($userId, $groupId);
+                    }
+                    $successCount++;
+                }
+            } catch (\Exception $e) {
+                // Ignore exception for this specific row and continue
+            }
+        }
+        
+        $db->transComplete();
+
+        if ($db->transStatus() === false) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal menyimpan batch ke database.']);
+        }
+
+        $remaining = (int) $redis->lLen($redisKey);
+        
+        if ($remaining === 0 && $successCount > 0) {
+            $this->activityLog->log('import', session('user_id'), 'user', 0, "Menyelesaikan import batch siswa.");
+        }
+
+        return $this->response->setJSON([
+            'status' => 'success',
+            'remaining' => $remaining,
+            'success_count' => $successCount,
+            'duplicate_count' => $duplicateCount
+        ]);
     }
     public function printCardsIndex()
     {

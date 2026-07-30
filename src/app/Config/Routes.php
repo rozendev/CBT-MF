@@ -47,6 +47,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->post('users/unlock/(:num)', 'Admin\UserController::unlock/$1');
         $routes->get('users/template', 'Admin\UserController::template');
         $routes->post('users/import', 'Admin\UserController::import');
+        $routes->post('users/import-batch', 'Admin\UserController::importBatch');
         
         $routes->get('users/print-cards', 'Admin\UserController::printCardsIndex');
         $routes->post('users/print-cards/process', 'Admin\UserController::printCardsProcess');

@@ -225,39 +225,49 @@
 <div class="modal fade" id="importModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form action="<?= base_url('/admin/users/import') ?>" method="POST" enctype="multipart/form-data">
+            <form action="<?= base_url('/admin/users/import') ?>" method="POST" enctype="multipart/form-data" id="importForm">
                 <?= csrf_field() ?>
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold text-success"><i class="bi bi-file-earmark-excel me-2"></i>Import Siswa</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body py-4">
-                    <div class="mb-4 text-center">
-                        <a href="<?= base_url('/admin/users/template') ?>" class="btn btn-outline-primary btn-sm rounded-pill">
-                            <i class="bi bi-download me-1"></i> Unduh Template Excel
-                        </a>
-                        <p class="text-muted small mt-2 mb-0">Gunakan template ini untuk mengisi data siswa yang akan diimport.</p>
+                    <div id="importFormInputs">
+                        <div class="mb-4 text-center">
+                            <a href="<?= base_url('/admin/users/template') ?>" class="btn btn-outline-primary btn-sm rounded-pill">
+                                <i class="bi bi-download me-1"></i> Unduh Template Excel
+                            </a>
+                            <p class="text-muted small mt-2 mb-0">Gunakan template ini untuk mengisi data siswa yang akan diimport.</p>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Pilih Grup / Kelas (Opsional)</label>
+                            <select name="group_id" class="form-select">
+                                <option value="">-- Tidak dimasukkan ke grup --</option>
+                                <?php foreach ($allGroups as $g): ?>
+                                    <option value="<?= $g->id ?>"><?= esc($g->name) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="form-text small text-muted">Semua siswa yang diimport akan otomatis dimasukkan ke grup ini.</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">File Excel (.xlsx)</label>
+                            <input type="file" name="excel_file" class="form-control" accept=".xlsx, .xls" required>
+                        </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Pilih Grup / Kelas (Opsional)</label>
-                        <select name="group_id" class="form-select">
-                            <option value="">-- Tidak dimasukkan ke grup --</option>
-                            <?php foreach ($allGroups as $g): ?>
-                                <option value="<?= $g->id ?>"><?= esc($g->name) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <div class="form-text small text-muted">Semua siswa yang diimport akan otomatis dimasukkan ke grup ini.</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">File Excel (.xlsx)</label>
-                        <input type="file" name="excel_file" class="form-control" accept=".xlsx, .xls" required>
+                    <div id="importProgressContainer" class="d-none text-center">
+                        <h6 class="fw-bold mb-3">Sedang Memproses...</h6>
+                        <div class="progress mb-2" style="height: 20px;">
+                            <div id="importProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%;">0%</div>
+                        </div>
+                        <p id="importProgressText" class="text-muted small">Menginisialisasi import...</p>
                     </div>
                 </div>
                 <div class="modal-footer border-0 pt-0 justify-content-center">
-                    <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-success px-4"><i class="bi bi-upload me-2"></i>Mulai Import</button>
+                    <button type="button" class="btn btn-light px-4" data-bs-dismiss="modal" id="btnImportCancel">Batal</button>
+                    <button type="submit" class="btn btn-success px-4" id="btnImportSubmit"><i class="bi bi-upload me-2"></i>Mulai Import</button>
                 </div>
             </form>
         </div>
@@ -312,6 +322,105 @@
         if (count === 0) return;
         document.getElementById('bulkDeleteCountText').textContent = count;
         new bootstrap.Modal(document.getElementById('bulkDeleteModal')).show();
+    }
+
+    // Batch Import Logic
+    const importForm = document.getElementById('importForm');
+    if (importForm) {
+        importForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const btnSubmit = document.getElementById('btnImportSubmit');
+            const btnCancel = document.getElementById('btnImportCancel');
+            const inputsDiv = document.getElementById('importFormInputs');
+            const progressDiv = document.getElementById('importProgressContainer');
+            const progressBar = document.getElementById('importProgressBar');
+            const progressText = document.getElementById('importProgressText');
+            
+            btnSubmit.disabled = true;
+            btnCancel.disabled = true;
+            inputsDiv.classList.add('d-none');
+            progressDiv.classList.remove('d-none');
+            
+            try {
+                const formData = new FormData(this);
+                const initRes = await fetch(this.action, { method: 'POST', body: formData });
+                const initData = await initRes.json();
+                
+                if (initData.status !== 'success') {
+                    throw new Error(initData.message || 'Gagal memulai import.');
+                }
+                
+                const jobId = initData.job_id;
+                const total = initData.total;
+                let remaining = total;
+                let timeoutCount = 0;
+                let totalSuccess = 0;
+                let totalDuplicate = 0;
+                
+                while (remaining > 0) {
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+                        
+                        // We extract CSRF Token dynamically in case we need it, though regeneration is false
+                        let csrfName = '<?= csrf_token() ?>';
+                        let csrfValue = document.querySelector(`input[name="${csrfName}"]`).value;
+                        
+                        const batchRes = await fetch('<?= base_url('/admin/users/import-batch') ?>', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                [csrfName]: csrfValue
+                            },
+                            body: JSON.stringify({ job_id: jobId }),
+                            signal: controller.signal
+                        });
+                        
+                        clearTimeout(timeoutId);
+                        
+                        if (!batchRes.ok) throw new Error('Server batch error');
+                        const batchData = await batchRes.json();
+                        
+                        if (batchData.status === 'error') {
+                            throw new Error(batchData.message || 'Error saat memproses batch');
+                        }
+                        
+                        timeoutCount = 0; // reset
+                        remaining = batchData.remaining;
+                        totalSuccess += batchData.success_count;
+                        totalDuplicate += batchData.duplicate_count;
+                        
+                        const processed = total - remaining;
+                        const percent = Math.round((processed / total) * 100);
+                        
+                        progressBar.style.width = percent + '%';
+                        progressBar.textContent = percent + '%';
+                        progressText.textContent = `Memproses ${processed} dari ${total} data...`;
+                        
+                        if (remaining <= 0) break;
+                        
+                    } catch (err) {
+                        timeoutCount++;
+                        if (timeoutCount >= 3) {
+                            alert('Gagal: Terjadi timeout 3 kali berturut-turut. Proses dihentikan.');
+                            window.location.reload();
+                            return;
+                        }
+                        // delay 2s before retry
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
+                }
+                
+                alert(`Import selesai!\nBerhasil: ${totalSuccess}\nDilewati (Duplikat): ${totalDuplicate}`);
+                window.location.reload();
+                
+            } catch (err) {
+                alert(err.message || 'Terjadi kesalahan sistem.');
+                window.location.reload();
+            }
+        });
     }
 </script>
 <?= $this->endSection() ?>
