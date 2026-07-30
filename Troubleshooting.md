@@ -23,3 +23,9 @@
 - **Root cause**: The `src/public/vendor/` directory (which contains Bootstrap and other frontend static assets) was accidentally excluded from version control by a `vendor/` rule in the root `.gitignore`. As a result, the files were missing in fresh deployments. When Nginx encounters a missing static file, it returns its default 404 error page, which is HTML format (`text/html`), causing the MIME type mismatch in the browser.
 - **Fix**: Replaced the overly broad `vendor/` rule in the root `.gitignore` with `src/vendor/` to correctly ignore only Composer dependencies. This allowed the missing `src/public/vendor/` assets to be tracked by Git and deployed.
 - **Status**: [ ] Unverified
+
+## [2026-07-30] PHP Fatal Error in WordImportController
+- **Symptom**: `ErrorException: 'continue' not in the 'loop' or 'switch' context` occurs at `APPPATH/Controllers/Admin/WordImportController.php` on line 324 when importing Word documents.
+- **Root cause**: A `continue` statement was incorrectly placed inside an `if` block within a standalone function (`processPhpWordElement`), instead of being inside a loop (`foreach`, `for`, `while`). PHP strictly enforces that `continue` can only be used inside loops or switch statements.
+- **Fix**: Replaced `continue;` with `return $blocks;` to safely exit the function early and skip the invalid image embedded object without triggering a PHP parsing error.
+- **Status**: [ ] Unverified

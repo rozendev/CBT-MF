@@ -321,7 +321,7 @@ class WordImportController extends BaseController
                 $ext = $element->getImageExtension();
                 $allowedImageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
                 if (!in_array(strtolower($ext), $allowedImageExts, true)) {
-                    continue; // skip non-image embedded objects
+                    return $blocks; // skip non-image embedded objects
                 }
                 $filename = uniqid('img_') . '.' . $ext;
                 $uploadPath = FCPATH . 'uploads/questions/';
