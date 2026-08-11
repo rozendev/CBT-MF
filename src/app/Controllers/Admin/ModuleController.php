@@ -39,15 +39,34 @@ class ModuleController extends BaseController
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
+        $name = $this->request->getPost('name');
+        $exists = $this->moduleModel->withDeleted()->where('name', $name)->first();
+        
+        if ($exists) {
+            if ($exists->deleted_at !== null) {
+                // Restore the soft-deleted module
+                $data = [
+                    'is_enabled' => $this->request->getPost('is_enabled') ? 1 : 0,
+                    'user_id'    => session('user_id'),
+                ];
+                if ($this->moduleModel->reuseDeletedModule($exists->id, $data)) {
+                    $this->activityLog->log('update', session('user_id'), 'module', $exists->id, "Me-restore modul: {$name}");
+                    return redirect()->to('/admin/modules')->with('success', 'Modul berhasil direstore dan ditambahkan.');
+                }
+                return redirect()->back()->withInput()->with('error', 'Gagal merestore modul.');
+            }
+            return redirect()->back()->withInput()->with('error', 'Modul dengan nama yang sama sudah ada.');
+        }
+
         $data = [
-            'name'       => $this->request->getPost('name'),
+            'name'       => $name,
             'is_enabled' => $this->request->getPost('is_enabled') ? 1 : 0,
             'user_id'    => session('user_id'),
         ];
 
         if ($this->moduleModel->skipValidation(true)->insert($data)) {
             $insertId = $this->moduleModel->getInsertID();
-            $this->activityLog->log('create', session('user_id'), 'module', $insertId, "Membuat modul: {$data['name']}");
+            $this->activityLog->log('create', session('user_id'), 'module', $insertId, "Membuat modul: {$name}");
             return redirect()->to('/admin/modules')->with('success', 'Modul berhasil ditambahkan.');
         }
 
@@ -72,15 +91,25 @@ class ModuleController extends BaseController
         }
 
         $rules = [
-            'name' => "required|max_length[255]|is_unique[modules.name,id,{$id}]",
+            'name' => "required|max_length[255]",
         ];
 
         if (!$this->validate($rules)) {
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
+        $name = $this->request->getPost('name');
+        
+        $exists = $this->moduleModel->withDeleted()->where('name', $name)->where('id !=', $id)->first();
+        if ($exists) {
+            if ($exists->deleted_at !== null) {
+                return redirect()->back()->withInput()->with('error', 'Modul dengan nama yang sama sudah pernah dibuat dan dihapus (Soft-Deleted). Silakan hubungi administrator atau buat dengan nama lain untuk menghindari konflik database.');
+            }
+            return redirect()->back()->withInput()->with('error', 'Modul dengan nama yang sama sudah ada.');
+        }
+
         $data = [
-            'name'       => $this->request->getPost('name'),
+            'name'       => $name,
             'is_enabled' => $this->request->getPost('is_enabled') ? 1 : 0,
         ];
 

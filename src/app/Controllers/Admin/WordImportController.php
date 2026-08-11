@@ -51,20 +51,47 @@ class WordImportController extends BaseController
             if (empty($newModuleName)) {
                 return redirect()->back()->withInput()->with('error', 'Nama modul baru harus diisi.');
             }
-            $moduleId = $this->moduleModel->insert([
-                'name' => $newModuleName,
-                'user_id' => session('user_id')
-            ]);
+            
+            $existsMod = $this->moduleModel->withDeleted()->where('name', $newModuleName)->first();
+            if ($existsMod) {
+                if ($existsMod->deleted_at !== null) {
+                    $this->moduleModel->reuseDeletedModule($existsMod->id, [
+                        'user_id'    => session('user_id'),
+                        'is_enabled' => 1
+                    ]);
+                }
+                $moduleId = $existsMod->id;
+            } else {
+                $moduleId = $this->moduleModel->insert([
+                    'name'       => $newModuleName,
+                    'is_enabled' => 1,
+                    'user_id'    => session('user_id')
+                ]);
+            }
         }
 
         $subjectName = $this->request->getPost('subject_name');
         
-        // Create subject
-        $subjectId = $this->subjectModel->insert([
-            'module_id' => $moduleId,
-            'name' => $subjectName,
-            'user_id' => session('user_id')
-        ]);
+        $existsSub = $this->subjectModel->withDeleted()->where('module_id', $moduleId)->where('name', $subjectName)->first();
+        if ($existsSub) {
+            if ($existsSub->deleted_at !== null) {
+                // Restore soft-deleted subject
+                $this->subjectModel->reuseDeletedSubject($existsSub->id, [
+                    'user_id'    => session('user_id'),
+                    'is_enabled' => 1
+                ]);
+            }
+            // Subject already active (or just restored), use the ID
+            $subjectId = $existsSub->id;
+        } else {
+            // Insert new subject
+            $subjectId = $this->subjectModel->insert([
+                'module_id'  => $moduleId,
+                'name'       => $subjectName,
+                'is_enabled' => 1,
+                'user_id'    => session('user_id')
+            ]);
+        }
 
         $file = $this->request->getFile('word_file');
         $filepath = $file->getTempName();

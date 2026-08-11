@@ -51,6 +51,16 @@
 
 <?= $this->section('content') ?>
 
+<?php if (isset($redis_down) && $redis_down): ?>
+<div class="alert alert-danger d-flex align-items-center mb-4" role="alert" style="border-radius: 12px; background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.2); color: #b91c1c;">
+    <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+    <div>
+        <strong class="d-block mb-1">Sistem anda tidak memiliki Redis!</strong>
+        Performa akan turun signifikan dan beberapa fitur keamanan mungkin tidak berfungsi secara optimal.
+    </div>
+</div>
+<?php endif; ?>
+
 <?php
 // Hitung percentage dummy untuk progress ring (misal ratio online vs total, max 100%)
 $onlineCount = count($onlineUsers ?? []);

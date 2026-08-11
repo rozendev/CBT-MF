@@ -74,6 +74,34 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
 
+  # ─── Exam Auto-Finalizer (Cron) ──────────────────────────────
+  cron:
+    build:
+      context: ./docker/php-fpm
+      dockerfile: Dockerfile
+    container_name: ${CONTAINER_PHP}_cron
+    restart: unless-stopped
+    command: sh -c "echo '[cron] Auto-finalizer started'; while true; do php /var/www/html/spark finalize:expired 2>&1; sleep 60; done"
+    volumes:
+      - ./src:/var/www/html
+      - ./docker/php-fpm/security.ini:/usr/local/etc/php/conf.d/security.ini
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ujian_network
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+
   # ─── Cloudflare Tunnel ──────────────────────────────────────
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -93,8 +121,8 @@ services:
     container_name: ${CONTAINER_DB}
     restart: unless-stopped
     command: --max_connections=500
-    ports:
-      - "127.0.0.1:3306:3306"    # bind ke localhost aja, bukan 0.0.0.0
+    # ports:
+    #   - "127.0.0.1:3306:3306"    # bind ke localhost aja, bukan 0.0.0.0
     volumes:
       - mariadb_data:/var/lib/mysql
       - ./docker/mariadb/init:/docker-entrypoint-initdb.d
@@ -118,8 +146,8 @@ services:
     image: redis:alpine
     container_name: ${CONTAINER_REDIS}
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"    # localhost only
+    # ports:
+    #   - "127.0.0.1:6379:6379"    # localhost only
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}

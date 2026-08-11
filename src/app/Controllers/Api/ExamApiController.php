@@ -151,6 +151,7 @@ class ExamApiController extends BaseController
                 $answersData[$q->question_id] = $qAnswers;
                 $questionsData[] = [
                     'question_id' => (int)$q->question_id,
+                    'display_order' => (int)$q->display_order,
                     'answer_text' => $q->answer_text,
                 ];
             } else {

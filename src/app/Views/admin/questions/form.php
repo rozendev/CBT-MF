@@ -46,7 +46,7 @@
                 <div class="card-body p-0">
                     <div id="editor-description" style="min-height: 200px; border: none;"><?= old('description', $question->description ?? '') ?></div>
                     <div class="image-limit-hint"><i class="bi bi-info-circle me-1"></i>Gambar otomatis dikecilkan jika lebih dari 1920px. Maksimal upload: 5 MB. Format: JPG, PNG, GIF, WebP.</div>
-                    <textarea style="display: none;" id="description" name="description" required><?= old('description', $question->description ?? '') ?></textarea>
+                    <textarea style="display: none;" id="description" name="description"><?= old('description', $question->description ?? '') ?></textarea>
                 </div>
             </div>
 
@@ -293,13 +293,19 @@
         renderAnswerUI();
 
         // Hook for form submission to copy Quill content & handle Type 4/5
-        $('form').on('submit', function() {
+        $('form').on('submit', function(e) {
             // Get HTML from Quill and clean empty editor values
             let descHtml = quillDescription.root.innerHTML;
             let explHtml = quillExplanation.root.innerHTML;
 
             if (descHtml.trim() === '<p><br></p>') descHtml = '';
             if (explHtml.trim() === '<p><br></p>') explHtml = '';
+
+            if (descHtml === '') {
+                e.preventDefault();
+                Swal.fire('Validasi Gagal', 'Teks pertanyaan tidak boleh kosong!', 'warning');
+                return false;
+            }
 
             $('#description').val(descHtml);
             $('#explanation').val(explHtml);

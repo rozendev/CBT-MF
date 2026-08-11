@@ -498,14 +498,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             wsUrl: '<?= esc($wsUrl ?? '') ?>'
         };
 
-        if (EXAM_CONFIG.randomQuestions) {
-            EXAM_CONFIG.questionsData.sort(() => Math.random() - 0.5);
-        }
-        if (EXAM_CONFIG.randomAnswers) {
-            for (let qId in EXAM_CONFIG.answersData) {
-                EXAM_CONFIG.answersData[qId].sort(() => Math.random() - 0.5);
-            }
-        }
+        // Question and answer ordering is now handled server-side per-attempt.
+        // The init API returns display_order for each question/answer,
+        // and the client reorders DOM elements after receiving the response.
     </script>
 
     <!-- Loading Screen -->
@@ -1141,6 +1136,23 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     const data = window.__examData || {};
                     this.questions  = data.questions  || this.questions;
                     this.allAnswers = data.answers     || this.allAnswers;
+
+                    // ─── Per-Attempt Reorder (Anti-Cheat) ───
+                    // Sort questions by server-assigned display_order (unique per attempt)
+                    if (this.questions && this.questions.length > 0 && this.questions[0].display_order !== undefined) {
+                        this.questions.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+                        // Re-number visual display_order sequentially (1, 2, 3...)
+                        this.questions.forEach((q, i) => { q.display_order = i + 1; });
+                    }
+                    // Sort answer options by server-assigned display_order (unique per attempt)
+                    if (this.allAnswers) {
+                        for (const qId in this.allAnswers) {
+                            if (Array.isArray(this.allAnswers[qId]) && this.allAnswers[qId].length > 0 && this.allAnswers[qId][0].display_order !== undefined) {
+                                this.allAnswers[qId].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+                            }
+                        }
+                    }
+
                     this.studentName = data.studentName || '';
                     this.parseMatching();
                     this.restoreLocalBackup();

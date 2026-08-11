@@ -137,8 +137,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.querySelector('form').addEventListener('submit', function() {
         const btn = document.getElementById('btnSubmit');
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Sedang Memproses...';
-        btn.disabled = true;
+        setTimeout(function() {
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Sedang Memproses...';
+            btn.disabled = true;
+        }, 10);
     });
 });
 </script>

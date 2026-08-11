@@ -16,7 +16,8 @@ $routes->post('queue/ping', 'Auth\QueueController::ping');
 $routes->get('maintenance', 'Auth\AuthController::maintenance');
 
 $routes->group('api', ['filter' => 'auth'], static function ($routes) {
-    $routes->get('test-scan', 'Api\TestCheatController::test');
+    // @todo remove: legacy endpoint, controller no longer exists
+    // $routes->get('test-scan', 'Api\TestCheatController::test');
     $routes->post('keep-alive', 'Api\SyncController::keepAlive');
     
     // Static Exam API
@@ -155,7 +156,8 @@ $routes->group('student', ['filter' => 'role:siswa,admin,guru'], static function
     $routes->post('exam/start/(:num)', 'Student\ExamController::start/$1');
     $routes->group('exam', static function ($routes) {
         $routes->get('take/(:num)', 'Student\ExamController::take/$1');
-        $routes->get('stream/(:num)', 'Student\SseController::stream/$1');
+        // @todo remove: legacy SSE endpoint, controller no longer exists
+        // $routes->get('stream/(:num)', 'Student\SseController::stream/$1');
         $routes->post('autosave', 'Student\ExamController::saveAnswer');
         $routes->post('auto-sync', 'Student\ExamController::autoSync');
     });

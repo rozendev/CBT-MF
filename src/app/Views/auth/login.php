@@ -333,7 +333,10 @@ if (!$activeTest) {
         
         // Tambahkan class loading dan ubah konten menjadi spinner
         btn.classList.add('loading');
-        btn.innerHTML = '<span class="spinner"></span> Memproses...';
+        setTimeout(function() {
+            btn.innerHTML = '<span class="spinner"></span> Memproses...';
+            btn.disabled = true;
+        }, 10);
     });
     </script>
 

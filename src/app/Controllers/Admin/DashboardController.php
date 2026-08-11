@@ -10,9 +10,20 @@ class DashboardController extends BaseController
     public function index()
     {
         $db = \Config\Database::connect();
-
         $cache = \Config\Services::cache();
         
+        $redisDown = false;
+        try {
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $redis->ping();
+            } else {
+                $redisDown = true;
+            }
+        } catch (\Exception $e) {
+            $redisDown = true;
+        }
+
         $stats = $cache->get('admin_dashboard_stats');
         if ($stats === null) {
             $stats = [
@@ -69,6 +80,7 @@ class DashboardController extends BaseController
             'activities' => $activities,
             'onlineUsers'=> $onlineUsers,
             'chartData'  => json_encode($chartData),
+            'redis_down' => $redisDown,
         ]);
     }
 }

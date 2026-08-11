@@ -454,9 +454,9 @@ class UserController extends BaseController
         $batchSize = 5;
         $successCount = 0;
         $duplicateCount = 0;
+        $failedCount = 0;
         
         $db = \Config\Database::connect();
-        $db->transStart();
 
         for ($i = 0; $i < $batchSize; $i++) {
             $item = $redis->lPop($redisKey);
@@ -465,6 +465,8 @@ class UserController extends BaseController
             $userData = json_decode($item, true);
             if (!$userData) continue;
 
+            $db->transStart();
+
             // Check duplicate username (including soft deleted)
             $existingUser = $this->userModel->withDeleted()->where('username', $userData['username'])->first();
             
@@ -472,6 +474,7 @@ class UserController extends BaseController
                 if (empty($existingUser->deleted_at)) {
                     // User is active: real duplicate
                     $duplicateCount++;
+                    $db->transComplete();
                     continue;
                 } else {
                     // User is soft deleted: reuse/override this row!
@@ -481,10 +484,20 @@ class UserController extends BaseController
                                 $db->table('user_groups')->where('user_id', $existingUser->id)->delete();
                                 $this->groupModel->addUserToGroup($existingUser->id, $groupId);
                             }
-                            $successCount++;
+                            $db->transComplete();
+                            if ($db->transStatus() !== false) {
+                                $successCount++;
+                            }
+                        } else {
+                            $db->transRollback();
+                            $failedCount++;
+                            $errors = $this->userModel->errors();
+                            log_message('error', '[BATCH IMPORT] Reuse deleted user gagal (return false): ' . json_encode($errors) . ' | Data: ' . json_encode($userData));
                         }
                     } catch (\Exception $e) {
-                        // Ignore exception for this specific row and continue
+                        $db->transRollback();
+                        $failedCount++;
+                        log_message('error', '[BATCH IMPORT] Gagal insert user: ' . $e->getMessage() . ' | Data: ' . json_encode($userData));
                     }
                     continue;
                 }
@@ -497,17 +510,21 @@ class UserController extends BaseController
                     if (!empty($groupId)) {
                         $this->groupModel->addUserToGroup($userId, $groupId);
                     }
-                    $successCount++;
+                    $db->transComplete();
+                    if ($db->transStatus() !== false) {
+                        $successCount++;
+                    }
+                } else {
+                    $db->transRollback();
+                    $failedCount++;
+                    $errors = $this->userModel->errors();
+                    log_message('error', '[BATCH IMPORT] Insert user gagal (return false): ' . json_encode($errors) . ' | Data: ' . json_encode($userData));
                 }
             } catch (\Exception $e) {
-                // Ignore exception for this specific row and continue
+                $db->transRollback();
+                $failedCount++;
+                log_message('error', '[BATCH IMPORT] Gagal insert user: ' . $e->getMessage() . ' | Data: ' . json_encode($userData));
             }
-        }
-        
-        $db->transComplete();
-
-        if ($db->transStatus() === false) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal menyimpan batch ke database.']);
         }
 
         $remaining = (int) $redis->lLen($redisKey);
@@ -518,9 +535,11 @@ class UserController extends BaseController
 
         return $this->response->setJSON([
             'status' => 'success',
-            'remaining' => $remaining,
-            'success_count' => $successCount,
-            'duplicate_count' => $duplicateCount
+            'message' => 'Batch diproses.',
+            'success' => $successCount,
+            'failed' => $failedCount,
+            'duplicates' => $duplicateCount,
+            'remaining' => $remaining
         ]);
     }
     public function printCardsIndex()
