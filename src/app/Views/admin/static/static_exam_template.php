@@ -14,6 +14,9 @@ $settingModel = new \App\Models\SettingModel();
 $primaryColor = $settingModel->getValue('primary_color', '#0d6efd');
 $secondaryColor = $settingModel->getValue('secondary_color', '#f4f6f9');
 $textColor = $settingModel->getValue('text_color', '#212529');
+$appLogo = $settingModel->getValue('app_logo', '');
+$appFavicon = $settingModel->getValue('app_favicon', '');
+$faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? base_url($appLogo) : base_url('favicon.ico'));
 $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 ?>
 <!DOCTYPE html>
@@ -22,8 +25,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ujian: <?= esc($test->name) ?> - <?= esc($appName) ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link rel="icon" href="<?= $faviconUrl ?>">
+    <link rel="shortcut icon" href="<?= $faviconUrl ?>">
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('assets/css/outfit.css?v=1.1') ?>" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
@@ -78,9 +84,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         body {
             background-color: var(--color-background); 
             color: var(--color-text);
-            font-family: 'Inter', sans-serif;
+            font-family: 'Outfit', sans-serif;
             -webkit-font-smoothing: antialiased;
-            padding-bottom: 80px;
+            text-rendering: optimizeLegibility;
+            padding-bottom: 80px; /* Space for bottom nav */
         }
 
         /* Sidebar Layout */
@@ -477,6 +484,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     </style>
 </head>
 <body class="noselect">
+    <?php include __DIR__ . '/../../layouts/_frontend_config.php'; ?>
     <script>
         const EXAM_CONFIG = {
             testId: <?= $test->id ?>,
@@ -567,7 +575,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             </div>
             <div class="d-flex align-items-center gap-3">
                 <template x-if="durationMinutes > 0">
-                    <div class="exam-timer-chip" :class="{'danger': timeLeft <= 300000}">
+                    <div class="exam-timer-chip" :class="{'danger': timeLeft <= ((window.APP_CONFIG||{}).warning_threshold_ms || 300000)}">
                         <i class="bi bi-clock-history"></i> <span x-text="formatTime(timeLeft)">--:--:--</span>
                     </div>
                 </template>
@@ -892,7 +900,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
     }
 
-    const FETCH_TIMEOUT_MS = 15000;
+    const APP_CFG = window.APP_CONFIG || {};
+
+    const FETCH_TIMEOUT_MS = APP_CFG.fetch_timeout_ms || 15000;
     const FETCH_MAX_RETRIES = 3;
 
     function redirectReplace(url) {
@@ -1124,8 +1134,11 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 window.addEventListener('offline', () => this.isOffline = true);
                 window.addEventListener('online', () => this.isOffline = false);
                 
-                this.$watch('currentIndex', () => {
+                this.$watch('currentIndex', (val) => {
                     setTimeout(() => { if (typeof window.renderMath === 'function') window.renderMath(); }, 50);
+                    if (ATTEMPT_ID && val !== undefined && val !== null) {
+                        localStorage.setItem('current_question_index_' + ATTEMPT_ID, val);
+                    }
                 });
                 
                 this.questions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData || []));
@@ -1157,6 +1170,17 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     this.parseMatching();
                     this.restoreLocalBackup();
 
+                    // Restore saved question index from localStorage if any
+                    if (ATTEMPT_ID) {
+                        const savedIndex = localStorage.getItem('current_question_index_' + ATTEMPT_ID);
+                        if (savedIndex !== null) {
+                            const parsed = parseInt(savedIndex, 10);
+                            if (!isNaN(parsed) && parsed >= 0 && parsed < this.questions.length) {
+                                this.currentIndex = parsed;
+                            }
+                        }
+                    }
+
                     this.initWebSocket();
 
                     if (this.durationMinutes > 0) {
@@ -1176,7 +1200,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                                 });
                             } else {
                                 this.timeLeft = distance;
-                                if (distance <= 300000 && !this.warningShown) {
+                                if (distance <= (APP_CFG.warning_threshold_ms || 300000) && !this.warningShown) {
                                     this.warningShown = true;
                                     Swal.fire({
                                         title: 'Peringatan Waktu!',
@@ -1221,6 +1245,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 }
                 
                 let wsUrl = EXAM_CONFIG.wsUrl;
+                if (!wsUrl) wsUrl = APP_CFG.websocket_url || '';
                 if (!wsUrl || wsUrl.includes('localhost')) {
                     const urlObj = new URL(API);
                     const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1322,7 +1347,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     return;
                 }
                 
-                const delay = Math.min(1000 * Math.pow(2, this.wsErrorCount), 30000);
+                const delay = Math.min((APP_CFG.ws_reconnect_base_ms || 1000) * Math.pow(2, this.wsErrorCount), APP_CFG.ws_reconnect_cap_ms || 30000);
                 console.log(`Reconnecting WebSocket in ${delay}ms...`);
                 
                 setTimeout(() => {
@@ -1352,6 +1377,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             },
             goToQuestion(idx) { 
                 this.currentIndex = idx; 
+                if (ATTEMPT_ID) {
+                    localStorage.setItem('current_question_index_' + ATTEMPT_ID, idx);
+                }
                 this.checkExamMode();
             },
             closeMobileSidebar() {
@@ -1422,14 +1450,14 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 if (this.syncTimeout) clearTimeout(this.syncTimeout);
                 
                 const timeSinceLastSync = Date.now() - this.lastSyncTime;
-                const MAX_WAIT = 180000; // 3 menit
+                const MAX_WAIT = APP_CFG.auto_sync_max_wait_ms || 180000; // 3 menit
                 
                 if (timeSinceLastSync > MAX_WAIT) {
                     this.enqueueRequest('sync');
                 } else {
                     this.syncTimeout = setTimeout(() => {
                         this.enqueueRequest('sync');
-                    }, 60000); // 60 detik debounce
+                    }, APP_CFG.auto_sync_debounce_ms || 60000); // 60 detik debounce
                 }
             },
 
@@ -2071,5 +2099,6 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         });
     });
     </script>
+    <script src="<?= base_url('js/kiosk-integration.js') ?>"></script>
 </body>
 </html>
