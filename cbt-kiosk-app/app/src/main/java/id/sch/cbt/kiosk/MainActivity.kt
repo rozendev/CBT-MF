@@ -66,7 +66,19 @@ class MainActivity : AppCompatActivity() {
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
             if (::securityManager.isInitialized) {
                 securityManager.handleMultiWindow(isInMultiWindowMode, isInPictureInPictureMode)
-            } else {
+            } else if (isInMultiWindowMode && ::webView.isInitialized) {
+                CommsBridge.sendEventToJS(webView, "security_alert", "{\"type\": \"SPLIT_SCREEN_DETECTED\"}")
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode)
+        if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            if (::securityManager.isInitialized) {
+                securityManager.handleMultiWindow(isInMultiWindowMode = false, isInPictureInPictureMode = isInPictureInPictureMode)
+            } else if (isInPictureInPictureMode && ::webView.isInitialized) {
                 CommsBridge.sendEventToJS(webView, "security_alert", "{\"type\": \"SPLIT_SCREEN_DETECTED\"}")
             }
         }

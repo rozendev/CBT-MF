@@ -19,7 +19,9 @@ class KioskManager(private val activity: Activity) {
         Log.d("KioskManager", "Starting kiosk for exam: $examId")
         return try {
             securityManager?.enableSecurityFlags()
-            activity.startLockTask()
+            activity.runOnUiThread {
+                activity.startLockTask()
+            }
             isKioskActive = true
             true
         } catch (e: Exception) {
@@ -32,7 +34,9 @@ class KioskManager(private val activity: Activity) {
         Log.d("KioskManager", "Stopping kiosk")
         return try {
             securityManager?.disableSecurityFlags()
-            activity.stopLockTask()
+            activity.runOnUiThread {
+                activity.stopLockTask()
+            }
             isKioskActive = false
             true
         } catch (e: Exception) {

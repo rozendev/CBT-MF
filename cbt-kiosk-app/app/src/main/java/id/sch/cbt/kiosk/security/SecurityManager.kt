@@ -10,35 +10,62 @@ import id.sch.cbt.kiosk.bridge.CommsBridge
 class SecurityManager(private val activity: MainActivity) {
 
     private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+    @Volatile
+    private var isClearingClipboard = false
 
     fun enableSecurityFlags() {
-        // 1. Block Screenshot & Screen Recording
-        activity.window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
-        
-        // 2. Clear & Guard Clipboard
-        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
-        
-        clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
-            clipboard.setPrimaryClip(ClipData.newPlainText("", ""))
+        activity.runOnUiThread {
+            // 1. Block Screenshot & Screen Recording
+            activity.window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+            
+            // 2. Clear & Guard Clipboard
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboard?.let { cb ->
+                clipboardListener?.let { oldListener ->
+                    cb.removePrimaryClipChangedListener(oldListener)
+                }
+                
+                isClearingClipboard = true
+                try {
+                    cb.setPrimaryClip(ClipData.newPlainText("", ""))
+                } finally {
+                    isClearingClipboard = false
+                }
+                
+                val newListener = ClipboardManager.OnPrimaryClipChangedListener {
+                    if (isClearingClipboard) return@OnPrimaryClipChangedListener
+                    isClearingClipboard = true
+                    try {
+                        cb.setPrimaryClip(ClipData.newPlainText("", ""))
+                    } finally {
+                        isClearingClipboard = false
+                    }
+                }
+                clipboardListener = newListener
+                cb.addPrimaryClipChangedListener(newListener)
+            }
         }
-        clipboard.addPrimaryClipChangedListener(clipboardListener)
     }
 
     fun disableSecurityFlags() {
-        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboardListener?.let {
-            clipboard.removePrimaryClipChangedListener(it)
+        activity.runOnUiThread {
+            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboardListener?.let { listener ->
+                clipboard?.removePrimaryClipChangedListener(listener)
+                clipboardListener = null
+            }
         }
     }
 
     fun handleMultiWindow(isInMultiWindowMode: Boolean, isInPictureInPictureMode: Boolean = false) {
         if (isInMultiWindowMode || isInPictureInPictureMode) {
-            CommsBridge.sendEventToJS(activity.webView, "security_alert", "{\"type\": \"SPLIT_SCREEN_DETECTED\"}")
+            if (activity::webView.isInitialized) {
+                CommsBridge.sendEventToJS(activity.webView, "security_alert", "{\"type\": \"SPLIT_SCREEN_DETECTED\"}")
+            }
         }
     }
 }
