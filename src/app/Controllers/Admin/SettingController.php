@@ -14,6 +14,7 @@ class SettingController extends BaseController
         'allow_registration', 'auto_submit', 'mcma_partial_score',
         'show_score_after_exam', 'show_correct_answers', 'allow_review',
         'maintenance_mode', 'default_random_questions', 'default_random_answers',
+        'kiosk_siren_enabled', 'kiosk_siren_max_volume',
         'kiosk_enforce_home_launcher', 'kiosk_block_clipboard', 'kiosk_overlay_guard_enabled',
     ];
 
@@ -62,6 +63,9 @@ class SettingController extends BaseController
         'show_score_after_exam'     => ['group' => 'exam',     'type' => 'boolean'],
         'show_correct_answers'     => ['group' => 'exam',     'type' => 'boolean'],
         'allow_review'              => ['group' => 'exam',     'type' => 'boolean'],
+        'kiosk_exit_password'        => ['group' => 'kiosk',  'type' => 'string'],
+        'kiosk_siren_enabled'        => ['group' => 'kiosk',  'type' => 'boolean'],
+        'kiosk_siren_max_volume'     => ['group' => 'kiosk',  'type' => 'boolean'],
         'kiosk_enforce_home_launcher' => ['group' => 'kiosk',  'type' => 'boolean'],
         'kiosk_block_clipboard'      => ['group' => 'kiosk',  'type' => 'boolean'],
         'kiosk_overlay_guard_enabled' => ['group' => 'kiosk',  'type' => 'boolean'],
@@ -252,6 +256,9 @@ class SettingController extends BaseController
             ['key' => 'show_correct_answers', 'value' => '0',              'type' => 'boolean', 'group' => 'exam'],
             ['key' => 'allow_review',        'value' => '1',               'type' => 'boolean', 'group' => 'exam'],
             ['key' => 'maintenance_mode',    'value' => '0',               'type' => 'boolean', 'group' => 'security'],
+            ['key' => 'kiosk_exit_password',        'value' => '123456',  'type' => 'string',  'group' => 'kiosk'],
+            ['key' => 'kiosk_siren_enabled',        'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
+            ['key' => 'kiosk_siren_max_volume',     'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
             ['key' => 'kiosk_enforce_home_launcher', 'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
             ['key' => 'kiosk_block_clipboard',       'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
             ['key' => 'kiosk_overlay_guard_enabled', 'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
