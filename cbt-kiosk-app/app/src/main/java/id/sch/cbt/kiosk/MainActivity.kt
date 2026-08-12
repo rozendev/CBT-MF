@@ -66,6 +66,11 @@ class MainActivity : AppCompatActivity() {
 
             prefs = getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
 
+            // Load saved security config from preferences for offline resilience
+            currentExitPassword = prefs.getString("kiosk_exit_password", "123456") ?: "123456"
+            SirenAlarmManager.isSirenEnabled = prefs.getBoolean("kiosk_siren_enabled", true)
+            SirenAlarmManager.isSirenMaxVolume = prefs.getBoolean("kiosk_siren_max_volume", true)
+
             kioskManager = KioskManager(this)
             securityManager = SecurityManager(this)
             kioskManager.setSecurityManager(securityManager)
@@ -191,18 +196,9 @@ class MainActivity : AppCompatActivity() {
         if (serverUrl.isBlank()) return
         kotlin.concurrent.thread(start = true, isDaemon = true, name = "KioskConfigFetcher") {
             try {
-                val configUrl = try {
-                    val uri = java.net.URI(serverUrl)
-                    if (uri.scheme != null && uri.authority != null) {
-                        "${uri.scheme}://${uri.authority}/api/kiosk/config"
-                    } else {
-                        val cleanUrl = if (serverUrl.endsWith("/")) serverUrl.dropLast(1) else serverUrl
-                        "$cleanUrl/api/kiosk/config"
-                    }
-                } catch (e: Throwable) {
-                    val cleanUrl = if (serverUrl.endsWith("/")) serverUrl.dropLast(1) else serverUrl
-                    "$cleanUrl/api/kiosk/config"
-                }
+                val baseUrl = if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) "http://$serverUrl" else serverUrl
+                val cleanUrl = baseUrl.trimEnd('/')
+                val configUrl = "$cleanUrl/api/kiosk/config"
 
                 Log.d("MainActivity", "Fetching kiosk config from: $configUrl")
                 val url = java.net.URL(configUrl)
@@ -248,6 +244,18 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+
+            if (!SirenAlarmManager.isSirenEnabled) {
+                SirenAlarmManager.stopSiren()
+            }
+
+            // Persist config to SharedPreferences for offline resilience
+            prefs.edit()
+                .putString("kiosk_exit_password", currentExitPassword)
+                .putBoolean("kiosk_siren_enabled", SirenAlarmManager.isSirenEnabled)
+                .putBoolean("kiosk_siren_max_volume", SirenAlarmManager.isSirenMaxVolume)
+                .apply()
+
             Log.d("MainActivity", "Applied kiosk config: exitPassword=$currentExitPassword, sirenEnabled=${SirenAlarmManager.isSirenEnabled}, sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}")
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error parsing kiosk config JSON", e)
