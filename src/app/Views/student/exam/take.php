@@ -1446,6 +1446,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
                     $.post(FINISH_URL, { attempt_id: ATTEMPT_ID })
                      .done((res) => {
+                         if (window.CommsBridge) {
+                             window.CommsBridge.stopKiosk();
+                         }
                          if (res.redirect) {
                              window.location.href = res.redirect;
                          } else {

@@ -1800,6 +1800,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 })
                 .done((res) => {
                     updateCsrf(res);
+                    if (window.CommsBridge) {
+                        window.CommsBridge.stopKiosk();
+                    }
                     if (res.redirect) {
                         window.location.href = res.redirect;
                     } else {

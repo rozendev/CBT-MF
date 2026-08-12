@@ -3,7 +3,6 @@ package id.sch.cbt.kiosk.bridge
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import id.sch.cbt.kiosk.MainActivity
-
 import id.sch.cbt.kiosk.security.RootDetector
 
 class CommsBridge(private val activity: MainActivity) {
@@ -22,6 +21,14 @@ class CommsBridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun stopKiosk(): Boolean {
         return activity.kioskManager.stopKiosk()
+    }
+
+    @JavascriptInterface
+    fun closeApp() {
+        activity.runOnUiThread {
+            activity.kioskManager.stopKiosk()
+            activity.finishAffinity()
+        }
     }
 
     @JavascriptInterface
