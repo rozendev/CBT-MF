@@ -47,6 +47,7 @@ class KioskManager(private val activity: Activity) {
             securityManager?.disableSecurityFlags()
             activity.runOnUiThread {
                 activity.stopLockTask()
+                (activity as? id.sch.cbt.kiosk.MainActivity)?.showSetupScreen()
             }
             isKioskActive = false
             

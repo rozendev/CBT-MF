@@ -1,10 +1,119 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#F8F9FA">
 
+    <!-- SETUP & URL INPUT CONTAINER -->
+    <ScrollView
+        android:id="@+id/setupLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <!-- LOGO / HEADER CARD -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#FFFFFF"
+                android:elevation="4dp"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="28dp">
+
+                <ImageView
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:layout_marginBottom="16dp"
+                    android:contentDescription="Logo Kiosk"
+                    android:src="@drawable/ic_launcher_foreground" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CBT-MF Kiosk Client"
+                    android:textColor="#212529"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:gravity="center"
+                    android:text="Masukkan URL Server CBT Sekolah untuk memulai ujian"
+                    android:textColor="#6C757D"
+                    android:textSize="14sp" />
+
+                <!-- URL INPUT FIELD -->
+                <EditText
+                    android:id="@+id/etServerUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="24dp"
+                    android:background="#F1F3F5"
+                    android:hint="http://192.168.1.100 atau http://cbt.sekolah.sch.id"
+                    android:inputType="textUri"
+                    android:maxLines="1"
+                    android:paddingHorizontal="16dp"
+                    android:textColor="#212529"
+                    android:textSize="15sp" />
+
+                <!-- START BUTTON -->
+                <Button
+                    android:id="@+id/btnStartExam"
+                    android:layout_width="match_parent"
+                    android:layout_height="54dp"
+                    android:layout_marginTop="16dp"
+                    android:backgroundTint="#0D6EFD"
+                    android:text="🚀 Mulai Ujian &amp; Kunci Layar"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <!-- KIOSK INFO BADGE -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:background="#E7F5FF"
+                    android:orientation="vertical"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔒 Kiosk Lock &amp; Anti-Cheat Status:"
+                        android:textColor="#1971C2"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="• Screen Pinning &amp; Anti-Screenshot aktif\n• Blokir Copy-Paste &amp; Split-Screen aktif\n• Tombol Home &amp; Recent Apps akan terkunci"
+                        android:textColor="#343A40"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- WEBVIEW CONTAINER (HIDDEN UNTIL EXAM STARTS) -->
     <WebView
         android:id="@+id/webView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
 </FrameLayout>
