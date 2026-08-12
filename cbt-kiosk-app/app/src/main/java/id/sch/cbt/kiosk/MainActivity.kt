@@ -7,6 +7,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import id.sch.cbt.kiosk.bridge.CommsBridge
 import id.sch.cbt.kiosk.kiosk.KioskManager
 
 class MainActivity : AppCompatActivity() {
@@ -32,6 +33,9 @@ class MainActivity : AppCompatActivity() {
         val settings: WebSettings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
+
+        // Add Javascript Interface
+        webView.addJavascriptInterface(CommsBridge(this), "CommsBridge")
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
