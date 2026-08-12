@@ -84,6 +84,10 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->post('settings/clear-cache', 'Admin\SettingController::clearCache');
         $routes->post('settings/reset', 'Admin\SettingController::resetSettings');
 
+        // Kiosk App Management (Independent Page)
+        $routes->get('kiosk', 'Admin\KioskSettingsController::index');
+        $routes->post('kiosk/update', 'Admin\KioskSettingsController::update');
+
         // Analytics
         $routes->get('analytics', 'Admin\AnalyticsController::index');
         $routes->get('analytics/data', 'Admin\AnalyticsController::getData');

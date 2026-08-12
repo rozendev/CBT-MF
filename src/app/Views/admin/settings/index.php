@@ -540,11 +540,6 @@
                         <span class="ri-text"><b>Sistem</b><small>Status server & pemeliharaan</small></span>
                         <span class="ri-dot"></span>
                     </button>
-                    <button type="button" class="rail-item" data-bs-target="#tab-kiosk" aria-controls="tab-kiosk">
-                        <span class="ri-icon"><i class="bi bi-phone"></i></span>
-                        <span class="ri-text"><b>Aplikasi Kiosk</b><small>Android Kiosk Wrapper</small></span>
-                        <span class="ri-dot"></span>
-                    </button>
                 </nav>
                 <div class="rail-foot">
                     <span class="dot"></span>
@@ -1232,126 +1227,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- ─────────── TAB: KIOSK APP ─────────── -->
-            <div class="tab-pane fade" id="tab-kiosk">
-                <div class="pane-head">
-                    <div class="pane-kicker">Android App</div>
-                    <h4 class="pane-title">Pengaturan Aplikasi Kiosk (Android)</h4>
-                    <p class="pane-desc">Konfigurasi perilaku penguncian &amp; keamanan untuk aplikasi pengunci layar Android siswa (BYOD).</p>
-                </div>
-
-                <div class="s-panel">
-                    <div class="s-panel-head">
-                        <div class="ph-icon"><i class="bi bi-shield-check"></i></div>
-                        <div>
-                            <h6>Fitur Penguncian &amp; Anti-Cheat Native</h6>
-                            <p>Konfigurasi parameter enkapsulasi dan proteksi keamanan aplikasi Android Kiosk.</p>
-                        </div>
-                    </div>
-
-                    <div class="s-row">
-                        <div class="s-main">
-                            <label class="s-label" for="kioskExitPassword">Password Keluar Kiosk App</label>
-                            <p class="s-desc">Password sandi rahasia untuk proktor/pengawas saat menghentikan mode kiosk pada aplikasi Android siswa.</p>
-                        </div>
-                        <div class="s-ctrl">
-                            <input type="text" class="form-control" id="kioskExitPassword" name="settings[kiosk_exit_password]" value="<?= esc(settingVal($groupedSettings, 'kiosk', 'kiosk_exit_password', '123456')) ?>" maxlength="32">
-                        </div>
-                    </div>
-
-                    <div class="s-row">
-                        <div class="s-main">
-                            <label class="s-label" for="kioskSirenEnabled">Aktifkan Sirine Alarm Darurat</label>
-                            <p class="s-desc">Membunyikan suara sirine keras pada perangkat siswa jika terdeteksi pelanggaran serius atau keluar aplikasi.</p>
-                        </div>
-                        <div class="s-ctrl">
-                            <label class="toggle">
-                                <input type="checkbox" id="kioskSirenEnabled" name="settings[kiosk_siren_enabled]" value="1" <?= settingChecked($groupedSettings, 'kiosk', 'kiosk_siren_enabled') ?>>
-                                <span class="track"></span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="s-row">
-                        <div class="s-main">
-                            <label class="s-label" for="kioskSirenMaxVolume">Paksa Volume Maksimum (100%) Saat Sirine</label>
-                            <p class="s-desc">Mengunci dan menaikkan volume media HP siswa ke 100% secara paksa saat alarm sirine berbunyi.</p>
-                        </div>
-                        <div class="s-ctrl">
-                            <label class="toggle">
-                                <input type="checkbox" id="kioskSirenMaxVolume" name="settings[kiosk_siren_max_volume]" value="1" <?= settingChecked($groupedSettings, 'kiosk', 'kiosk_siren_max_volume') ?>>
-                                <span class="track"></span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="s-row">
-                        <div class="s-main">
-                            <label class="s-label" for="kioskEnforceHome">Paksa Home Launcher (Layer 2)</label>
-                            <p class="s-desc">Mengarahkan siswa kembali ke app ujian jika menekan tombol Home atau mencoba berpindah aplikasi.</p>
-                        </div>
-                        <div class="s-ctrl">
-                            <label class="toggle">
-                                <input type="checkbox" id="kioskEnforceHome" name="settings[kiosk_enforce_home_launcher]" value="1" <?= settingChecked($groupedSettings, 'kiosk', 'kiosk_enforce_home_launcher') ?>>
-                                <span class="track"></span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="s-row">
-                        <div class="s-main">
-                            <label class="s-label" for="kioskBlockClipboard">Blokir Clipboard (Copy-Paste)</label>
-                            <p class="s-desc">Membersihkan papan klip otomatis saat ujian dimulai dan mengunci penempelan teks.</p>
-                        </div>
-                        <div class="s-ctrl">
-                            <label class="toggle">
-                                <input type="checkbox" id="kioskBlockClipboard" name="settings[kiosk_block_clipboard]" value="1" <?= settingChecked($groupedSettings, 'kiosk', 'kiosk_block_clipboard') ?>>
-                                <span class="track"></span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="s-row">
-                        <div class="s-main">
-                            <label class="s-label" for="kioskOverlayGuard">Aktifkan Overlay Guard (Layer 4)</label>
-                            <p class="s-desc">Menampilkan overlay full-screen saat aplikasi terdeteksi di-background melebihi batas waktu.</p>
-                        </div>
-                        <div class="s-ctrl">
-                            <label class="toggle">
-                                <input type="checkbox" id="kioskOverlayGuard" name="settings[kiosk_overlay_guard_enabled]" value="1" <?= settingChecked($groupedSettings, 'kiosk', 'kiosk_overlay_guard_enabled') ?>>
-                                <span class="track"></span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="s-row">
-                        <div class="s-main">
-                            <label class="s-label" for="kioskRootStrictness">Tingkat Penanganan Root/Emulator</label>
-                            <p class="s-desc">Tindakan sistem jika aplikasi mendeteksi perangkat ter-root atau emulator.</p>
-                        </div>
-                        <div class="s-ctrl">
-                            <select class="form-select form-select-sm w-auto" id="kioskRootStrictness" name="settings[kiosk_root_strictness]">
-                                <option value="warning" <?= settingVal($groupedSettings, 'kiosk', 'kiosk_root_strictness', 'warning') === 'warning' ? 'selected' : '' ?>>Peringatan &amp; Log (Rekomendasi BYOD)</option>
-                                <option value="strict_block" <?= settingVal($groupedSettings, 'kiosk', 'kiosk_root_strictness') === 'strict_block' ? 'selected' : '' ?>>Blokir Total Akses Ujian</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="s-row">
-                        <div class="s-main">
-                            <label class="s-label" for="kioskMinVersion">Versi Minimum Aplikasi</label>
-                            <p class="s-desc">Pesan peringatan jika versi app Android siswa di bawah nilai ini.</p>
-                        </div>
-                        <div class="s-ctrl">
-                            <input type="text" class="form-control text-center" id="kioskMinVersion" style="max-width: 120px;" name="settings[kiosk_min_app_version]" value="<?= esc(settingVal($groupedSettings, 'kiosk', 'kiosk_min_app_version', '1.0.0')) ?>">
-                        </div>
-                    </div>
-                </div>
-            </div>
-
         </div>
     </div>
 
