@@ -30,6 +30,12 @@ $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     $routes->get('exam/stream/(:num)', 'Api\ExamApiController::stream/$1');
 });
 
+// ── Kiosk & Intruder Routes (public) ──────────────────────────
+$routes->group('api', static function ($routes) {
+    $routes->get('kiosk/config', 'Api\KioskController::config');
+    $routes->post('intruder/report', 'Api\IntruderReportController::report');
+});
+
 // ── Admin Routes (role-protected) ───────────────────
 $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($routes) {
     $routes->get('/', 'Admin\DashboardController::index');
@@ -81,6 +87,11 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         // Analytics
         $routes->get('analytics', 'Admin\AnalyticsController::index');
         $routes->get('analytics/data', 'Admin\AnalyticsController::getData');
+
+        // Logging / Aktivitas
+        $routes->get('logging', 'Admin\LoggingController::index');
+        $routes->post('logging/export', 'Admin\LoggingController::export');
+        $routes->get('logging/intruders', 'Admin\LoggingController::intruders');
     });
 
     // Modules
@@ -101,6 +112,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
 
     // Questions (Bank Soal)
     $routes->get('questions', 'Admin\QuestionController::index');
+    $routes->get('questions/topics', 'Admin\QuestionController::topicsBySubject');
     $routes->get('questions/create', 'Admin\QuestionController::create');
     $routes->post('questions/store', 'Admin\QuestionController::store');
     $routes->get('questions/edit/(:num)', 'Admin\QuestionController::edit/$1');
