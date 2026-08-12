@@ -87,6 +87,7 @@ class MainActivity : AppCompatActivity() {
             val savedUrl = prefs.getString("server_url", "")
             if (!savedUrl.isNullOrBlank()) {
                 etServerUrl.setText(savedUrl)
+                fetchServerKioskConfig(savedUrl)
             }
 
             btnStartExam.setOnClickListener {
@@ -166,6 +167,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun startExamAndLockKiosk(url: String) {
         try {
+            fetchServerKioskConfig(url)
+
             setupLayout.visibility = View.GONE
             examContainer.visibility = View.VISIBLE
 
@@ -181,6 +184,73 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error starting exam and locking kiosk", e)
+        }
+    }
+
+    fun fetchServerKioskConfig(serverUrl: String) {
+        if (serverUrl.isBlank()) return
+        kotlin.concurrent.thread(start = true, isDaemon = true, name = "KioskConfigFetcher") {
+            try {
+                val configUrl = try {
+                    val uri = java.net.URI(serverUrl)
+                    if (uri.scheme != null && uri.authority != null) {
+                        "${uri.scheme}://${uri.authority}/api/kiosk/config"
+                    } else {
+                        val cleanUrl = if (serverUrl.endsWith("/")) serverUrl.dropLast(1) else serverUrl
+                        "$cleanUrl/api/kiosk/config"
+                    }
+                } catch (e: Throwable) {
+                    val cleanUrl = if (serverUrl.endsWith("/")) serverUrl.dropLast(1) else serverUrl
+                    "$cleanUrl/api/kiosk/config"
+                }
+
+                Log.d("MainActivity", "Fetching kiosk config from: $configUrl")
+                val url = java.net.URL(configUrl)
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                connection.setRequestProperty("Accept", "application/json")
+
+                val responseCode = connection.responseCode
+                if (responseCode == 200) {
+                    val jsonString = connection.inputStream.bufferedReader().use { it.readText() }
+                    runOnUiThread {
+                        applyKioskConfig(jsonString)
+                    }
+                } else {
+                    Log.w("MainActivity", "Failed to fetch kiosk config, response code: $responseCode")
+                }
+                connection.disconnect()
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "Error fetching server kiosk config from $serverUrl", e)
+            }
+        }
+    }
+
+    fun applyKioskConfig(configJson: String) {
+        try {
+            val json = org.json.JSONObject(configJson)
+            if (json.has("exit_password")) {
+                val pwd = json.optString("exit_password", "")
+                if (pwd.isNotBlank()) {
+                    currentExitPassword = pwd
+                }
+            }
+            if (json.has("features")) {
+                val features = json.optJSONObject("features")
+                features?.let {
+                    if (it.has("siren_enabled")) {
+                        SirenAlarmManager.isSirenEnabled = it.optBoolean("siren_enabled", true)
+                    }
+                    if (it.has("siren_max_volume")) {
+                        SirenAlarmManager.isSirenMaxVolume = it.optBoolean("siren_max_volume", true)
+                    }
+                }
+            }
+            Log.d("MainActivity", "Applied kiosk config: exitPassword=$currentExitPassword, sirenEnabled=${SirenAlarmManager.isSirenEnabled}, sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}")
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error parsing kiosk config JSON", e)
         }
     }
 

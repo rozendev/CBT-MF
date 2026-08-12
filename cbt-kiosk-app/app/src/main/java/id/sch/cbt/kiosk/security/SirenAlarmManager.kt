@@ -14,25 +14,38 @@ object SirenAlarmManager {
     var isPlaying = false
         private set
 
+    @Volatile
+    var isSirenEnabled: Boolean = true
+
+    @Volatile
+    var isSirenMaxVolume: Boolean = true
+
+    var enforceMaxVolume: Boolean
+        get() = isSirenMaxVolume
+        set(value) { isSirenMaxVolume = value }
+
     private var audioTrack: AudioTrack? = null
     private var alarmThread: Thread? = null
 
-    fun startSiren(context: Context) {
+    fun startSiren(context: Context, enforceMaxVolume: Boolean = isSirenMaxVolume) {
+        if (!isSirenEnabled) return
         if (isPlaying) return
         isPlaying = true
 
-        try {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            audioManager?.let { am ->
-                // Maximizing all stream volumes for loud siren
-                val maxAlarmVol = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-                am.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarmVol, 0)
+        if (enforceMaxVolume) {
+            try {
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                audioManager?.let { am ->
+                    // Maximizing all stream volumes for loud siren
+                    val maxAlarmVol = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                    am.setStreamVolume(AudioManager.STREAM_ALARM, maxAlarmVol, 0)
 
-                val maxMusicVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                am.setStreamVolume(AudioManager.STREAM_MUSIC, maxMusicVol, 0)
+                    val maxMusicVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, maxMusicVol, 0)
+                }
+            } catch (e: Throwable) {
+                Log.e("SirenAlarmManager", "Error setting max volume", e)
             }
-        } catch (e: Throwable) {
-            Log.e("SirenAlarmManager", "Error setting max volume", e)
         }
 
         alarmThread = thread(start = true, isDaemon = true, name = "SirenAudioThread") {

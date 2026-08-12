@@ -31,6 +31,15 @@ class CommsBridge(private val activity: MainActivity) {
     }
 
     @JavascriptInterface
+    fun updateKioskConfig(configJson: String) {
+        if (configJson.isNotBlank()) {
+            activity.runOnUiThread {
+                activity.applyKioskConfig(configJson)
+            }
+        }
+    }
+
+    @JavascriptInterface
     fun closeApp() {
         activity.runOnUiThread {
             activity.kioskManager.stopKiosk()
