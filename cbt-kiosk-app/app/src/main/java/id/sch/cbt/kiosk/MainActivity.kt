@@ -12,6 +12,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
+import android.util.Log
 import android.view.View
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -53,58 +54,71 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-
-        prefs = getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
-
-        kioskManager = KioskManager(this)
-        securityManager = SecurityManager(this)
-        kioskManager.setSecurityManager(securityManager)
-
-        setupLayout = findViewById(R.id.setupLayout)
-        examContainer = findViewById(R.id.examContainer)
-        etServerUrl = findViewById(R.id.etServerUrl)
-        btnStartExam = findViewById(R.id.btnStartExam)
-        webView = findViewById(R.id.webView)
-        tvBatteryStatus = findViewById(R.id.tvBatteryStatus)
-        tvNetworkStatus = findViewById(R.id.tvNetworkStatus)
-        btnReloadPage = findViewById(R.id.btnReloadPage)
-        btnExitKiosk = findViewById(R.id.btnExitKiosk)
-
-        setupWebView()
-        setupToolbarListeners()
-
-        // Load saved URL from preferences
-        val savedUrl = prefs.getString("server_url", "")
-        if (!savedUrl.isNullOrBlank()) {
-            etServerUrl.setText(savedUrl)
+        // Global Uncaught Exception Handler to prevent silent app crashes
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e("CBTKiosk", "Uncaught exception in thread ${thread.name}", throwable)
         }
 
-        btnStartExam.setOnClickListener {
-            val inputUrl = etServerUrl.text.toString().trim()
-            if (inputUrl.isEmpty()) {
-                Toast.makeText(this, "Silakan masukkan URL Server CBT!", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+        super.onCreate(savedInstanceState)
+        try {
+            setContentView(R.layout.activity_main)
+
+            prefs = getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
+
+            kioskManager = KioskManager(this)
+            securityManager = SecurityManager(this)
+            kioskManager.setSecurityManager(securityManager)
+
+            setupLayout = findViewById(R.id.setupLayout)
+            examContainer = findViewById(R.id.examContainer)
+            etServerUrl = findViewById(R.id.etServerUrl)
+            btnStartExam = findViewById(R.id.btnStartExam)
+            webView = findViewById(R.id.webView)
+            tvBatteryStatus = findViewById(R.id.tvBatteryStatus)
+            tvNetworkStatus = findViewById(R.id.tvNetworkStatus)
+            btnReloadPage = findViewById(R.id.btnReloadPage)
+            btnExitKiosk = findViewById(R.id.btnExitKiosk)
+
+            setupWebView()
+            setupToolbarListeners()
+
+            // Load saved URL from preferences
+            val savedUrl = prefs.getString("server_url", "")
+            if (!savedUrl.isNullOrBlank()) {
+                etServerUrl.setText(savedUrl)
             }
 
-            var finalUrl = inputUrl
-            if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
-                finalUrl = "http://$finalUrl"
+            btnStartExam.setOnClickListener {
+                val inputUrl = etServerUrl.text.toString().trim()
+                if (inputUrl.isEmpty()) {
+                    Toast.makeText(this, "Silakan masukkan URL Server CBT!", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+
+                var finalUrl = inputUrl
+                if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+                    finalUrl = "http://$finalUrl"
+                }
+
+                // Save URL to preferences
+                prefs.edit().putString("server_url", finalUrl).apply()
+
+                startExamAndLockKiosk(finalUrl)
             }
-
-            // Save URL to preferences
-            prefs.edit().putString("server_url", finalUrl).apply()
-
-            startExamAndLockKiosk(finalUrl)
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error in onCreate", e)
         }
     }
 
     private fun setupToolbarListeners() {
         btnReloadPage.setOnClickListener {
             if (::webView.isInitialized) {
-                webView.reload()
-                Toast.makeText(this, "Halaman dimuat ulang", Toast.LENGTH_SHORT).show()
+                try {
+                    webView.reload()
+                    Toast.makeText(this, "Halaman dimuat ulang", Toast.LENGTH_SHORT).show()
+                } catch (e: Throwable) {
+                    Log.e("MainActivity", "Error reloading webView", e)
+                }
             }
         }
 
@@ -114,116 +128,154 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showExitPasswordDialog() {
-        val builder = AlertDialog.Builder(this)
-        builder.setTitle("🚪 Password Keluar Kiosk")
-        builder.setMessage("Masukkan password pengawas untuk melepas penguncian aplikasi:")
+        try {
+            val builder = AlertDialog.Builder(this)
+            builder.setTitle("🚪 Password Keluar Kiosk")
+            builder.setMessage("Masukkan password pengawas untuk melepas penguncian aplikasi:")
 
-        val input = EditText(this)
-        input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        input.hint = "Password Pengawas"
-        builder.setView(input)
+            val input = EditText(this)
+            input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            input.hint = "Password Pengawas"
+            builder.setView(input)
 
-        builder.setPositiveButton("Buka Kunci") { dialog, _ ->
-            val enteredPassword = input.text.toString().trim()
-            if (enteredPassword == currentExitPassword) {
-                kioskManager.stopKiosk()
-                Toast.makeText(this, "✅ Kiosk Mode Dibuka!", Toast.LENGTH_SHORT).show()
-                showSetupScreen()
-            } else {
-                Toast.makeText(this, "❌ Password Keluar Salah!", Toast.LENGTH_LONG).show()
+            builder.setPositiveButton("Buka Kunci") { dialog, _ ->
+                val enteredPassword = input.text.toString().trim()
+                if (enteredPassword == currentExitPassword) {
+                    kioskManager.stopKiosk()
+                    Toast.makeText(this, "✅ Kiosk Mode Dibuka!", Toast.LENGTH_SHORT).show()
+                    showSetupScreen()
+                } else {
+                    Toast.makeText(this, "❌ Password Keluar Salah!", Toast.LENGTH_LONG).show()
+                }
+                dialog.dismiss()
             }
-            dialog.dismiss()
-        }
 
-        builder.setNegativeButton("Batal") { dialog, _ ->
-            dialog.cancel()
-        }
+            builder.setNegativeButton("Batal") { dialog, _ ->
+                dialog.cancel()
+            }
 
-        builder.show()
+            builder.show()
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error showing exit dialog", e)
+        }
     }
 
     private fun startExamAndLockKiosk(url: String) {
-        setupLayout.visibility = View.GONE
-        examContainer.visibility = View.VISIBLE
+        try {
+            setupLayout.visibility = View.GONE
+            examContainer.visibility = View.VISIBLE
 
-        webView.loadUrl(url)
+            webView.loadUrl(url)
 
-        val started = kioskManager.startKiosk("EXAM_SESSION", "TOKEN")
-        if (started) {
-            Toast.makeText(this, "🔒 Kiosk Mode Aktif. Perangkat terkunci!", Toast.LENGTH_LONG).show()
-            CommsBridge.sendEventToJS(webView, "kiosk_started", "{\"examId\": \"EXAM_SESSION\", \"status\": \"active\"}")
-        } else {
-            Toast.makeText(this, "⚠️ Gagal mengunci Kiosk Mode. Periksa izin Screen Pinning.", Toast.LENGTH_LONG).show()
-            CommsBridge.sendEventToJS(webView, "kiosk_failed", "{\"error\": \"LOCK_TASK_FAILED\"}")
+            val started = kioskManager.startKiosk("EXAM_SESSION", "TOKEN")
+            if (started) {
+                Toast.makeText(this, "🔒 Kiosk Mode Aktif. Perangkat terkunci!", Toast.LENGTH_LONG).show()
+                CommsBridge.sendEventToJS(webView, "kiosk_started", "{\"examId\": \"EXAM_SESSION\", \"status\": \"active\"}")
+            } else {
+                Toast.makeText(this, "⚠️ Gagal mengunci Kiosk Mode. Periksa izin Screen Pinning.", Toast.LENGTH_LONG).show()
+                CommsBridge.sendEventToJS(webView, "kiosk_failed", "{\"error\": \"LOCK_TASK_FAILED\"}")
+            }
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error starting exam and locking kiosk", e)
         }
     }
 
     public fun showSetupScreen() {
         runOnUiThread {
-            setupLayout.visibility = View.VISIBLE
-            examContainer.visibility = View.GONE
-            webView.loadUrl("about:blank")
+            try {
+                setupLayout.visibility = View.VISIBLE
+                examContainer.visibility = View.GONE
+                webView.loadUrl("about:blank")
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "Error showing setup screen", e)
+            }
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        val settings: WebSettings = webView.settings
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
+        try {
+            val settings: WebSettings = webView.settings
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
 
-        webView.addJavascriptInterface(CommsBridge(this), "CommsBridge")
+            webView.addJavascriptInterface(CommsBridge(this), "CommsBridge")
 
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                return false
+            webView.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    return false
+                }
             }
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error setting up webView", e)
         }
     }
 
     private fun registerStatusReceivers() {
-        // Battery Receiver
-        batteryReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                intent?.let {
-                    val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                    val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                    val pct = if (level != -1 && scale != -1) (level * 100 / scale.toFloat()).toInt() else 0
-                    val isCharging = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1) == BatteryManager.BATTERY_STATUS_CHARGING
-                    tvBatteryStatus.text = if (isCharging) "⚡ $pct%" else "🔋 $pct%"
+        try {
+            batteryReceiver = object : BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: Intent?) {
+                    intent?.let {
+                        val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                        val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                        val pct = if (level != -1 && scale != -1) (level * 100 / scale.toFloat()).toInt() else 0
+                        val isCharging = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1) == BatteryManager.BATTERY_STATUS_CHARGING
+                        tvBatteryStatus.text = if (isCharging) "⚡ $pct%" else "🔋 $pct%"
+                    }
                 }
             }
-        }
-        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
 
-        // Update Network Status
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            }
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error registering battery receiver", e)
+        }
+
         updateNetworkStatus()
     }
 
     private fun updateNetworkStatus() {
-        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        if (cm != null) {
-            val activeNetwork = cm.activeNetwork
-            val caps = cm.getNetworkCapabilities(activeNetwork)
-            if (caps != null) {
-                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                    tvNetworkStatus.text = "📶 WiFi"
-                } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-                    tvNetworkStatus.text = "📶 Seluler"
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            if (cm != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val activeNetwork = cm.activeNetwork
+                    val caps = cm.getNetworkCapabilities(activeNetwork)
+                    if (caps != null) {
+                        if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                            tvNetworkStatus.text = "📶 WiFi"
+                        } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+                            tvNetworkStatus.text = "📶 Seluler"
+                        } else {
+                            tvNetworkStatus.text = "🌐 Terhubung"
+                        }
+                    } else {
+                        tvNetworkStatus.text = "⚠️ Offline"
+                    }
                 } else {
-                    tvNetworkStatus.text = "🌐 Terhubung"
+                    @Suppress("DEPRECATION")
+                    val networkInfo = cm.activeNetworkInfo
+                    if (networkInfo != null && networkInfo.isConnected) {
+                        tvNetworkStatus.text = "📶 ${networkInfo.typeName}"
+                    } else {
+                        tvNetworkStatus.text = "⚠️ Offline"
+                    }
                 }
             } else {
-                tvNetworkStatus.text = "⚠️ Offline"
+                tvNetworkStatus.text = "📶 --"
             }
-        } else {
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error updating network status", e)
             tvNetworkStatus.text = "📶 --"
         }
     }
 
     private fun unregisterStatusReceivers() {
         batteryReceiver?.let {
-            try { unregisterReceiver(it) } catch (e: Exception) {}
+            try { unregisterReceiver(it) } catch (e: Throwable) {}
         }
     }
 
