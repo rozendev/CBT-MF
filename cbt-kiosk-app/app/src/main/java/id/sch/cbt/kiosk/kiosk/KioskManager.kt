@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import id.sch.cbt.kiosk.security.SecurityManager
+import id.sch.cbt.kiosk.security.SirenAlarmManager
 
 class KioskManager(private val activity: Activity) {
     
@@ -52,6 +53,9 @@ class KioskManager(private val activity: Activity) {
     fun stopKiosk(): Boolean {
         Log.d("KioskManager", "Stopping kiosk")
         return try {
+            // Stop Siren Alarm if active
+            SirenAlarmManager.stopSiren()
+
             securityManager?.disableSecurityFlags()
             activity.runOnUiThread {
                 try {

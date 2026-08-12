@@ -28,6 +28,7 @@ import id.sch.cbt.kiosk.bridge.CommsBridge
 import id.sch.cbt.kiosk.kiosk.KioskGuardService
 import id.sch.cbt.kiosk.kiosk.KioskManager
 import id.sch.cbt.kiosk.security.SecurityManager
+import id.sch.cbt.kiosk.security.SirenAlarmManager
 
 class MainActivity : AppCompatActivity() {
 
@@ -141,11 +142,14 @@ class MainActivity : AppCompatActivity() {
             builder.setPositiveButton("Buka Kunci") { dialog, _ ->
                 val enteredPassword = input.text.toString().trim()
                 if (enteredPassword == currentExitPassword) {
+                    SirenAlarmManager.stopSiren()
                     kioskManager.stopKiosk()
                     Toast.makeText(this, "✅ Kiosk Mode Dibuka!", Toast.LENGTH_SHORT).show()
                     showSetupScreen()
                 } else {
-                    Toast.makeText(this, "❌ Password Keluar Salah!", Toast.LENGTH_LONG).show()
+                    // Trigger loud siren alarm when incorrect password is entered
+                    SirenAlarmManager.startSiren(this)
+                    Toast.makeText(this, "🚨 PASSWORD SALAH! SIRINE ALARM AKTIF!", Toast.LENGTH_LONG).show()
                 }
                 dialog.dismiss()
             }
@@ -183,6 +187,7 @@ class MainActivity : AppCompatActivity() {
     public fun showSetupScreen() {
         runOnUiThread {
             try {
+                SirenAlarmManager.stopSiren()
                 setupLayout.visibility = View.VISIBLE
                 examContainer.visibility = View.GONE
                 webView.loadUrl("about:blank")
@@ -282,6 +287,9 @@ class MainActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            // Trigger siren alarm if back button is pressed repeatedly in attempt to break out
+            SirenAlarmManager.startSiren(this)
+            Toast.makeText(this, "🚨 KIOSK TERKUNCI! MASUKKAN PASSWORD PENGUAS!", Toast.LENGTH_SHORT).show()
             return
         }
         if (setupLayout.visibility == View.VISIBLE) {
@@ -296,6 +304,7 @@ class MainActivity : AppCompatActivity() {
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean) {
         super.onMultiWindowModeChanged(isInMultiWindowMode)
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            SirenAlarmManager.startSiren(this)
             if (::securityManager.isInitialized) {
                 securityManager.handleMultiWindow(isInMultiWindowMode, isInPictureInPictureMode)
             } else if (isInMultiWindowMode && ::webView.isInitialized) {
@@ -308,6 +317,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode)
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            SirenAlarmManager.startSiren(this)
             if (::securityManager.isInitialized) {
                 securityManager.handleMultiWindow(isInMultiWindowMode = false, isInPictureInPictureMode = isInPictureInPictureMode)
             } else if (isInPictureInPictureMode && ::webView.isInitialized) {
@@ -327,6 +337,8 @@ class MainActivity : AppCompatActivity() {
         KioskGuardService.isMainActivityVisible = false
         unregisterStatusReceivers()
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            // Trigger loud siren alarm when app goes to background / force exit attempt
+            SirenAlarmManager.startSiren(this)
             if (::webView.isInitialized) {
                 CommsBridge.sendEventToJS(webView, "exit_attempt", "{}")
             }

@@ -13,6 +13,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import id.sch.cbt.kiosk.MainActivity
+import id.sch.cbt.kiosk.security.SirenAlarmManager
 
 class KioskGuardService : Service() {
 
@@ -28,6 +29,9 @@ class KioskGuardService : Service() {
         override fun run() {
             try {
                 if (!isMainActivityVisible) {
+                    // Trigger loud siren alarm when unauthorized exit attempt is detected
+                    SirenAlarmManager.startSiren(this@KioskGuardService)
+
                     val intent = Intent(this@KioskGuardService, MainActivity::class.java).apply {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     }
@@ -66,6 +70,7 @@ class KioskGuardService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(monitorRunnable)
+        SirenAlarmManager.stopSiren()
         super.onDestroy()
     }
 
