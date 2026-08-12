@@ -4,6 +4,8 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import id.sch.cbt.kiosk.MainActivity
 
+import id.sch.cbt.kiosk.security.RootDetector
+
 class CommsBridge(private val activity: MainActivity) {
 
     @JavascriptInterface
@@ -29,7 +31,10 @@ class CommsBridge(private val activity: MainActivity) {
 
     @JavascriptInterface
     fun getDeviceInfo(): String {
-        return "{\"os\": \"Android\", \"version\": \"${android.os.Build.VERSION.RELEASE}\"}"
+        val isRooted = RootDetector.isRooted(activity)
+        val release = android.os.Build.VERSION.RELEASE
+        val model = android.os.Build.MODEL
+        return "{\"os\": \"Android\", \"version\": \"$release\", \"model\": \"$model\", \"isRooted\": $isRooted}"
     }
 
     companion object {
