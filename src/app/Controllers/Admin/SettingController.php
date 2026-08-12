@@ -14,6 +14,7 @@ class SettingController extends BaseController
         'allow_registration', 'auto_submit', 'mcma_partial_score',
         'show_score_after_exam', 'show_correct_answers', 'allow_review',
         'maintenance_mode', 'default_random_questions', 'default_random_answers',
+        'kiosk_enforce_home_launcher', 'kiosk_block_clipboard', 'kiosk_overlay_guard_enabled',
     ];
 
     private const INTEGER_KEYS = [
@@ -29,6 +30,7 @@ class SettingController extends BaseController
         'site_author'               => ['group' => 'general',  'type' => 'string'],
         'timezone'                  => ['group' => 'general',  'type' => 'string'],
         'app_logo'                  => ['group' => 'logo',     'type' => 'string'],
+        'app_favicon'               => ['group' => 'logo',     'type' => 'string'],
         'login_background'          => ['group' => 'logo',     'type' => 'string'],
         'font_family'               => ['group' => 'logo',     'type' => 'string'],
         'border_radius'             => ['group' => 'logo',     'type' => 'string'],
@@ -60,6 +62,11 @@ class SettingController extends BaseController
         'show_score_after_exam'     => ['group' => 'exam',     'type' => 'boolean'],
         'show_correct_answers'     => ['group' => 'exam',     'type' => 'boolean'],
         'allow_review'              => ['group' => 'exam',     'type' => 'boolean'],
+        'kiosk_enforce_home_launcher' => ['group' => 'kiosk',  'type' => 'boolean'],
+        'kiosk_block_clipboard'      => ['group' => 'kiosk',  'type' => 'boolean'],
+        'kiosk_overlay_guard_enabled' => ['group' => 'kiosk',  'type' => 'boolean'],
+        'kiosk_min_app_version'       => ['group' => 'kiosk',  'type' => 'string'],
+        'kiosk_root_strictness'        => ['group' => 'kiosk',  'type' => 'string'],
     ];
 
     public function __construct()
@@ -71,7 +78,7 @@ class SettingController extends BaseController
     {
         $groupedSettings = $this->settingModel->getGroupedSettings();
 
-        foreach (['general', 'logo', 'security', 'exam'] as $g) {
+        foreach (['general', 'logo', 'security', 'exam', 'kiosk'] as $g) {
             if (!isset($groupedSettings[$g])) {
                 $groupedSettings[$g] = [];
             }
@@ -125,7 +132,8 @@ class SettingController extends BaseController
             $this->updateEnv('INSTALLER_LOCKED', 'false');
         }
 
-        $this->handleFileUpload('app_logo', 'logo', 'is_image[app_logo]|ext_in[app_logo,png,jpg,jpeg]|max_size[app_logo,2048]', 'Format logo tidak valid. Harus berupa gambar (PNG/JPG) maksimal 2MB.');
+        $this->handleFileUpload('app_logo', 'logo', 'is_image[app_logo]|ext_in[app_logo,png,jpg,jpeg,svg]|max_size[app_logo,2048]', 'Format logo tidak valid. Harus berupa gambar (PNG/JPG) maksimal 2MB.');
+        $this->handleFileUpload('app_favicon', 'logo', 'is_image[app_favicon]|ext_in[app_favicon,png,jpg,jpeg,ico,svg]|max_size[app_favicon,2048]', 'Format favicon tidak valid. Harus berupa gambar/ico (PNG/JPG/ICO/SVG) maksimal 2MB.');
         $this->handleFileUpload('login_background', 'logo', 'is_image[login_background]|ext_in[login_background,png,jpg,jpeg]|max_size[login_background,5120]', 'Format background tidak valid. Harus berupa gambar maksimal 5MB.');
         $this->handleFileUpload('anti_cheat_logo', 'security', 'ext_in[anti_cheat_logo,svg]|max_size[anti_cheat_logo,1024]', 'Format logo peringatan tidak valid. Harus berupa SVG maksimal 1MB.');
 
@@ -244,6 +252,11 @@ class SettingController extends BaseController
             ['key' => 'show_correct_answers', 'value' => '0',              'type' => 'boolean', 'group' => 'exam'],
             ['key' => 'allow_review',        'value' => '1',               'type' => 'boolean', 'group' => 'exam'],
             ['key' => 'maintenance_mode',    'value' => '0',               'type' => 'boolean', 'group' => 'security'],
+            ['key' => 'kiosk_enforce_home_launcher', 'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
+            ['key' => 'kiosk_block_clipboard',       'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
+            ['key' => 'kiosk_overlay_guard_enabled', 'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
+            ['key' => 'kiosk_min_app_version',       'value' => '1.0.0',   'type' => 'string',  'group' => 'kiosk'],
+            ['key' => 'kiosk_root_strictness',       'value' => 'warning', 'type' => 'string',  'group' => 'kiosk'],
         ];
 
         $now = date('Y-m-d H:i:s');
