@@ -9,17 +9,21 @@ import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import id.sch.cbt.kiosk.bridge.CommsBridge
 import id.sch.cbt.kiosk.kiosk.KioskManager
+import id.sch.cbt.kiosk.security.SecurityManager
 
 class MainActivity : AppCompatActivity() {
 
     lateinit var webView: WebView
     lateinit var kioskManager: KioskManager
+    lateinit var securityManager: SecurityManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         kioskManager = KioskManager(this)
+        securityManager = SecurityManager(this)
+        kioskManager.setSecurityManager(securityManager)
 
         webView = findViewById(R.id.webView)
         setupWebView()
@@ -55,5 +59,16 @@ class MainActivity : AppCompatActivity() {
             webView.goBack()
         }
         // Never call super.onBackPressed() to prevent exiting app from root page (kiosk requirement)
+    }
+
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode)
+        if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            if (::securityManager.isInitialized) {
+                securityManager.handleMultiWindow(isInMultiWindowMode, isInPictureInPictureMode)
+            } else {
+                CommsBridge.sendEventToJS(webView, "security_alert", "{\"type\": \"SPLIT_SCREEN_DETECTED\"}")
+            }
+        }
     }
 }
