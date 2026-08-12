@@ -8,6 +8,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import id.sch.cbt.kiosk.bridge.CommsBridge
+import id.sch.cbt.kiosk.kiosk.KioskGuardService
 import id.sch.cbt.kiosk.kiosk.KioskManager
 import id.sch.cbt.kiosk.security.SecurityManager
 
@@ -80,6 +81,21 @@ class MainActivity : AppCompatActivity() {
                 securityManager.handleMultiWindow(isInMultiWindowMode = false, isInPictureInPictureMode = isInPictureInPictureMode)
             } else if (isInPictureInPictureMode && ::webView.isInitialized) {
                 CommsBridge.sendEventToJS(webView, "security_alert", "{\"type\": \"SPLIT_SCREEN_DETECTED\"}")
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        KioskGuardService.isMainActivityVisible = true
+    }
+
+    override fun onPause() {
+        super.onPause()
+        KioskGuardService.isMainActivityVisible = false
+        if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            if (::webView.isInitialized) {
+                CommsBridge.sendEventToJS(webView, "exit_attempt", "{}")
             }
         }
     }

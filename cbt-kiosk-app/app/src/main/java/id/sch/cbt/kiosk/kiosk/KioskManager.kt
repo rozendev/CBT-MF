@@ -1,6 +1,8 @@
 package id.sch.cbt.kiosk.kiosk
 
 import android.app.Activity
+import android.content.Intent
+import android.os.Build
 import android.util.Log
 import id.sch.cbt.kiosk.security.SecurityManager
 
@@ -23,6 +25,15 @@ class KioskManager(private val activity: Activity) {
                 activity.startLockTask()
             }
             isKioskActive = true
+            
+            // Start Guard Service
+            val intent = Intent(activity, KioskGuardService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                activity.startForegroundService(intent)
+            } else {
+                activity.startService(intent)
+            }
+            
             true
         } catch (e: Exception) {
             Log.e("KioskManager", "Failed to start LockTask", e)
@@ -38,6 +49,11 @@ class KioskManager(private val activity: Activity) {
                 activity.stopLockTask()
             }
             isKioskActive = false
+            
+            // Stop Guard Service
+            val intent = Intent(activity, KioskGuardService::class.java)
+            activity.stopService(intent)
+            
             true
         } catch (e: Exception) {
             Log.e("KioskManager", "Failed to stop LockTask", e)
