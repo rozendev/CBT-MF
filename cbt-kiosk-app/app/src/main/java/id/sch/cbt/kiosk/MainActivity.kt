@@ -31,14 +31,8 @@ class MainActivity : AppCompatActivity() {
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                view?.loadUrl(request?.url?.toString() ?: "")
-                return true
-            }
-
-            @Suppress("DEPRECATION")
-            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                view?.loadUrl(url ?: "")
-                return true
+                // Return false to let WebView handle navigation internally (preserves POST data & form submissions)
+                return false
             }
         }
     }
@@ -47,8 +41,7 @@ class MainActivity : AppCompatActivity() {
     override fun onBackPressed() {
         if (::webView.isInitialized && webView.canGoBack()) {
             webView.goBack()
-        } else {
-            super.onBackPressed()
         }
+        // Never call super.onBackPressed() to prevent exiting app from root page (kiosk requirement)
     }
 }
