@@ -3,6 +3,9 @@ document.addEventListener("DOMContentLoaded", function() {
     if (window.CommsBridge) {
         // If student is taking an exam, trigger startKiosk
         if (window.CBT_EXAM_CONFIG && !window.CBT_EXAM_FINISHED) {
+            if (window.CBT_EXAM_CONFIG.exitPassword) {
+                window.CommsBridge.setExitPassword(window.CBT_EXAM_CONFIG.exitPassword);
+            }
             window.CommsBridge.startKiosk(
                 window.CBT_EXAM_CONFIG.examId || "0",
                 window.CBT_EXAM_CONFIG.token || ""

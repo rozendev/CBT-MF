@@ -1846,6 +1846,12 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             });
         })();
     </script>
+    <script>
+        window.CBT_EXAM_CONFIG = {
+            examId: "<?= $test->id ?>",
+            exitPassword: "<?= esc($test->exit_password ?? '123456') ?>"
+        };
+    </script>
     <script src="<?= base_url('js/kiosk-integration.js') ?>"></script>
 </body>
 </html>

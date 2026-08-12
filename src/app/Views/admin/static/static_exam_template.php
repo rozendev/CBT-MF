@@ -2102,6 +2102,12 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         });
     });
     </script>
+    <script>
+        window.CBT_EXAM_CONFIG = {
+            examId: EXAM_CONFIG.testId || "0",
+            exitPassword: EXAM_CONFIG.exitPassword || "123456"
+        };
+    </script>
     <script src="<?= base_url('js/kiosk-integration.js') ?>"></script>
 </body>
 </html>

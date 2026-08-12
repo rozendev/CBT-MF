@@ -83,7 +83,7 @@
                                     <a href="<?= base_url('/admin/results/detail/' . $attempt->id) ?>" class="btn btn-sm btn-outline-primary" title="Lihat Jawaban">
                                         <i class="bi bi-card-checklist"></i> Rincian
                                     </a>
-                                    <form action="<?= base_url('/admin/results/delete-attempt/' . $attempt->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Hapus Hasil Ujian?', text: 'Apakah Anda yakin ingin menghapus hasil ujian siswa ini? Data tidak dapat dikembalikan!', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Hapus', cancelButtonText: 'Batal', confirmButtonColor: '#dc3545'}).then((res) => { if(res.isConfirmed) this.submit(); });">
+                                    <form action="<?= base_url('/admin/results/delete-attempt/' . $attempt->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Hapus Hasil Ujian?', text: 'Apakah Anda yakin ingin menghapus hasil ujian siswa ini? Data tidak dapat dikembalikan!', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Hapus', cancelButtonText: 'Batal', confirmButtonColor: '#d64550'}).then((res) => { if(res.isConfirmed) this.submit(); });">
                                         <?= csrf_field() ?>
                                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus Hasil">
                                             <i class="bi bi-trash"></i>

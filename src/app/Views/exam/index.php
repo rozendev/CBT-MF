@@ -18,7 +18,7 @@
                         <div class="d-flex gap-3 text-muted small mb-3">
                             <span><i class="bi bi-clock me-1"></i><?= esc($test->duration_minutes) ?> menit</span>
                         </div>
-                        <a href="#" class="btn btn-primary btn-sm rounded-pill">
+                        <a href="<?= base_url('/student/exam/prepare/' . $test->id) ?>" class="btn btn-primary btn-sm rounded-pill">
                             <i class="bi bi-play-fill me-1"></i> Mulai Ujian
                         </a>
                     </div>

@@ -16,8 +16,9 @@ try {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>404 Halaman Tidak Ditemukan - <?= esc($appName) ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css') ?>" rel="stylesheet">
+    <link href="<?= base_url('assets/css/outfit.css') ?>" rel="stylesheet">
     <style>
         :root {
             --color-primary: <?= $primaryColor ?>;
@@ -25,8 +26,8 @@ try {
         }
         body {
             background-color: #f8f9fa;
-            font-family: 'Inter', sans-serif;
-            height: 100vh;
+            font-family: 'Outfit', sans-serif;
+            min-height: 100dvh;
             display: flex;
             align-items: center;
             justify-content: center;

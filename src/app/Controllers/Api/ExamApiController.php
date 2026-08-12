@@ -368,13 +368,23 @@ class ExamApiController extends BaseController
 
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
-            if ($redis) {
-                $redis->hSet($redisKey, $logId, json_encode($payload));
-                $redis->expire($redisKey, 86400);
+            if (!$redis) {
+                // FAIL-CLOSED: Redis unavailable — refuse to silently drop the answer.
+                // The frontend will show an error toast and retry automatically.
+                log_message('critical', "[FAIL-CLOSED] autosave: Redis unavailable for attempt #{$attemptId}, log #{$logId}. Answer NOT saved.");
+                return $this->response->setStatusCode(503)->setJSON([
+                    'status'  => 'error',
+                    'message' => 'Sistem penyimpanan sementara tidak dapat diakses. Jawaban Anda belum tersimpan. Mohon tunggu sebentar dan coba kirim ulang.',
+                ]);
             }
+            $redis->hSet($redisKey, $logId, json_encode($payload));
+            $redis->expire($redisKey, 86400);
         } catch (\Exception $e) {
-            log_message('error', 'Redis error in autosave: ' . $e->getMessage());
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to save answer due to internal error.']);
+            log_message('critical', "[FAIL-CLOSED] autosave: Redis exception for attempt #{$attemptId}, log #{$logId}: " . $e->getMessage());
+            return $this->response->setStatusCode(503)->setJSON([
+                'status'  => 'error',
+                'message' => 'Sistem penyimpanan sementara tidak dapat diakses. Jawaban Anda belum tersimpan. Mohon tunggu sebentar dan coba kirim ulang.',
+            ]);
         }
 
         $testLogModel->update($logId, ['answered_at' => date('Y-m-d H:i:s')]);

@@ -76,7 +76,41 @@ class FinalizeExams extends BaseCommand
         foreach ($expiredAttempts as $attempt) {
             try {
                 // 1. Flush any pending Redis answers to MariaDB
-                $examService->flushRedisAnswersToDb((int) $attempt->attempt_id);
+                $flushed = $examService->flushRedisAnswersToDb((int) $attempt->attempt_id);
+
+                if (!$flushed) {
+                    // flushRedisAnswersToDb returned false: either Redis is unreachable,
+                    // or the DB transaction failed. We must determine whether unflushed
+                    // answers still exist in Redis before scoring.
+                    $hasUnflushedAnswers = false;
+                    try {
+                        $redis = \App\Libraries\RedisClient::getInstance();
+                        if ($redis) {
+                            $pending = $redis->hLen("exam_answers:{$attempt->attempt_id}");
+                            $hasUnflushedAnswers = ($pending > 0);
+                        }
+                    } catch (\Exception $re) {
+                        // Redis itself is unreachable — we can't determine state
+                    }
+
+                    if ($hasUnflushedAnswers) {
+                        // SAFETY GUARD: Answers exist in Redis but failed to flush to DB.
+                        // Scoring now would produce an INCORRECT grade (missing answers).
+                        // Skip this attempt and retry on the next cron cycle.
+                        $errors++;
+                        log_message('critical', "[finalize:expired] SKIPPED attempt #{$attempt->attempt_id}: "
+                            . "Redis flush failed but unflushed answers exist. "
+                            . "Scoring deferred to prevent incorrect grade.");
+                        CLI::write("  ✗ #{$attempt->attempt_id} — DEFERRED: Redis flush failed, unflushed answers exist. Will retry next cycle.", 'red');
+                        continue;
+                    }
+
+                    // Redis is unreachable entirely — proceed with DB-only data as best-effort.
+                    // Any answers previously synced via autoSync are already in DB.
+                    log_message('warning', "[finalize:expired] Redis unreachable for attempt #{$attempt->attempt_id}. "
+                        . "Proceeding with DB-only scoring (answers synced before outage are safe).");
+                    CLI::write("  ⚠ #{$attempt->attempt_id} — Redis unreachable, scoring with DB-only data.", 'yellow');
+                }
 
                 // 2. Calculate score and set status = 3 (finished)
                 //    Returns falsy if already finalized (optimistic lock).

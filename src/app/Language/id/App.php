@@ -39,6 +39,8 @@ return [
     'menu_analytics' => 'Web Analytics',
     'menu_security' => 'Keamanan (Suspend)',
     'menu_settings' => 'Pengaturan',
+    'menu_logging' => 'Logging & Aktivitas',
+    'menu_intruder' => 'Intruder',
     'exam_management' => 'Manajemen Ujian',
     'exam_reports' => 'Laporan Ujian',
     'profile' => 'Profil',

@@ -13,9 +13,11 @@
         box-shadow: 0 4px 12px rgba(var(--color-primary-rgb), 0.3);
     }
     .greeting-name {
-        font-size: 22px;
+        font-size: 26px;
         font-weight: 700;
+        letter-spacing: -0.02em;
         margin-bottom: 4px;
+        text-wrap: balance;
     }
     .greeting-subtitle {
         font-size: 14px;
@@ -81,7 +83,16 @@
         gap: 8px;
         font-size: 15px;
         border: none;
-        transition: all 150ms ease;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    }
+    .btn-exam-action:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.04);
+        box-shadow: 0 6px 16px -6px rgba(15, 23, 42, 0.25);
+    }
+    .btn-exam-action:active {
+        transform: translateY(0) scale(0.98);
+        filter: brightness(0.95);
     }
     .btn-exam-action.primary {
         background-color: var(--color-primary);
@@ -190,7 +201,7 @@
                                 <i class="bi bi-award-fill fs-5"></i> <?= lang('App.view_score') ?>
                             </a>
                         <?php elseif ($canAllowReview): ?>
-                            <a href="<?= base_url('/student/results/view/' . $test->id) ?>" class="btn-exam-action primary text-decoration-none" style="background-color: #0dcaf0; color: #000;">
+                            <a href="<?= base_url('/student/results/view/' . $test->id) ?>" class="btn-exam-action primary text-decoration-none">
                                 <i class="bi bi-journal-check fs-5"></i> <?= lang('App.review_questions') ?>
                             </a>
                         <?php endif; ?>

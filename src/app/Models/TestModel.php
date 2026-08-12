@@ -18,7 +18,7 @@ class TestModel extends Model
 
     protected $allowedFields = [
         'name', 'description', 'begin_time', 'end_time', 'duration_minutes',
-        'ip_range', 'password', 'results_visible', 'report_visible',
+        'ip_range', 'password', 'exit_password', 'results_visible', 'report_visible',
         'show_score_after_exam', 'show_correct_answers', 'allow_review',
         'score_right', 'score_wrong', 'score_unanswered', 'max_score',
         'passing_score', 'random_questions', 'random_answers', 'show_menu',
@@ -32,6 +32,7 @@ class TestModel extends Model
         'begin_time'       => 'required|valid_date',
         'duration_minutes' => 'required|is_natural',
         'max_score'        => 'required|numeric',
+        'exit_password'    => 'required|max_length[100]',
     ];
 
     protected $validationMessages = [

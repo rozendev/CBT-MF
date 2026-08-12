@@ -7,6 +7,7 @@ use App\Models\QuestionModel;
 use App\Models\AnswerModel;
 use App\Models\SubjectModel;
 use App\Models\ModuleModel;
+use App\Models\TopicModel;
 use App\Models\ActivityLogModel;
 
 class QuestionController extends BaseController
@@ -70,14 +71,33 @@ class QuestionController extends BaseController
             'question'         => null,
             'answers'          => [],
             'subjectsByModule' => $subjectsByModule,
-            'subjectId'        => $this->request->getGet('subject_id')
+            'subjectId'        => $this->request->getGet('subject_id'),
+            'topics'           => $this->request->getGet('subject_id')
+                ? (new TopicModel())->getTopicsBySubject((int) $this->request->getGet('subject_id'))
+                : []
         ]);
+    }
+
+    /**
+     * AJAX: daftar topik untuk sebuah subjek (dropdown dinamis Topik/Bab)
+     */
+    public function topicsBySubject()
+    {
+        $subjectId = (int) $this->request->getGet('subject_id');
+        if ($subjectId <= 0) {
+            return $this->response->setJSON([]);
+        }
+
+        $topics = (new TopicModel())->getTopicsBySubject($subjectId);
+
+        return $this->response->setJSON($topics);
     }
 
     public function store()
     {
         $rules = [
             'subject_id'  => 'required|is_natural_no_zero',
+            'topic_id'    => 'permit_empty|is_natural_no_zero',
             'type'        => 'required|in_list[1,2,3,4,5]',
             'description' => 'required',
             'difficulty'  => 'required|is_natural_no_zero',
@@ -92,6 +112,7 @@ class QuestionController extends BaseController
         // Insert Question
         $data = [
             'subject_id'     => $this->request->getPost('subject_id'),
+            'topic_id'       => $this->request->getPost('topic_id') ?: null,
             'type'           => $type,
             'description'    => $this->request->getPost('description'),
             'explanation'    => $this->request->getPost('explanation'),
@@ -156,7 +177,8 @@ class QuestionController extends BaseController
             'question'         => $question,
             'answers'          => $answers,
             'subjectsByModule' => $subjectsByModule,
-            'subjectId'        => $question->subject_id
+            'subjectId'        => $question->subject_id,
+            'topics'           => (new TopicModel())->getTopicsBySubject($question->subject_id)
         ]);
     }
 
@@ -169,6 +191,7 @@ class QuestionController extends BaseController
 
         $rules = [
             'subject_id'  => 'required|is_natural_no_zero',
+            'topic_id'    => 'permit_empty|is_natural_no_zero',
             'type'        => 'required|in_list[1,2,3,4,5]',
             'description' => 'required',
             'difficulty'  => 'required|is_natural_no_zero',
@@ -182,6 +205,7 @@ class QuestionController extends BaseController
 
         $data = [
             'subject_id'     => $this->request->getPost('subject_id'),
+            'topic_id'       => $this->request->getPost('topic_id') ?: null,
             'type'           => $type,
             'description'    => $this->request->getPost('description'),
             'explanation'    => $this->request->getPost('explanation'),

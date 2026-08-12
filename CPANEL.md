@@ -1,3 +1,11 @@
+# THIS APP CAN NOT RUN WITHOUT REDIS!
+
+> [!CAUTION]
+> **WARNING: APLIKASI INI TIDAK DAPAT BERJALAN TANPA REDIS!**  
+> CBT-MF membutuhkan Redis secara mutlak untuk *Write-Behind Cache* penyimpanan jawaban ujian siswa, WebSocket token, dan sesi login real-time. Mendeploy aplikasi ini di Shared Hosting/cPanel tanpa server Redis akan menyebabkan **gagal menyimpan jawaban (HTTP 503)** dan kecurangan data. VPS + Docker adalah arsitektur yang **wajib** digunakan.
+
+---
+
 # Panduan Deploy CodeIgniter 4 + Redis ke cPanel / Shared Hosting
 
 Aplikasi ini aslinya dirancang untuk arsitektur VPS / Docker Environment dengan dukungan penuh memori cache (Redis) dan *background daemon* (untuk socket dan finalisasi otomatis). Namun, jika Anda **TERPAKSA** harus mendeploynya ke Shared Hosting/cPanel standar, harap perhatikan hal-hal krusial berikut:

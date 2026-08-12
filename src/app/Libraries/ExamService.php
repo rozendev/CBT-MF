@@ -129,12 +129,30 @@ class ExamService
                 continue;
             }
 
+            // Guard: set yang dibatasi topik hanya boleh menarik dari subject pemilik topik.
+            // Mencegah exclusion diam-diam soal dari subject lain yang tidak punya topic ini.
+            if (!empty($set->topic_id)) {
+                $topicOwner = $db->table('topics')
+                                 ->select('subject_id')
+                                 ->where('id', $set->topic_id)
+                                 ->where('deleted_at', null)
+                                 ->get()->getRow();
+                if ($topicOwner) {
+                    $subjectIds = [(int) $topicOwner->subject_id];
+                }
+            }
+
             // Fetch eligible question IDs to shuffle in PHP (eliminates ORDER BY RAND())
             $qBuilder = $db->table('questions')
                            ->select('id')
                            ->whereIn('subject_id', $subjectIds)
                            ->where('is_enabled', 1)
                            ->orderBy('id', 'ASC');
+
+            // Jika set dibatasi ke topik/bab tertentu, ambil hanya dari topik itu
+            if (!empty($set->topic_id)) {
+                $qBuilder->where('topic_id', $set->topic_id);
+            }
 
             if ($set->question_type != 0) {
                 $qBuilder->where('type', $set->question_type);

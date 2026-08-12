@@ -237,7 +237,7 @@
             <div style="width: 80px; height: 80px; margin: 0 auto 1.5rem; background: rgba(255,255,255,0.15); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
                 <i class="bi bi-check2-all" style="font-size: 2.5rem;"></i>
             </div>
-            <h3 class="fw-bold mb-2">Ujian Berhasil Dikumpulkan!</h3>
+            <h3 class="fw-bold mb-2">Ujian Berhasil Dikumpulkan</h3>
             <p class="mb-0" style="opacity: 0.85;"><?= esc($test->name) ?></p>
             <p class="mb-0 mt-3" style="opacity: 0.7; font-size: 0.9rem;">Skor untuk ujian ini belum ditampilkan. Hubungi pengawas untuk informasi lebih lanjut.</p>
         </div>

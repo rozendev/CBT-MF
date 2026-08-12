@@ -24,6 +24,13 @@ class CommsBridge(private val activity: MainActivity) {
     }
 
     @JavascriptInterface
+    fun setExitPassword(password: String) {
+        if (password.isNotBlank()) {
+            activity.currentExitPassword = password
+        }
+    }
+
+    @JavascriptInterface
     fun closeApp() {
         activity.runOnUiThread {
             activity.kioskManager.stopKiosk()

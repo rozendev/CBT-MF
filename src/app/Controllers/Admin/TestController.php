@@ -30,7 +30,13 @@ class TestController extends BaseController
 
     public function create()
     {
-        return view('admin/tests/form', ['test' => null]);
+        $settingModel = new \App\Models\SettingModel();
+
+        return view('admin/tests/form', [
+            'test' => null,
+            'defaultDuration' => (int) $settingModel->getValue('default_duration', 90),
+            'defaultPassingGrade' => (float) $settingModel->getValue('default_passing_grade', 0),
+        ]);
     }
 
     public function store()
@@ -302,6 +308,7 @@ class TestController extends BaseController
     {
         $rules = [
             'subjects'      => 'required',
+            'topic_id'      => 'permit_empty|is_natural_no_zero',
             'question_type' => 'required|in_list[0,1,2,3,4]',
             'difficulty'    => 'required|is_natural',
             'quantity'      => 'required|is_natural_no_zero',
@@ -316,6 +323,7 @@ class TestController extends BaseController
 
         $setData = [
             'test_id'       => $id,
+            'topic_id'      => $this->request->getPost('topic_id') ?: null,
             'question_type' => $this->request->getPost('question_type'),
             'difficulty'    => $this->request->getPost('difficulty'),
             'quantity'      => $this->request->getPost('quantity'),

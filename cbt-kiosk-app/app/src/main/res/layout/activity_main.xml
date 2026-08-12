@@ -99,7 +99,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:text="• Screen Pinning &amp; Anti-Screenshot aktif\n• Blokir Copy-Paste &amp; Split-Screen aktif\n• Tombol Home &amp; Recent Apps akan terkunci"
+                        android:text="• Screen Pinning &amp; Anti-Screenshot aktif\n• Pemantau Baterai, Sinyal WiFi/Seluler &amp; Tombol Reload aktif\n• Pengawas dapat keluar Kiosk dengan Password Ujian"
                         android:textColor="#343A40"
                         android:textSize="12sp" />
                 </LinearLayout>
@@ -109,11 +109,83 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- WEBVIEW CONTAINER (HIDDEN UNTIL EXAM STARTS) -->
-    <WebView
-        android:id="@+id/webView"
+    <!-- EXAM CONTAINER (WEBVIEW + ACCESSIBILITY TOOLBAR) -->
+    <LinearLayout
+        android:id="@+id/examContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:visibility="gone" />
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!-- TOP ACCESSIBILITY TOOLBAR -->
+        <LinearLayout
+            android:id="@+id/kioskToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="42dp"
+            android:background="#212529"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp">
+
+            <!-- BATTERY STATUS -->
+            <TextView
+                android:id="@+id/tvBatteryStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🔋 --%"
+                android:textColor="#F8F9FA"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <!-- NETWORK STATUS -->
+            <TextView
+                android:id="@+id/tvNetworkStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="📶 Checking..."
+                android:textColor="#F8F9FA"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- RELOAD BUTTON -->
+            <Button
+                android:id="@+id/btnReloadPage"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:paddingHorizontal="8dp"
+                android:text="🔄 Refresh"
+                android:textColor="#74C0FC"
+                android:textSize="12sp" />
+
+            <!-- EXIT KIOSK BUTTON -->
+            <Button
+                android:id="@+id/btnExitKiosk"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginStart="4dp"
+                android:paddingHorizontal="8dp"
+                android:text="🚪 Keluar"
+                android:textColor="#FF8787"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <!-- WEBVIEW CONTAINER -->
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+    </LinearLayout>
 
 </FrameLayout>

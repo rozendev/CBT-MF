@@ -42,14 +42,21 @@ class WordImportController extends BaseController
         ];
 
         if (!$this->validate($rules)) {
-            return redirect()->back()->withInput()->with('error', 'Validasi gagal. Pastikan form diisi dan file berupa .docx maksimal 5MB.');
+            $errs = array_values($this->validator->getErrors());
+            return $this->response->setJSON([
+                'status' => 'validation_error',
+                'errors' => $errs
+            ]);
         }
 
         $moduleId = $this->request->getPost('module_id');
         if ($moduleId == 'new') {
-            $newModuleName = $this->request->getPost('new_module_name');
+            $newModuleName = trim($this->request->getPost('new_module_name') ?? '');
             if (empty($newModuleName)) {
-                return redirect()->back()->withInput()->with('error', 'Nama modul baru harus diisi.');
+                return $this->response->setJSON([
+                    'status' => 'validation_error',
+                    'errors' => ['Nama modul baru harus diisi.']
+                ]);
             }
             
             $existsMod = $this->moduleModel->withDeleted()->where('name', $newModuleName)->first();
@@ -70,7 +77,7 @@ class WordImportController extends BaseController
             }
         }
 
-        $subjectName = $this->request->getPost('subject_name');
+        $subjectName = trim($this->request->getPost('subject_name') ?? '');
         
         $existsSub = $this->subjectModel->withDeleted()->where('module_id', $moduleId)->where('name', $subjectName)->first();
         if ($existsSub) {
@@ -81,7 +88,6 @@ class WordImportController extends BaseController
                     'is_enabled' => 1
                 ]);
             }
-            // Subject already active (or just restored), use the ID
             $subjectId = $existsSub->id;
         } else {
             // Insert new subject
@@ -103,8 +109,13 @@ class WordImportController extends BaseController
 
             $parsedQuestions = $this->parseBlocks($blocks);
             
-            if (empty($parsedQuestions)) {
-                return redirect()->back()->with('error', 'Tidak ada soal yang terdeteksi. Pastikan format penulisan sudah sesuai dengan aturan.');
+            // ─── DRY-RUN VALIDATION ───
+            $validationErrors = $this->validateParsedQuestions($parsedQuestions);
+            if (!empty($validationErrors)) {
+                return $this->response->setJSON([
+                    'status' => 'validation_error',
+                    'errors' => $validationErrors
+                ]);
             }
 
             $db = \Config\Database::connect();
@@ -130,26 +141,29 @@ class WordImportController extends BaseController
 
                 // Insert Question
                 $questionId = $this->questionModel->insert([
-                    'subject_id' => $subjectId,
-                    'type' => $type,
+                    'subject_id'  => $subjectId,
+                    'type'        => $type,
                     'description' => $q['question'],
-                    'difficulty' => 1,
-                    'is_enabled' => 1
+                    'difficulty'  => 1,
+                    'is_enabled'  => 1
                 ]);
 
                 if ($questionId === false) {
                     $db->transRollback();
                     $errors = implode(', ', $this->questionModel->errors());
-                    return redirect()->back()->with('error', 'Gagal menyimpan soal ke database. Cek format Anda. Error: ' . $errors);
+                    return $this->response->setJSON([
+                        'status'  => 'error',
+                        'message' => 'Gagal menyimpan soal ke database: ' . $errors
+                    ]);
                 }
 
                 // Insert Options
                 $position = 1;
                 
                 if ($type == 1 || $type == 2) {
-                    $correctAnswers = explode(',', $q['answer']);
+                    $correctAnswers = array_map('trim', explode(',', $q['answer']));
                     foreach ($q['options'] as $letter => $text) {
-                        $isCorrect = in_array(strtoupper($letter), $correctAnswers) ? 1 : 0;
+                        $isCorrect = in_array(strtoupper($letter), $correctAnswers, true) ? 1 : 0;
                         $this->answerModel->skipValidation(true)->insert([
                             'question_id' => $questionId,
                             'description' => $text,
@@ -188,13 +202,22 @@ class WordImportController extends BaseController
             $db->transComplete();
 
             if ($db->transStatus() === false) {
-                return redirect()->back()->with('error', 'Terjadi kesalahan saat menyimpan ke database.');
+                return $this->response->setJSON([
+                    'status'  => 'error',
+                    'message' => 'Terjadi kesalahan saat menyimpan ke database.'
+                ]);
             }
 
-            return redirect()->to('/admin/questions')->with('success', "$insertedCount soal berhasil diimport ke Subjek '$subjectName'.");
+            return $this->response->setJSON([
+                'status'  => 'success',
+                'message' => "$insertedCount soal berhasil diimport ke Subjek '$subjectName'."
+            ]);
 
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal memproses file Word: ' . $e->getMessage());
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'message' => 'Gagal memproses file Word: ' . $e->getMessage()
+            ]);
         }
     }
 
@@ -372,81 +395,163 @@ class WordImportController extends BaseController
     {
         $questions = [];
         $currentQuestion = null;
+        $currentSection = 'none'; // 'question', 'option', 'none'
+        $lastOptionKey = null;
 
         foreach ($blocks as $text) {
-            // Ignore MODULE:= and TOPIC:= if they exist
-            if (preg_match('/^(?:MODULE|TOPIC)\s*:=/i', $text)) {
+            $trimmed = trim($text);
+            if (empty($trimmed)) {
                 continue;
             }
 
-            // Match Q:1) Question Text
-            if (preg_match('/^Q:\s*\d+\)(.*)/i', $text, $matches)) {
+            // Ignore MODULE:= and TOPIC:= if present
+            if (preg_match('/^(?:MODULE|TOPIC)\s*:=/i', $trimmed)) {
+                continue;
+            }
+
+            // 1. Question Prefix: Q:1), Q: 1., Q.1), Q1), Q1., Q:, SOAL 1:, QUESTION 1:
+            if (preg_match('/^(?:Q|SOAL|QUESTION)(?:\s*[:.\-)]|\s*\d+[\s:.\-)]*)\s*(.*)/i', $trimmed, $matches)) {
                 if ($currentQuestion && !empty($currentQuestion['question'])) {
                     $questions[] = $currentQuestion;
                 }
                 $currentQuestion = [
-                    'question' => trim($matches[1]),
-                    'options' => [],
-                    'answer' => '',
+                    'question'      => trim($matches[1]),
+                    'options'       => [],
+                    'answer'        => '',
                     'explicit_type' => '',
-                    'matches' => []
+                    'matches'       => []
                 ];
+                $currentSection = 'question';
+                $lastOptionKey = null;
+                continue;
             }
-            // Match A:) Option Text
-            elseif (preg_match('/^([A-Z]):\s*\)(.*)/i', $text, $matches)) {
-                if ($currentQuestion) {
-                    $letter = strtoupper($matches[1]);
-                    $currentQuestion['options'][$letter] = trim($matches[2]);
+
+            if (!$currentQuestion) {
+                continue;
+            }
+
+            // 2. Question Type: TYPE: ESSAY / MATCHING / TRUEFALSE / PG / PGK
+            if (preg_match('/^(?:TYPE|TIPE)\s*[:=]\s*(ESSAY|MATCHING|TRUEFALSE|PGK|PG)/i', $trimmed, $matches)) {
+                $typeStr = strtoupper(trim($matches[1]));
+                if ($typeStr === 'PG' || $typeStr === 'PGK') {
+                    $currentQuestion['explicit_type'] = '';
+                } else {
+                    $currentQuestion['explicit_type'] = $typeStr;
                 }
+                $currentSection = 'none';
+                continue;
             }
-            // Match RIGHT:A or RIGHT:A,B,C or RIGHT:Essay Text
-            elseif (preg_match('/^RIGHT:\s*(.*)/i', $text, $matches)) {
-                if ($currentQuestion) {
-                    // For multiple choice, it's comma separated letters. For essay, it's just text.
-                    $currentQuestion['answer'] = trim($matches[1]);
-                    // Remove spaces only if it looks like a multiple choice answer (e.g., A,B,C)
-                    if (preg_match('/^[A-Z, ]+$/i', $currentQuestion['answer']) && empty($currentQuestion['explicit_type'])) {
-                        $currentQuestion['answer'] = strtoupper(str_replace(' ', '', $currentQuestion['answer']));
-                    }
+
+            // 3. Right Answer: RIGHT: A or RIGHT: A,B,C or KUNCI: A
+            if (preg_match('/^(?:RIGHT|KUNCI|JAWABAN)\s*[:=]\s*(.*)/i', $trimmed, $matches)) {
+                $currentQuestion['answer'] = trim($matches[1]);
+                if (preg_match('/^[A-Z, ]+$/i', $currentQuestion['answer']) && empty($currentQuestion['explicit_type'])) {
+                    $currentQuestion['answer'] = strtoupper(str_replace(' ', '', $currentQuestion['answer']));
                 }
+                $currentSection = 'none';
+                continue;
             }
-            // Match TYPE:ESSAY / MATCHING / TRUEFALSE
-            elseif (preg_match('/^TYPE:\s*(ESSAY|MATCHING|TRUEFALSE)/i', $text, $matches)) {
-                if ($currentQuestion) {
-                    $currentQuestion['explicit_type'] = strtoupper(trim($matches[1]));
+
+            // 4. Match Pair: MATCH: Left|::|Right or PASANGAN: Left|::|Right
+            if (preg_match('/^(?:MATCH|PASANGAN)\s*[:=]\s*(.*)/i', $trimmed, $matches)) {
+                $currentQuestion['matches'][] = trim($matches[1]);
+                $currentSection = 'none';
+                continue;
+            }
+
+            // 5. Option Prefix: A:), A.), A., A), A:, A -
+            if (preg_match('/^([A-Z])\s*[:.\-)]+\s*(.*)/i', $trimmed, $matches)) {
+                $letter = strtoupper($matches[1]);
+                $optionText = trim($matches[2]);
+                $currentQuestion['options'][$letter] = $optionText;
+                $currentSection = 'option';
+                $lastOptionKey = $letter;
+                continue;
+            }
+
+            // 6. Continuation of multi-line question text or option text
+            if ($currentSection === 'question') {
+                if (!empty($currentQuestion['question'])) {
+                    $currentQuestion['question'] .= '<br>' . $trimmed;
+                } else {
+                    $currentQuestion['question'] = $trimmed;
                 }
-            }
-            // Match MATCH:Left|::|Right
-            elseif (preg_match('/^MATCH:\s*(.*)/i', $text, $matches)) {
-                if ($currentQuestion) {
-                    $currentQuestion['matches'][] = trim($matches[1]);
-                }
-            }
-            // Continuation of question text or option text
-            else {
-                if ($currentQuestion) {
-                    if (empty($currentQuestion['options'])) {
-                        // Append to question
-                        if (!empty($currentQuestion['question'])) {
-                            $currentQuestion['question'] .= '<br>' . $text;
-                        } else {
-                            $currentQuestion['question'] = $text;
-                        }
-                    } else {
-                        // Append to last option
-                        $lastOptionKey = array_key_last($currentQuestion['options']);
-                        if ($lastOptionKey) {
-                            $currentQuestion['options'][$lastOptionKey] .= '<br>' . $text;
-                        }
-                    }
+            } elseif ($currentSection === 'option' && $lastOptionKey !== null) {
+                if (!empty($currentQuestion['options'][$lastOptionKey])) {
+                    $currentQuestion['options'][$lastOptionKey] .= '<br>' . $trimmed;
+                } else {
+                    $currentQuestion['options'][$lastOptionKey] = $trimmed;
                 }
             }
         }
-        
+
         if ($currentQuestion && !empty($currentQuestion['question'])) {
             $questions[] = $currentQuestion;
         }
 
         return $questions;
+    }
+
+    private function validateParsedQuestions(array $questions): array
+    {
+        $errors = [];
+
+        if (empty($questions)) {
+            return ['Tidak ada soal yang terdeteksi. Pastikan format dokumen sesuai (contoh: Q:1) Teks Soal).'];
+        }
+
+        foreach ($questions as $index => $q) {
+            $no = $index + 1;
+            $qText = trim(strip_tags($q['question'], '<img><table><tr><td><th><br><p><b><i><strong><em>'));
+
+            if (empty($qText)) {
+                $errors[] = "Soal No. #{$no}: Teks soal tidak boleh kosong.";
+            }
+
+            $explicitType = strtoupper(trim($q['explicit_type'] ?? ''));
+
+            if ($explicitType === 'ESSAY') {
+                if (empty(trim($q['answer']))) {
+                    $errors[] = "Soal No. #{$no} (Essay): Kunci jawaban (RIGHT:) belum diisi.";
+                }
+            } elseif ($explicitType === 'MATCHING' || $explicitType === 'TRUEFALSE') {
+                if (empty($q['matches'])) {
+                    $errors[] = "Soal No. #{$no} ({$explicitType}): Tidak ada pasangan jawaban (MATCH:) yang ditemukan.";
+                } else {
+                    foreach ($q['matches'] as $mIdx => $mText) {
+                        if (!str_contains($mText, '|::|')) {
+                            $errors[] = "Soal No. #{$no} ({$explicitType}): Format baris MATCH " . ($mIdx + 1) . " ('{$mText}') salah. Harus menggunakan separator '|::|'.";
+                        } else {
+                            $parts = explode('|::|', $mText);
+                            if (empty(trim($parts[0])) || empty(trim($parts[1]))) {
+                                $errors[] = "Soal No. #{$no} ({$explicitType}): Sisi kiri atau kanan pada MATCH " . ($mIdx + 1) . " tidak boleh kosong.";
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Multiple Choice / PG / PGK
+                if (empty($q['options']) || count($q['options']) < 2) {
+                    $errors[] = "Soal No. #{$no} (Pilihan Ganda): Harus memiliki minimal 2 pilihan jawaban (A, B, dst).";
+                }
+
+                if (empty(trim($q['answer']))) {
+                    $errors[] = "Soal No. #{$no} (Pilihan Ganda): Kunci jawaban (RIGHT:) belum ditentukan.";
+                } else {
+                    $correctAnswers = array_map('trim', explode(',', $q['answer']));
+                    $availableOptions = array_keys($q['options']);
+
+                    foreach ($correctAnswers as $ansKey) {
+                        $ansKeyUpper = strtoupper($ansKey);
+                        if (!in_array($ansKeyUpper, $availableOptions, true)) {
+                            $optStr = implode(', ', $availableOptions);
+                            $errors[] = "Soal No. #{$no}: Kunci jawaban '{$ansKeyUpper}' tidak cocok dengan opsi yang tersedia ({$optStr}).";
+                        }
+                    }
+                }
+            }
+        }
+
+        return $errors;
     }
 }

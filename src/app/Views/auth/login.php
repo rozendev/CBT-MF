@@ -4,9 +4,14 @@ $primaryColor = $settingModel->getValue('primary_color', '#1E293B');
 $navbarColor  = $settingModel->getValue('navbar_color', 'rgba(0,0,0,0.3)');
 $textColor    = $settingModel->getValue('text_color', '#0F172A');
 $appLogo      = $settingModel->getValue('app_logo', '');
+$appFavicon   = $settingModel->getValue('app_favicon', '');
+$faviconUrl   = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? base_url($appLogo) : base_url('favicon.ico'));
 $appName      = $settingModel->getValue('app_name', 'E-EXAM');
 $appDesc      = $settingModel->getValue('app_description', 'Aplikasi Ujian Berbasis Komputer (CBT)');
 $siteAuthor   = $settingModel->getValue('site_author', 'Sekolah/Lembaga');
+$fontFamily   = $settingModel->getValue('font_family', 'Outfit');
+$primaryRgb   = sscanf($primaryColor, "#%02x%02x%02x");
+$primaryRgbStr = $primaryRgb[0] . ',' . $primaryRgb[1] . ',' . $primaryRgb[2];
 $bgImage      = $settingModel->getValue('login_background', '');
 
 // Only load SweetAlert2 when there is a flash notification to show
@@ -49,10 +54,10 @@ if (!$activeTest) {
     <meta name="robots" content="noindex, nofollow">
     <meta name="description" content="Halaman login <?= esc($appName) ?> — <?= esc($appDesc) ?>">
     <title>Login — <?= esc($appName) ?></title>
+    <link rel="icon" href="<?= $faviconUrl ?>">
+    <link rel="shortcut icon" href="<?= $faviconUrl ?>">
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="<?= base_url('assets/css/' . ($fontFamily === 'Inter' ? 'inter' : 'outfit') . '.css?v=1.1') ?>" rel="stylesheet">
     
     <?php if ($hasToast): ?>
     <link href="<?= base_url('vendor/sweetalert2/sweetalert2.min.css') ?>" rel="stylesheet">
@@ -74,9 +79,15 @@ if (!$activeTest) {
             padding: 0;
             box-sizing: border-box;
         }
+        h1, h2, h3 { text-wrap: balance; }
+        :focus-visible {
+            outline: 3px solid rgba(<?= $primaryRgbStr ?>, 0.35);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: '<?= esc($fontFamily) ?>', -apple-system, BlinkMacSystemFont, sans-serif;
             background-color: var(--bg-color);
             <?php if ($bgImage): ?>
             background-image: url('<?= base_url($bgImage) ?>');
@@ -85,24 +96,26 @@ if (!$activeTest) {
             background-repeat: no-repeat;
             <?php endif; ?>
             color: var(--text-main);
-            min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             padding: 24px;
             -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
         }
 
         .container {
             width: 100%;
-            max-width: 380px;
+            max-width: 440px;
             background-color: <?= $bgImage ? 'rgba(255, 255, 255, 0.95)' : 'transparent' ?>;
             <?php if ($bgImage): ?>
             padding: 2.5rem;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            border-radius: 20px;
+            box-shadow: 0 24px 48px -16px rgba(15, 23, 42, 0.18);
             backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
             <?php endif; ?>
         }
 
@@ -113,9 +126,9 @@ if (!$activeTest) {
         }
 
         .logo {
-            font-size: 28px;
+            font-size: 30px;
             font-weight: 700;
-            letter-spacing: -0.5px;
+            letter-spacing: -0.75px;
             margin-bottom: 12px;
             color: var(--text-main);
         }
@@ -162,7 +175,7 @@ if (!$activeTest) {
         input[type="text"]:focus,
         input[type="password"]:focus {
             border-color: var(--focus-ring);
-            box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 0 3px rgba(<?= $primaryRgbStr ?>, 0.2);
         }
 
         /* Button */
@@ -174,18 +187,22 @@ if (!$activeTest) {
             font-size: 15px;
             font-weight: 600;
             border: none;
-            border-radius: 8px;
+            border-radius: 12px;
             cursor: pointer;
-            transition: opacity 0.15s, transform 0.1s;
+            transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
             margin-top: 6px;
+            box-shadow: 0 8px 20px -8px rgba(<?= $primaryRgbStr ?>, 0.5);
         }
 
         .btn-submit:hover {
-            opacity: 0.9;
+            filter: brightness(0.94);
+            box-shadow: 0 10px 24px -8px rgba(<?= $primaryRgbStr ?>, 0.6);
+            transform: translateY(-1px);
         }
 
         .btn-submit:active {
-            transform: scale(0.98);
+            transform: translateY(0) scale(0.98);
+            filter: brightness(0.9);
         }
 
         /* Spinner & Loading State */
@@ -255,6 +272,7 @@ if (!$activeTest) {
             }
         }
     </style>
+    <?php include __DIR__ . '/../layouts/_frontend_config.php'; ?>
 </head>
 <body>
 
@@ -290,12 +308,15 @@ if (!$activeTest) {
                 <input type="password" id="password" name="password" placeholder="Masukkan password" autocomplete="current-password" required>
             </div>
 
-            <button type="submit" id="btnSubmit" class="btn-submit">MASUK</button>
+            <button type="submit" id="btnSubmit" class="btn-submit">Masuk</button>
         </form>
 
         <!-- Help Section -->
         <div class="help-link">
-            Butuh bantuan? <a href="#" onclick="alert('Hubungi panitia atau pengawas di ruangan.')">Hubungi panitia</a>
+            Butuh bantuan? <a href="#" id="helpLink">Hubungi panitia</a>
+            <div id="helpHint" style="display: none; margin-top: 8px; padding: 10px 14px; background: #F1F5F9; border-radius: 10px; font-size: 13px; color: var(--text-muted);">
+                Silakan hubungi panitia atau pengawas ujian di ruangan.
+            </div>
         </div>
     </div>
 
@@ -324,6 +345,12 @@ if (!$activeTest) {
     <?php endif; ?>
 
     <script>
+    document.getElementById('helpLink').addEventListener('click', function(e) {
+        e.preventDefault();
+        var hint = document.getElementById('helpHint');
+        hint.style.display = hint.style.display === 'none' ? 'block' : 'none';
+    });
+
     document.querySelector('form').addEventListener('submit', function(e) {
         var btn = document.getElementById('btnSubmit');
         if (btn.classList.contains('loading')) {

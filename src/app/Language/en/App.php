@@ -39,6 +39,8 @@ return [
     'menu_analytics' => 'Web Analytics',
     'menu_security' => 'Security (Suspend)',
     'menu_settings' => 'Settings',
+    'menu_logging' => 'Logging',
+    'menu_intruder' => 'Intruder',
     'exam_management' => 'Exam Management',
     'exam_reports' => 'Exam Reports',
 ];

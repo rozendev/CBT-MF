@@ -6,6 +6,8 @@ $textColor = $settingModel->getValue('text_color', '#212529');
 $fontFamily = $settingModel->getValue('font_family', 'Inter');
 $borderRadius = $settingModel->getValue('border_radius', '8');
 $appLogo = $settingModel->getValue('app_logo', '');
+$appFavicon = $settingModel->getValue('app_favicon', '');
+$faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? base_url($appLogo) : base_url('favicon.ico'));
 $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 $appDescription = $settingModel->getValue('app_description', 'Aplikasi Ujian Berbasis Komputer');
 $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
@@ -16,8 +18,10 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $this->renderSection('page_title') ?> - <?= esc($appName) ?></title>
-    <!-- Dynamic Google Font -->
-    <link href="<?= base_url('assets/css/inter.css?v=1.1') ?>" rel="stylesheet">
+    <link rel="icon" href="<?= $faviconUrl ?>">
+    <link rel="shortcut icon" href="<?= $faviconUrl ?>">
+    <!-- Dynamic Font -->
+    <link href="<?= base_url('assets/css/' . ($fontFamily === 'Inter' ? 'inter' : 'outfit') . '.css?v=1.1') ?>" rel="stylesheet">
     <!-- Bootstrap 5 CSS -->
     <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css?v=1.1') ?>" rel="stylesheet">
     <!-- Load icons synchronously for student dashboard -->
@@ -40,7 +44,32 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
             background-color: var(--color-background);
             color: var(--color-text);
             font-family: '<?= esc($fontFamily) ?>', sans-serif;
+            font-size: 0.95rem;
             -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+        h1, h2, h3, h4, .display-1, .display-2, .display-3 {
+            text-wrap: balance;
+        }
+        :focus-visible {
+            outline: 3px solid rgba(var(--color-primary-rgb), 0.35);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 2000;
+            background: var(--color-primary);
+            color: #fff;
+            padding: 0.6rem 1.2rem;
+            border-radius: 0 0 12px 0;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .skip-link:focus {
+            left: 0;
         }
         .btn, .card, .modal-content, .form-control, .form-select, .alert, .badge {
             border-radius: var(--custom-radius);
@@ -55,7 +84,7 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
             letter-spacing: 0.5px;
         }
         .main-content {
-            min-height: calc(100vh - 140px);
+            min-height: calc(100dvh - 140px);
             padding: 2rem 0;
         }
         .footer {
@@ -67,8 +96,10 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     </style>
     <script src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js?v=1.1') ?>"></script>
     <?= $this->renderSection('styles') ?>
+    <?php include __DIR__ . '/_frontend_config.php'; ?>
 </head>
 <body class="d-flex flex-column min-vh-100">
+    <a class="skip-link" href="#main-content">Lewati ke konten</a>
 
     <!-- Top Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top shadow-sm">
@@ -116,7 +147,7 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     </nav>
 
     <!-- Main Content -->
-    <div class="main-content">
+    <div class="main-content" id="main-content" tabindex="-1">
         <div class="container">
             <?= $this->renderSection('content') ?>
         </div>
@@ -127,7 +158,7 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
         <div class="container">
             <span class="text-muted small">
                 &copy; <?= date('Y') ?> <strong><?= esc($siteAuthor ?? 'CBT-MF') ?></strong>. All rights reserved.<br>
-                <?= esc($appDescription ?? 'Computer Based Test') ?> | Ver 1.30
+                <?= esc($appDescription ?? 'Computer Based Test') ?> | Ver <?= esc(\App\Libraries\FrontendConfig::value('app_version', '1.30')) ?>
             </span>
         </div>
     </footer>
@@ -138,6 +169,7 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     <!-- Keep-Alive & Online Sync -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            const APP_CFG = window.APP_CONFIG || {};
             setInterval(function() {
                 fetch('<?= base_url('/api/keep-alive') ?>', {
                     method: 'POST',
@@ -146,7 +178,7 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
                         'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
                     }
                 }).catch(e => console.error('Keep-alive failed:', e));
-            }, 30000); // every 30 seconds
+            }, APP_CFG.keep_alive_ms || 30000); // every 30 seconds
         });
     </script>
     

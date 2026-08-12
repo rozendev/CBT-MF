@@ -27,20 +27,18 @@ Export Laporan
         color: var(--text-primary);
     }
     [data-theme="dark"] .select2-container--bootstrap-5 .select2-results__option--highlighted {
-        background-color: var(--sidebar-active-bg);
-        color: var(--sidebar-active-text);
+        background-color: var(--brand-soft);
+        color: var(--brand-strong);
     }
 </style>
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="d-flex align-items-center mb-4">
-    <div class="icon-box bg-success text-white rounded-3 d-flex align-items-center justify-content-center me-3 shadow-sm" style="width:48px;height:48px;font-size:1.5rem;">
-        <i class="bi bi-file-earmark-spreadsheet-fill"></i>
-    </div>
+<div class="page-head rise">
     <div>
-        <h2 class="h4 mb-1 fw-bold">Export Laporan</h2>
-        <p class="text-muted mb-0" style="font-size: 0.95rem;">Generate dan download rekap nilai dalam bentuk Excel (.xlsx)</p>
+        <div class="eyebrow">Laporan & Ekspor</div>
+        <h1>Export Laporan</h1>
+        <p class="sub">Generate dan download rekap nilai dalam bentuk Excel (.xlsx) — per siswa, grup, ujian, atau butir soal.</p>
     </div>
 </div>
 

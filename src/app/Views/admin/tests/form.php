@@ -47,18 +47,24 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Durasi (Menit) <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" name="duration_minutes" min="1" 
-                                   value="<?= old('duration_minutes', $test->duration_minutes ?? 90) ?>" required>
+                                   value="<?= old('duration_minutes', $test->duration_minutes ?? ($defaultDuration ?? 90)) ?>" required>
                             <div class="form-text">Waktu selesai otomatis: <strong class="text-danger">Waktu Mulai + Durasi</strong>.</div>
                         </div>
                     </div>
 
                     <div class="row g-3 mt-1">
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Password (Opsional)</label>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Password Masuk (Opsional)</label>
                             <input type="text" class="form-control" name="password" 
                                    value="<?= old('password', $test->password ?? '') ?>" placeholder="Kosongkan jika bebas">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Password Keluar Kiosk App <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="exit_password" 
+                                   value="<?= old('exit_password', $test->exit_password ?? '123456') ?>" required placeholder="Contoh: 123456">
+                            <div class="form-text">Password pengawas untuk keluar Kiosk.</div>
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label fw-semibold">IP Range</label>
                             <input type="text" class="form-control" name="ip_range" 
                                    value="<?= old('ip_range', $test->ip_range ?? '*') ?>">
@@ -93,7 +99,7 @@
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Batas Lulus</label>
                             <input type="number" step="0.01" class="form-control" name="passing_score" 
-                                   value="<?= old('passing_score', $test->passing_score ?? 0.00) ?>" required>
+                                   value="<?= old('passing_score', $test->passing_score ?? ($defaultPassingGrade ?? 0.00)) ?>" required>
                         </div>
                     </div>
                     

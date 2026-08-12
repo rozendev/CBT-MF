@@ -35,6 +35,10 @@ class TestSubjectSetModel extends Model
                            ->where('test_subject_set_id', $set->id)
                            ->get()->getResult();
             $set->subjects = $subjects;
+
+            $set->topic = !empty($set->topic_id)
+                ? $db->table('topics')->where('id', $set->topic_id)->get()->getRow()
+                : null;
         }
 
         return $sets;

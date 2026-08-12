@@ -87,7 +87,7 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label class="form-label fw-semibold small text-muted">Subjek / Topik <span class="text-danger">*</span></label>
-                        <select class="form-select" name="subject_id" required>
+                        <select class="form-select" name="subject_id" id="subject_id" required>
                             <option value="">-- Pilih Subjek --</option>
                             <?php 
                                 $selectedSubject = old('subject_id', $subjectId ?? '');
@@ -102,6 +102,20 @@
                                 </optgroup>
                             <?php endforeach; ?>
                         </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small text-muted">Topik / Bab <span class="text-muted">(opsional)</span></label>
+                        <select class="form-select" name="topic_id" id="topic_id">
+                            <option value="">Tanpa Topik (Umum)</option>
+                            <?php $selectedTopic = old('topic_id', $question->topic_id ?? ''); ?>
+                            <?php foreach (($topics ?? []) as $t): ?>
+                                <option value="<?= $t->id ?>" <?= $selectedTopic == $t->id ? 'selected' : '' ?>>
+                                    <?= esc($t->name) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text small">Pilih bab/kompetensi agar soal masuk ke pengelompokan topik.</div>
                     </div>
 
                     <div class="mb-3">
@@ -149,6 +163,34 @@
 <script src="<?= base_url('vendor/quill/quill.js') ?>"></script>
 <script>
     $(document).ready(function() {
+        // ── Dropdown dinamis Topik/Bab: isi ulang sesuai subjek terpilih ──
+        const topicSelect = document.getElementById('topic_id');
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        function loadTopics(subjectId, keepSelection) {
+            const prev = keepSelection ? topicSelect.value : '';
+            topicSelect.innerHTML = '<option value="">Tanpa Topik (Umum)</option>';
+            if (!subjectId) return;
+            fetch('<?= base_url('/admin/questions/topics') ?>?subject_id=' + subjectId)
+                .then(r => r.json())
+                .then(topics => {
+                    topics.forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t.id;
+                        opt.textContent = t.name;
+                        topicSelect.appendChild(opt);
+                    });
+                    if (prev && [...topicSelect.options].some(o => o.value === prev)) {
+                        topicSelect.value = prev;
+                    }
+                })
+                .catch(() => {});
+        }
+        document.getElementById('subject_id').addEventListener('change', function() {
+            loadTopics(this.value, false);
+        });
+
         // Quill Toolbar configuration
         const toolbarOptions = [
             [{ 'header': [1, 2, 3, false] }],

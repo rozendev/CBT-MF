@@ -1,3 +1,9 @@
+<?php
+$settingModel = new \App\Models\SettingModel();
+$appLogo = $settingModel->getValue('app_logo', '');
+$appFavicon = $settingModel->getValue('app_favicon', '');
+$faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? base_url($appLogo) : base_url('favicon.ico'));
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,7 +11,8 @@
     <title>Welcome to CodeIgniter 4!</title>
     <meta name="description" content="The small framework with powerful features">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="shortcut icon" type="image/png" href="/favicon.ico">
+    <link rel="icon" href="<?= $faviconUrl ?>">
+    <link rel="shortcut icon" href="<?= $faviconUrl ?>">
 
     <!-- STYLES -->
 

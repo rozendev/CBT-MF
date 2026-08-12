@@ -322,11 +322,19 @@ class ExamController extends BaseController
                 // Set expiry of the entire hash to 24 hours just in case of orphaned attempts
                 $redis->expire($redisKey, 86400); 
             } else {
-                return $this->response->setJSON(['status' => 'error', 'message' => 'Redis connection failed']);
+                // FAIL-CLOSED: Redis unavailable — refuse to silently drop the answer.
+                log_message('critical', "[FAIL-CLOSED] saveAnswer: Redis unavailable for attempt #{$attemptId}, log #{$logId}. Answer NOT saved.");
+                return $this->response->setStatusCode(503)->setJSON([
+                    'status'  => 'error',
+                    'message' => 'Sistem penyimpanan sementara tidak dapat diakses. Jawaban Anda belum tersimpan. Mohon tunggu sebentar dan coba kirim ulang.',
+                ]);
             }
         } catch (\Exception $e) {
-            log_message('error', 'Redis error in exam save answer: ' . $e->getMessage());
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to save answer due to internal error.']);
+            log_message('critical', "[FAIL-CLOSED] saveAnswer: Redis exception for attempt #{$attemptId}, log #{$logId}: " . $e->getMessage());
+            return $this->response->setStatusCode(503)->setJSON([
+                'status'  => 'error',
+                'message' => 'Sistem penyimpanan sementara tidak dapat diakses. Jawaban Anda belum tersimpan. Mohon tunggu sebentar dan coba kirim ulang.',
+            ]);
         }
 
         // Update answered_at timestamp directly on DB for simple tracking

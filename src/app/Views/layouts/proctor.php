@@ -30,6 +30,31 @@
             font-family: 'Outfit', sans-serif;
             background-color: var(--bg-body);
             color: var(--text-primary);
+            font-size: 0.95rem;
+            text-rendering: optimizeLegibility;
+        }
+        h1, h2, h3, h4, .display-1, .display-2, .display-3 {
+            text-wrap: balance;
+        }
+        :focus-visible {
+            outline: 3px solid rgba(67, 24, 255, 0.35);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 2000;
+            background: var(--brand-color);
+            color: #fff;
+            padding: 0.6rem 1.2rem;
+            border-radius: 0 0 12px 0;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .skip-link:focus {
+            left: 0;
         }
 
         .proctor-navbar {
@@ -71,8 +96,10 @@
     </style>
     
     <?= $this->renderSection('styles') ?>
+    <?php include __DIR__ . '/_frontend_config.php'; ?>
 </head>
 <body>
+    <a class="skip-link" href="#main-content">Lewati ke konten</a>
 
     <nav class="navbar navbar-expand-lg proctor-navbar">
         <div class="container-fluid px-4">
@@ -97,7 +124,7 @@
         </div>
     </nav>
 
-    <div class="container-fluid py-4 px-4">
+    <div class="container-fluid py-4 px-4" id="main-content" tabindex="-1">
         <?php if(session()->getFlashdata('error')): ?>
             <div class="alert alert-danger border-0 shadow-sm rounded-3 alert-dismissible fade show" role="alert">
                 <?= esc(session()->getFlashdata('error')) ?>
@@ -117,7 +144,7 @@
         <!-- Footer -->
         <footer class="text-center mt-auto py-3">
             <span class="text-muted small">
-                &copy; <?= date('Y') ?> <strong>CBT-MF</strong>. All rights reserved. | Ver 1.30
+                &copy; <?= date('Y') ?> <strong>CBT-MF</strong>. All rights reserved. | Ver <?= esc(\App\Libraries\FrontendConfig::value('app_version', '1.30')) ?>
             </span>
         </footer>
     </div>
