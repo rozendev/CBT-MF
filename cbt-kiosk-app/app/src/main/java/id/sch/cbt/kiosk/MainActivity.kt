@@ -7,14 +7,18 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
+import id.sch.cbt.kiosk.kiosk.KioskManager
 
 class MainActivity : AppCompatActivity() {
 
     lateinit var webView: WebView
+    lateinit var kioskManager: KioskManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        kioskManager = KioskManager(this)
 
         webView = findViewById(R.id.webView)
         setupWebView()
@@ -39,6 +43,10 @@ class MainActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            // Blokir tombol back saat mode kiosk aktif
+            return
+        }
         if (::webView.isInitialized && webView.canGoBack()) {
             webView.goBack()
         }
