@@ -18,6 +18,10 @@ class MainActivity : AppCompatActivity() {
     lateinit var kioskManager: KioskManager
     lateinit var securityManager: SecurityManager
 
+    fun getSafeWebView(): WebView? {
+        return try { webView } catch (e: UninitializedPropertyAccessException) { null }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)

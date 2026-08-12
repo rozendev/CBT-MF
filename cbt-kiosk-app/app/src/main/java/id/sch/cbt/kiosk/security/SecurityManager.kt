@@ -63,8 +63,8 @@ class SecurityManager(private val activity: MainActivity) {
 
     fun handleMultiWindow(isInMultiWindowMode: Boolean, isInPictureInPictureMode: Boolean = false) {
         if (isInMultiWindowMode || isInPictureInPictureMode) {
-            if (activity::webView.isInitialized) {
-                CommsBridge.sendEventToJS(activity.webView, "security_alert", "{\"type\": \"SPLIT_SCREEN_DETECTED\"}")
+            activity.getSafeWebView()?.let { safeWebView ->
+                CommsBridge.sendEventToJS(safeWebView, "security_alert", "{\"type\": \"SPLIT_SCREEN_DETECTED\"}")
             }
         }
     }
