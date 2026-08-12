@@ -53,18 +53,12 @@
                     </div>
 
                     <div class="row g-3 mt-1">
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">Password Masuk (Opsional)</label>
                             <input type="text" class="form-control" name="password" 
                                    value="<?= old('password', $test->password ?? '') ?>" placeholder="Kosongkan jika bebas">
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold">Password Keluar Kiosk App <span class="text-danger">*</span></label>
-                            <input type="text" class="form-control" name="exit_password" 
-                                   value="<?= old('exit_password', $test->exit_password ?? '123456') ?>" required placeholder="Contoh: 123456">
-                            <div class="form-text">Password pengawas untuk keluar Kiosk.</div>
-                        </div>
-                        <div class="col-md-4">
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">IP Range</label>
                             <input type="text" class="form-control" name="ip_range" 
                                    value="<?= old('ip_range', $test->ip_range ?? '*') ?>">
