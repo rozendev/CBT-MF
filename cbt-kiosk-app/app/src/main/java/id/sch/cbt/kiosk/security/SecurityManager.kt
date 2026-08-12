@@ -3,6 +3,7 @@ package id.sch.cbt.kiosk.security
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.util.Log
 import android.view.WindowManager
 import id.sch.cbt.kiosk.MainActivity
 import id.sch.cbt.kiosk.bridge.CommsBridge
@@ -15,48 +16,64 @@ class SecurityManager(private val activity: MainActivity) {
 
     fun enableSecurityFlags() {
         activity.runOnUiThread {
-            // 1. Block Screenshot & Screen Recording
-            activity.window.setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE
-            )
-            
-            // 2. Clear & Guard Clipboard
-            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            clipboard?.let { cb ->
-                clipboardListener?.let { oldListener ->
-                    cb.removePrimaryClipChangedListener(oldListener)
-                }
+            try {
+                // 1. Block Screenshot & Screen Recording
+                activity.window.setFlags(
+                    WindowManager.LayoutParams.FLAG_SECURE,
+                    WindowManager.LayoutParams.FLAG_SECURE
+                )
                 
-                isClearingClipboard = true
-                try {
-                    cb.setPrimaryClip(ClipData.newPlainText("", ""))
-                } finally {
-                    isClearingClipboard = false
-                }
-                
-                val newListener = ClipboardManager.OnPrimaryClipChangedListener {
-                    if (isClearingClipboard) return@OnPrimaryClipChangedListener
+                // 2. Clear & Guard Clipboard
+                val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                clipboard?.let { cb ->
+                    clipboardListener?.let { oldListener ->
+                        try { cb.removePrimaryClipChangedListener(oldListener) } catch (e: Throwable) {}
+                    }
+                    
                     isClearingClipboard = true
                     try {
                         cb.setPrimaryClip(ClipData.newPlainText("", ""))
+                    } catch (e: Throwable) {
+                        Log.e("SecurityManager", "Failed setting primary clip", e)
                     } finally {
                         isClearingClipboard = false
                     }
+                    
+                    val newListener = ClipboardManager.OnPrimaryClipChangedListener {
+                        if (isClearingClipboard) return@OnPrimaryClipChangedListener
+                        isClearingClipboard = true
+                        try {
+                            cb.setPrimaryClip(ClipData.newPlainText("", ""))
+                        } catch (e: Throwable) {
+                            Log.e("SecurityManager", "Failed clearing primary clip in listener", e)
+                        } finally {
+                            isClearingClipboard = false
+                        }
+                    }
+                    clipboardListener = newListener
+                    try {
+                        cb.addPrimaryClipChangedListener(newListener)
+                    } catch (e: Throwable) {
+                        Log.e("SecurityManager", "Failed adding clipboard listener", e)
+                    }
                 }
-                clipboardListener = newListener
-                cb.addPrimaryClipChangedListener(newListener)
+            } catch (e: Throwable) {
+                Log.e("SecurityManager", "Error enabling security flags", e)
             }
         }
     }
 
     fun disableSecurityFlags() {
         activity.runOnUiThread {
-            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            clipboardListener?.let { listener ->
-                clipboard?.removePrimaryClipChangedListener(listener)
-                clipboardListener = null
+            try {
+                activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                clipboardListener?.let { listener ->
+                    try { clipboard?.removePrimaryClipChangedListener(listener) } catch (e: Throwable) {}
+                    clipboardListener = null
+                }
+            } catch (e: Throwable) {
+                Log.e("SecurityManager", "Error disabling security flags", e)
             }
         }
     }

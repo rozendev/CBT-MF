@@ -22,20 +22,28 @@ class KioskManager(private val activity: Activity) {
         return try {
             securityManager?.enableSecurityFlags()
             activity.runOnUiThread {
-                activity.startLockTask()
+                try {
+                    activity.startLockTask()
+                } catch (e: Throwable) {
+                    Log.e("KioskManager", "startLockTask failed on UI thread", e)
+                }
             }
             isKioskActive = true
             
-            // Start Guard Service
-            val intent = Intent(activity, KioskGuardService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                activity.startForegroundService(intent)
-            } else {
-                activity.startService(intent)
+            // Start Guard Service safely
+            try {
+                val intent = Intent(activity, KioskGuardService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    activity.startForegroundService(intent)
+                } else {
+                    activity.startService(intent)
+                }
+            } catch (e: Throwable) {
+                Log.e("KioskManager", "Guard service start error", e)
             }
             
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e("KioskManager", "Failed to start LockTask", e)
             false
         }
@@ -46,17 +54,25 @@ class KioskManager(private val activity: Activity) {
         return try {
             securityManager?.disableSecurityFlags()
             activity.runOnUiThread {
-                activity.stopLockTask()
+                try {
+                    activity.stopLockTask()
+                } catch (e: Throwable) {
+                    Log.e("KioskManager", "stopLockTask failed on UI thread", e)
+                }
                 (activity as? id.sch.cbt.kiosk.MainActivity)?.showSetupScreen()
             }
             isKioskActive = false
             
-            // Stop Guard Service
-            val intent = Intent(activity, KioskGuardService::class.java)
-            activity.stopService(intent)
+            // Stop Guard Service safely
+            try {
+                val intent = Intent(activity, KioskGuardService::class.java)
+                activity.stopService(intent)
+            } catch (e: Throwable) {
+                Log.e("KioskManager", "Guard service stop error", e)
+            }
             
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e("KioskManager", "Failed to stop LockTask", e)
             false
         }
