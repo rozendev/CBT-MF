@@ -97,6 +97,9 @@ class MainActivity : AppCompatActivity() {
                 }
             )
 
+            // Ensure the device id exists up front so the first heartbeat is never blank.
+            getOrCreateDeviceId()
+
             setupLayout = findViewById(R.id.setupLayout)
             examContainer = findViewById(R.id.examContainer)
             etServerUrl = findViewById(R.id.etServerUrl)
@@ -630,6 +633,20 @@ class MainActivity : AppCompatActivity() {
             if (::webView.isInitialized) {
                 CommsBridge.sendEventToJS(webView, "exit_attempt", "{}")
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            // Tear down the kiosk (stops the heartbeat timer/worker via stopKiosk)
+            // so it never outlives the activity. Guarded: normal exits already ran
+            // stopKiosk, which cleared isKioskActive, so this does not double-stop.
+            if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+                kioskManager.stopKiosk()
+            }
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error stopping kiosk in onDestroy", e)
         }
     }
 }

@@ -39,13 +39,21 @@ class HeartbeatManager(
     private val handler = Handler(Looper.getMainLooper())
     private var examId = ""
     private var token = ""
+
+    @Volatile
     private var running = false
+
+    @Volatile
     private var backoff = false
 
     fun start(examId: String, token: String) {
         this.examId = examId
         this.token = token
         if (running) return
+        // The pre-JS placeholder token must never arm the timer: it would fire a
+        // false 401 heartbeat before the page hands off the real token. When the
+        // real token arrives, running == false and the loop starts normally.
+        if (token.isBlank() || token == "TOKEN") return
         running = true
         Log.d(TAG, "heartbeat started for exam $examId")
         schedule()
