@@ -12,13 +12,28 @@ class KioskManager(private val activity: Activity) {
     var isKioskActive = false
         private set
 
+    @Volatile
+    var currentExamId: String = ""
+        private set
+
+    @Volatile
+    var currentToken: String = ""
+        private set
+
     private var securityManager: SecurityManager? = null
+    private var heartbeatManager: HeartbeatManager? = null
 
     fun setSecurityManager(manager: SecurityManager) {
         this.securityManager = manager
     }
 
+    fun setHeartbeatManager(manager: HeartbeatManager) {
+        this.heartbeatManager = manager
+    }
+
     fun startKiosk(examId: String, token: String): Boolean {
+        currentExamId = examId
+        currentToken = token
         Log.d("KioskManager", "Starting kiosk for exam: $examId")
         return try {
             securityManager?.enableSecurityFlags()
@@ -30,6 +45,7 @@ class KioskManager(private val activity: Activity) {
                 }
             }
             isKioskActive = true
+            heartbeatManager?.start(examId, token)
             
             // Start Guard Service safely
             try {
@@ -51,6 +67,8 @@ class KioskManager(private val activity: Activity) {
     }
 
     fun stopKiosk(): Boolean {
+        currentExamId = ""
+        currentToken = ""
         Log.d("KioskManager", "Stopping kiosk")
         return try {
             // Stop Siren Alarm if active
@@ -66,6 +84,7 @@ class KioskManager(private val activity: Activity) {
                 (activity as? id.sch.cbt.kiosk.MainActivity)?.showSetupScreen()
             }
             isKioskActive = false
+            heartbeatManager?.stop()
             
             // Stop Guard Service safely
             try {

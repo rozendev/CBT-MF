@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -15,20 +16,28 @@ import android.text.InputType
 import android.util.Log
 import android.view.View
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import id.sch.cbt.kiosk.bridge.CommsBridge
+import id.sch.cbt.kiosk.kiosk.HeartbeatManager
 import id.sch.cbt.kiosk.kiosk.KioskGuardService
 import id.sch.cbt.kiosk.kiosk.KioskManager
+import id.sch.cbt.kiosk.security.RootDetector
 import id.sch.cbt.kiosk.security.SecurityManager
 import id.sch.cbt.kiosk.security.SirenAlarmManager
+import java.io.ByteArrayInputStream
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MainActivity : AppCompatActivity() {
 
@@ -36,19 +45,20 @@ class MainActivity : AppCompatActivity() {
     lateinit var kioskManager: KioskManager
     lateinit var securityManager: SecurityManager
 
-    var currentExitPassword = "123456"
-
     private lateinit var setupLayout: View
     private lateinit var examContainer: View
     private lateinit var etServerUrl: EditText
     private lateinit var btnStartExam: Button
     private lateinit var tvBatteryStatus: TextView
     private lateinit var tvNetworkStatus: TextView
-    private lateinit var btnReloadPage: Button
-    private lateinit var btnExitKiosk: Button
+    private lateinit var btnReloadPage: ImageButton
+    private lateinit var btnExitKiosk: ImageButton
     private lateinit var prefs: SharedPreferences
 
     private var batteryReceiver: BroadcastReceiver? = null
+
+    // Only this host (and its subdomains) may be loaded inside the WebView.
+    private var allowedHost: String? = null
 
     fun getSafeWebView(): WebView? {
         return try { webView } catch (e: UninitializedPropertyAccessException) { null }
@@ -67,13 +77,25 @@ class MainActivity : AppCompatActivity() {
             prefs = getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
 
             // Load saved security config from preferences for offline resilience
-            currentExitPassword = prefs.getString("kiosk_exit_password", "123456") ?: "123456"
             SirenAlarmManager.isSirenEnabled = prefs.getBoolean("kiosk_siren_enabled", true)
             SirenAlarmManager.isSirenMaxVolume = prefs.getBoolean("kiosk_siren_max_volume", true)
 
             kioskManager = KioskManager(this)
             securityManager = SecurityManager(this)
             kioskManager.setSecurityManager(securityManager)
+
+            kioskManager.setHeartbeatManager(
+                HeartbeatManager(this) {
+                    val safeWebView = getSafeWebView()
+                    if (safeWebView != null) {
+                        CommsBridge.sendEventToJS(
+                            safeWebView,
+                            "kiosk_failed",
+                            "{\"error\": \"Sesi kiosk tidak valid (401)\"}"
+                        )
+                    }
+                }
+            )
 
             setupLayout = findViewById(R.id.setupLayout)
             examContainer = findViewById(R.id.examContainer)
@@ -98,14 +120,20 @@ class MainActivity : AppCompatActivity() {
             btnStartExam.setOnClickListener {
                 val inputUrl = etServerUrl.text.toString().trim()
                 if (inputUrl.isEmpty()) {
-                    Toast.makeText(this, "Silakan masukkan URL Server CBT!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.toast_url_empty), Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
 
+                // HTTPS ONLY: plaintext HTTP is a MITM risk for exam integrity.
                 var finalUrl = inputUrl
-                if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
-                    finalUrl = "http://$finalUrl"
+                if (finalUrl.startsWith("http://")) {
+                    finalUrl = "https://" + finalUrl.removePrefix("http://")
+                    Toast.makeText(this, getString(R.string.toast_https_redirect), Toast.LENGTH_LONG).show()
+                } else if (!finalUrl.startsWith("https://")) {
+                    finalUrl = "https://$finalUrl"
                 }
+
+                if (!enforceDevicePolicy()) return@setOnClickListener
 
                 // Save URL to preferences
                 prefs.edit().putString("server_url", finalUrl).apply()
@@ -117,12 +145,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Device-level policy checks before starting the exam:
+     * min app version and root strictness from the server config.
+     */
+    private fun enforceDevicePolicy(): Boolean {
+        val minVersion = prefs.getString("kiosk_min_app_version", "1.0.0") ?: "1.0.0"
+        if (!isVersionAtLeast(BuildConfig.VERSION_NAME, minVersion)) {
+            Toast.makeText(this, getString(R.string.toast_version_too_old), Toast.LENGTH_LONG).show()
+            return false
+        }
+
+        val rootStrictness = prefs.getString("kiosk_root_strictness", "warning") ?: "warning"
+        if (rootStrictness == "strict_block" && RootDetector.isRooted(this)) {
+            Toast.makeText(this, getString(R.string.toast_root_blocked), Toast.LENGTH_LONG).show()
+            return false
+        }
+        return true
+    }
+
+    private fun isVersionAtLeast(installed: String, required: String): Boolean {
+        return try {
+            val a = installed.split('.').map { it.toIntOrNull() ?: 0 }
+            val b = required.split('.').map { it.toIntOrNull() ?: 0 }
+            for (i in 0 until maxOf(a.size, b.size)) {
+                val av = a.getOrElse(i) { 0 }
+                val bv = b.getOrElse(i) { 0 }
+                if (av > bv) return true
+                if (av < bv) return false
+            }
+            true
+        } catch (e: Throwable) {
+            true
+        }
+    }
+
     private fun setupToolbarListeners() {
         btnReloadPage.setOnClickListener {
             if (::webView.isInitialized) {
                 try {
                     webView.reload()
-                    Toast.makeText(this, "Halaman dimuat ulang", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.toast_page_reloaded), Toast.LENGTH_SHORT).show()
                 } catch (e: Throwable) {
                     Log.e("MainActivity", "Error reloading webView", e)
                 }
@@ -137,36 +200,145 @@ class MainActivity : AppCompatActivity() {
     private fun showExitPasswordDialog() {
         try {
             val builder = AlertDialog.Builder(this)
-            builder.setTitle("🚪 Password Keluar Kiosk")
-            builder.setMessage("Masukkan password pengawas untuk melepas penguncian aplikasi:")
+            builder.setTitle(getString(R.string.exit_dialog_title))
+            builder.setMessage(getString(R.string.exit_dialog_message))
 
             val input = EditText(this)
             input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            input.hint = "Password Pengawas"
+            input.hint = getString(R.string.exit_dialog_hint)
             builder.setView(input)
 
-            builder.setPositiveButton("Buka Kunci") { dialog, _ ->
+            builder.setPositiveButton(getString(R.string.exit_dialog_confirm)) { dialog, _ ->
                 val enteredPassword = input.text.toString().trim()
-                if (enteredPassword == currentExitPassword) {
-                    SirenAlarmManager.stopSiren()
-                    kioskManager.stopKiosk()
-                    Toast.makeText(this, "✅ Kiosk Mode Dibuka!", Toast.LENGTH_SHORT).show()
-                    showSetupScreen()
-                } else {
-                    // Trigger loud siren alarm when incorrect password is entered
-                    SirenAlarmManager.startSiren(this)
-                    Toast.makeText(this, "🚨 PASSWORD SALAH! SIRINE ALARM AKTIF!", Toast.LENGTH_LONG).show()
+                verifyExitPassword(enteredPassword) { allowed, message ->
+                    runOnUiThread {
+                        if (allowed) {
+                            SirenAlarmManager.stopSiren()
+                            kioskManager.stopKiosk()
+                            Toast.makeText(this, getString(R.string.toast_kiosk_unlocked), Toast.LENGTH_SHORT).show()
+                        } else {
+                            // Trigger loud siren alarm when password is wrong
+                            SirenAlarmManager.startSiren(this)
+                            Toast.makeText(this, message ?: getString(R.string.toast_wrong_password), Toast.LENGTH_LONG).show()
+                        }
+                    }
                 }
                 dialog.dismiss()
             }
 
-            builder.setNegativeButton("Batal") { dialog, _ ->
+            builder.setNegativeButton(getString(R.string.exit_dialog_cancel)) { dialog, _ ->
                 dialog.cancel()
             }
 
             builder.show()
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error showing exit dialog", e)
+        }
+    }
+
+    private fun getOrCreateDeviceId(): String {
+        val existing = prefs.getString("kiosk_device_id", "")
+        if (!existing.isNullOrBlank()) return existing
+        val newId = java.util.UUID.randomUUID().toString()
+        prefs.edit().putString("kiosk_device_id", newId).apply()
+        return newId
+    }
+
+    /**
+     * Verify the proctor password against the server (rate-limited there).
+     * The password is never stored on the device.
+     */
+    private fun verifyExitPassword(password: String, callback: (Boolean, String?) -> Unit) {
+        val baseUrl = prefs.getString("server_url", "") ?: ""
+        if (baseUrl.isBlank() || password.isBlank()) {
+            callback(false, getString(R.string.toast_password_empty))
+            return
+        }
+        kotlin.concurrent.thread(start = true, isDaemon = true, name = "KioskVerifyPassword") {
+            try {
+                val escaped = password.replace("\\", "\\\\").replace("\"", "\\\"")
+                val deviceId = getOrCreateDeviceId()
+                val payload = "{\"password\": \"$escaped\", \"device_id\": \"$deviceId\"}"
+                val response = postJson("$baseUrl/api/kiosk/verify-exit", payload)
+                val allowed = try { response.first.optBoolean("allowed", false) } catch (e: Throwable) { false }
+                val message = try {
+                    response.first.opt("message")?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                } catch (e: Throwable) { null }
+                callback(allowed, message ?: getString(R.string.toast_wrong_password))
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "Error verifying exit password", e)
+                callback(false, getString(R.string.toast_verify_failed))
+            }
+        }
+    }
+
+    /**
+     * Called from JS when the page believes the exam is finished.
+     * The native app asks the server whether the locked attempt is
+     * genuinely finished and only then unlocks the kiosk.
+     */
+    fun handleKioskExitRequest(token: String) {
+        if (!kioskManager.isKioskActive) return
+
+        val baseUrl = prefs.getString("server_url", "") ?: ""
+        if (baseUrl.isBlank()) {
+            triggerDeniedExit("NO_SERVER")
+            return
+        }
+
+        val verifyToken = if (token.isNotBlank()) token else kioskManager.currentToken
+        kotlin.concurrent.thread(start = true, isDaemon = true, name = "KioskCanExit") {
+            try {
+                val payload = "{\"token\": \"$verifyToken\"}"
+                val (json, code) = postJson("$baseUrl/api/kiosk/can-exit", payload)
+                val allowed = code >= 200 && code < 300 && json.optBoolean("allowed", false)
+
+                runOnUiThread {
+                    if (allowed) {
+                        SirenAlarmManager.stopSiren()
+                        kioskManager.stopKiosk()
+                        Toast.makeText(this, getString(R.string.toast_exam_finished), Toast.LENGTH_LONG).show()
+                    } else {
+                        triggerDeniedExit("NOT_FINISHED_OR_UNVERIFIED")
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "can-exit request failed", e)
+                runOnUiThread { triggerDeniedExit("VERIFY_FAILED") }
+            }
+        }
+    }
+
+    private fun triggerDeniedExit(reason: String) {
+        SirenAlarmManager.startSiren(this)
+        getSafeWebView()?.let {
+            CommsBridge.sendEventToJS(it, "exit_denied", "{\"reason\": \"$reason\"}")
+        }
+        Toast.makeText(this, getString(R.string.toast_exam_not_verified), Toast.LENGTH_LONG).show()
+    }
+
+    /**
+     * Minimal JSON POST helper returning (JSONObject, httpCode).
+     */
+    private fun postJson(urlString: String, body: String): Pair<org.json.JSONObject, Int> {
+        val url = URL(urlString)
+        val connection = url.openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 8000
+            connection.readTimeout = 8000
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Accept", "application/json")
+            OutputStreamWriter(connection.outputStream).use { it.write(body) }
+
+            val code = connection.responseCode
+            val stream = if (code >= 400) connection.errorStream else connection.inputStream
+            val text = stream?.bufferedReader()?.use { it.readText() } ?: "{}"
+            val json = try { org.json.JSONObject(text) } catch (e: Throwable) { org.json.JSONObject("{}") }
+            return Pair(json, code)
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -177,14 +349,21 @@ class MainActivity : AppCompatActivity() {
             setupLayout.visibility = View.GONE
             examContainer.visibility = View.VISIBLE
 
+            allowedHost = try { Uri.parse(url).host } catch (e: Throwable) { null }
+            if (allowedHost.isNullOrBlank()) {
+                Toast.makeText(this, getString(R.string.toast_url_invalid), Toast.LENGTH_LONG).show()
+                showSetupScreen()
+                return
+            }
+
             webView.loadUrl(url)
 
             val started = kioskManager.startKiosk("EXAM_SESSION", "TOKEN")
             if (started) {
-                Toast.makeText(this, "🔒 Kiosk Mode Aktif. Perangkat terkunci!", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.toast_kiosk_locked), Toast.LENGTH_LONG).show()
                 CommsBridge.sendEventToJS(webView, "kiosk_started", "{\"examId\": \"EXAM_SESSION\", \"status\": \"active\"}")
             } else {
-                Toast.makeText(this, "⚠️ Gagal mengunci Kiosk Mode. Periksa izin Screen Pinning.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, getString(R.string.toast_kiosk_failed), Toast.LENGTH_LONG).show()
                 CommsBridge.sendEventToJS(webView, "kiosk_failed", "{\"error\": \"LOCK_TASK_FAILED\"}")
             }
         } catch (e: Throwable) {
@@ -196,9 +375,14 @@ class MainActivity : AppCompatActivity() {
         if (serverUrl.isBlank()) return
         kotlin.concurrent.thread(start = true, isDaemon = true, name = "KioskConfigFetcher") {
             try {
-                val baseUrl = if (!serverUrl.startsWith("http://") && !serverUrl.startsWith("https://")) "http://$serverUrl" else serverUrl
-                val cleanUrl = baseUrl.trimEnd('/')
-                val configUrl = "$cleanUrl/api/kiosk/config"
+                var baseUrl = serverUrl.trimEnd('/')
+                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+                    baseUrl = "https://$baseUrl"
+                }
+                if (baseUrl.startsWith("http://")) {
+                    baseUrl = "https://" + baseUrl.removePrefix("http://")
+                }
+                val configUrl = "$baseUrl/api/kiosk/config"
 
                 Log.d("MainActivity", "Fetching kiosk config from: $configUrl")
                 val url = java.net.URL(configUrl)
@@ -219,7 +403,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 connection.disconnect()
             } catch (e: Throwable) {
-                Log.e("MainActivity", "Error fetching server kiosk config from $serverUrl", e)
+                Log.e("MainActivity", "Error fetching kiosk config from $serverUrl", e)
             }
         }
     }
@@ -227,11 +411,9 @@ class MainActivity : AppCompatActivity() {
     fun applyKioskConfig(configJson: String) {
         try {
             val json = org.json.JSONObject(configJson)
-            if (json.has("exit_password")) {
-                val pwd = json.optString("exit_password", "")
-                if (pwd.isNotBlank()) {
-                    currentExitPassword = pwd
-                }
+            if (json.has("min_app_version")) {
+                val v = json.optString("min_app_version", "1.0.0")
+                if (v.isNotBlank()) prefs.edit().putString("kiosk_min_app_version", v).apply()
             }
             if (json.has("features")) {
                 val features = json.optJSONObject("features")
@@ -242,6 +424,15 @@ class MainActivity : AppCompatActivity() {
                     if (it.has("siren_max_volume")) {
                         SirenAlarmManager.isSirenMaxVolume = it.optBoolean("siren_max_volume", true)
                     }
+                    if (it.has("block_clipboard")) {
+                        val blockClipboard = it.optBoolean("block_clipboard", true)
+                        prefs.edit().putBoolean("kiosk_block_clipboard", blockClipboard).apply()
+                        securityManager.setClipboardGuard(blockClipboard)
+                    }
+                    if (it.has("root_detection_strictness")) {
+                        val strictness = it.optString("root_detection_strictness", "warning")
+                        if (strictness.isNotBlank()) prefs.edit().putString("kiosk_root_strictness", strictness).apply()
+                    }
                 }
             }
 
@@ -251,12 +442,11 @@ class MainActivity : AppCompatActivity() {
 
             // Persist config to SharedPreferences for offline resilience
             prefs.edit()
-                .putString("kiosk_exit_password", currentExitPassword)
                 .putBoolean("kiosk_siren_enabled", SirenAlarmManager.isSirenEnabled)
                 .putBoolean("kiosk_siren_max_volume", SirenAlarmManager.isSirenMaxVolume)
                 .apply()
 
-            Log.d("MainActivity", "Applied kiosk config: exitPassword=$currentExitPassword, sirenEnabled=${SirenAlarmManager.isSirenEnabled}, sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}")
+            Log.d("MainActivity", "Applied kiosk config: sirenEnabled=${SirenAlarmManager.isSirenEnabled}, sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}")
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error parsing kiosk config JSON", e)
         }
@@ -281,17 +471,37 @@ class MainActivity : AppCompatActivity() {
             val settings: WebSettings = webView.settings
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.setSupportMultipleWindows(false)
 
             webView.addJavascriptInterface(CommsBridge(this), "CommsBridge")
 
             webView.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    return false
+                    // Return true = block navigation to non-allowed hosts inside the kiosk.
+                    val url = request?.url?.toString() ?: return false
+                    return !isAllowedUrl(url)
+                }
+
+                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                    val url = request?.url?.toString() ?: return null
+                    if (!isAllowedUrl(url)) {
+                        // Hard-block all cross-host subresources (scripts, iframes, images, exfil).
+                        return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream("blocked".toByteArray()))
+                    }
+                    return null
                 }
             }
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error setting up webView", e)
         }
+    }
+
+    private fun isAllowedUrl(url: String): Boolean {
+        if (url == "about:blank") return true
+        if (url.startsWith("about:") || url.startsWith("data:")) return false
+        val host = try { Uri.parse(url).host } catch (e: Throwable) { null } ?: return false
+        val allowed = allowedHost ?: return false
+        return host == allowed || host.endsWith(".$allowed")
     }
 
     private fun registerStatusReceivers() {
@@ -303,7 +513,7 @@ class MainActivity : AppCompatActivity() {
                         val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
                         val pct = if (level != -1 && scale != -1) (level * 100 / scale.toFloat()).toInt() else 0
                         val isCharging = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1) == BatteryManager.BATTERY_STATUS_CHARGING
-                        tvBatteryStatus.text = if (isCharging) "⚡ $pct%" else "🔋 $pct%"
+                        tvBatteryStatus.text = "$pct%"
                     }
                 }
             }
@@ -329,30 +539,30 @@ class MainActivity : AppCompatActivity() {
                     val caps = cm.getNetworkCapabilities(activeNetwork)
                     if (caps != null) {
                         if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                            tvNetworkStatus.text = "📶 WiFi"
+                            tvNetworkStatus.text = "WiFi"
                         } else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
-                            tvNetworkStatus.text = "📶 Seluler"
+                            tvNetworkStatus.text = "Seluler"
                         } else {
-                            tvNetworkStatus.text = "🌐 Terhubung"
+                            tvNetworkStatus.text = "Terhubung"
                         }
                     } else {
-                        tvNetworkStatus.text = "⚠️ Offline"
+                        tvNetworkStatus.text = "Offline"
                     }
                 } else {
                     @Suppress("DEPRECATION")
                     val networkInfo = cm.activeNetworkInfo
                     if (networkInfo != null && networkInfo.isConnected) {
-                        tvNetworkStatus.text = "📶 ${networkInfo.typeName}"
+                        tvNetworkStatus.text = networkInfo.typeName
                     } else {
-                        tvNetworkStatus.text = "⚠️ Offline"
+                        tvNetworkStatus.text = "Offline"
                     }
                 }
             } else {
-                tvNetworkStatus.text = "📶 --"
+                tvNetworkStatus.text = "--"
             }
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error updating network status", e)
-            tvNetworkStatus.text = "📶 --"
+            tvNetworkStatus.text = "--"
         }
     }
 
@@ -367,7 +577,7 @@ class MainActivity : AppCompatActivity() {
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
             // Trigger siren alarm if back button is pressed repeatedly in attempt to break out
             SirenAlarmManager.startSiren(this)
-            Toast.makeText(this, "🚨 KIOSK TERKUNCI! MASUKKAN PASSWORD PENGUAS!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.toast_kiosk_locked_warning), Toast.LENGTH_SHORT).show()
             return
         }
         if (setupLayout.visibility == View.VISIBLE) {
