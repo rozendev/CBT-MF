@@ -58,6 +58,7 @@ if (!$activeTest) {
     <link rel="shortcut icon" href="<?= $faviconUrl ?>">
 
     <link href="<?= base_url('assets/css/' . ($fontFamily === 'Inter' ? 'inter' : 'outfit') . '.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css?v=1.1') ?>" rel="stylesheet">
     
     <?php if ($hasToast): ?>
     <link href="<?= base_url('vendor/sweetalert2/sweetalert2.min.css') ?>" rel="stylesheet">
@@ -176,6 +177,40 @@ if (!$activeTest) {
         input[type="password"]:focus {
             border-color: var(--focus-ring);
             box-shadow: 0 0 0 3px rgba(<?= $primaryRgbStr ?>, 0.2);
+        }
+
+        /* Show/Hide Password Toggle */
+        .password-wrap {
+            position: relative;
+        }
+
+        .password-wrap input[type="password"] {
+            padding-right: 44px;
+        }
+
+        .toggle-password {
+            position: absolute;
+            top: 50%;
+            right: 6px;
+            transform: translateY(-50%);
+            border: none;
+            background: none;
+            padding: 6px 8px;
+            cursor: pointer;
+            color: var(--text-muted);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s;
+        }
+
+        .toggle-password:hover {
+            color: var(--text-main);
+        }
+
+        .toggle-password:focus-visible {
+            outline: 2px solid rgba(<?= $primaryRgbStr ?>, 0.35);
         }
 
         /* Button */
@@ -305,7 +340,13 @@ if (!$activeTest) {
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="Masukkan password" autocomplete="current-password" required>
+                <div class="password-wrap">
+                    <input type="password" id="password" name="password" placeholder="Masukkan password" autocomplete="current-password" required>
+                    <button type="button" class="toggle-password" data-target="password" tabindex="-1" aria-label="Tampilkan password">
+                        <i class="bi bi-eye"></i>
+                        <i class="bi bi-eye-slash d-none"></i>
+                    </button>
+                </div>
             </div>
 
             <button type="submit" id="btnSubmit" class="btn-submit">Masuk</button>
@@ -349,6 +390,20 @@ if (!$activeTest) {
         e.preventDefault();
         var hint = document.getElementById('helpHint');
         hint.style.display = hint.style.display === 'none' ? 'block' : 'none';
+    });
+
+    document.querySelectorAll('.toggle-password').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var input = document.getElementById(btn.dataset.target);
+            if (!input) return;
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            var eye = btn.querySelector('.bi-eye');
+            var eyeSlash = btn.querySelector('.bi-eye-slash');
+            if (eye) eye.classList.toggle('d-none', show);
+            if (eyeSlash) eyeSlash.classList.toggle('d-none', !show);
+            btn.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password');
+        });
     });
 
     document.querySelector('form').addEventListener('submit', function(e) {

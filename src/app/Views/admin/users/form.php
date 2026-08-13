@@ -87,7 +87,13 @@
 
                     <div class="mb-3">
                         <label for="password" class="form-label fw-semibold">Password <?= !$user ? '<span class="text-danger">*</span>' : '' ?></label>
-                        <input type="password" class="form-control" id="password" name="password" <?= !$user ? 'required' : '' ?>>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="password" name="password" <?= !$user ? 'required' : '' ?>>
+                            <button type="button" class="btn btn-outline-secondary" data-target="password" aria-label="Tampilkan password">
+                                <i class="bi bi-eye"></i>
+                                <i class="bi bi-eye-slash d-none"></i>
+                            </button>
+                        </div>
                         <?php if ($user): ?>
                             <div class="form-text text-muted">Kosongkan jika tidak ingin mengubah password.</div>
                         <?php endif; ?>
@@ -160,4 +166,19 @@
         </div>
     </div>
 </form>
+<script>
+document.querySelectorAll('.toggle-password').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var input = document.getElementById(btn.dataset.target);
+        if (!input) return;
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        var eye = btn.querySelector('.bi-eye');
+        var eyeSlash = btn.querySelector('.bi-eye-slash');
+        if (eye) eye.classList.toggle('d-none', show);
+        if (eyeSlash) eyeSlash.classList.toggle('d-none', !show);
+        btn.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password');
+    });
+});
+</script>
 <?= $this->endSection() ?>
