@@ -30,9 +30,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css?v=1.1') ?>" rel="stylesheet">
     <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css?v=1.1') ?>" rel="stylesheet">
     <link href="<?= base_url('assets/css/outfit.css?v=1.1') ?>" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <link rel="stylesheet" href="<?= base_url('vendor/katex/katex.min.css?v=0.16.9') ?>">
+    <script defer src="<?= base_url('vendor/katex/katex.min.js?v=0.16.9') ?>"></script>
+    <script defer src="<?= base_url('vendor/katex/auto-render.min.js?v=0.16.9') ?>"></script>
     <script>
         window.renderMath = () => {
             const container = document.querySelector('.question-container');
@@ -67,8 +67,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             setTimeout(window.renderMath, 500);
         });
     </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script defer src="<?= base_url('vendor/alpinejs/alpine.min.js?v=3.14.8') ?>"></script>
+    <script src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js') ?>"></script>
     <style>
         :root {
             --color-background: <?= $secondaryColor ?>;
@@ -848,8 +848,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         </div>
     </div><!-- /examContent -->
 
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= base_url('vendor/jquery/jquery-3.6.0.min.js') ?>"></script>
+    <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js') ?>"></script>
 
     <script>
     let examStarted = false;
@@ -1801,7 +1801,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 .done((res) => {
                     updateCsrf(res);
                     if (window.CommsBridge) {
-                        window.CommsBridge.stopKiosk();
+                        window.CommsBridge.requestExit(window.__examData ? (window.__examData.wsToken || '') : '');
                     }
                     if (res.redirect) {
                         window.location.href = res.redirect;
@@ -2105,7 +2105,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     <script>
         window.CBT_EXAM_CONFIG = {
             examId: EXAM_CONFIG.testId || "0",
-            exitPassword: EXAM_CONFIG.exitPassword || "123456"
+            token: (window.__examData && window.__examData.wsToken) || ""
         };
     </script>
     <script src="<?= base_url('js/kiosk-integration.js') ?>"></script>
