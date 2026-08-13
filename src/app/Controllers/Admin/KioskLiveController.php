@@ -1,0 +1,96 @@
+<?php
+
+namespace App\Controllers\Admin;
+
+use App\Controllers\BaseController;
+use App\Libraries\RedisClient;
+use App\Models\TestModel;
+
+class KioskLiveController extends BaseController
+{
+    private const STALE_SECONDS = 90;
+
+    public function index()
+    {
+        $db = \Config\Database::connect();
+
+        $activeTests = $db->table('tests')
+            ->select('tests.id, tests.name, COUNT(ta.id) AS attempt_count')
+            ->join('test_attempts ta', 'ta.test_id = tests.id', 'inner')
+            ->whereIn('ta.status', [0, 1, 2])
+            ->groupBy('tests.id, tests.name')
+            ->orderBy('tests.id', 'DESC')
+            ->limit(100)
+            ->get()
+            ->getResultArray();
+
+        return view('admin/kiosk/live', [
+            'title'       => 'Monitoring Kiosk Real-Time',
+            'activeTests' => $activeTests,
+        ]);
+    }
+
+    public function data()
+    {
+        $testId = (int) $this->request->getGet('test_id');
+        if ($testId <= 0) {
+            return $this->response->setStatusCode(400)->setJSON(['status' => 'error', 'message' => 'test_id wajib']);
+        }
+
+        $db = \Config\Database::connect();
+        $attempts = $db->table('test_attempts')
+            ->select('test_attempts.user_id, users.firstname, users.lastname, users.username')
+            ->join('users', 'users.id = test_attempts.user_id')
+            ->where('test_attempts.test_id', $testId)
+            ->whereIn('test_attempts.status', [0, 1, 2])
+            ->get()
+            ->getResultArray();
+
+        $redis = RedisClient::getInstance();
+        $now   = time();
+
+        $students = [];
+        foreach ($attempts as $attempt) {
+            $userId = (int) $attempt['user_id'];
+            $status = 'offline';
+            $device = [
+                'battery'     => -1,
+                'charging'    => false,
+                'network'     => 'unknown',
+                'app_version' => '',
+                'device_id'   => '',
+                'last_seen'   => null,
+            ];
+
+            if ($redis) {
+                $info = $redis->hGetAll("kiosk_live:{$testId}:{$userId}");
+                if (!empty($info)) {
+                    $ts = (int) ($info['ts'] ?? 0);
+                    $status = ($now - $ts) <= 30 ? 'online' : 'stale';
+                    $device = [
+                        'battery'     => (int) ($info['battery'] ?? -1),
+                        'charging'    => ($info['charging'] ?? '0') === '1',
+                        'network'     => (string) ($info['network'] ?? 'unknown'),
+                        'app_version' => (string) ($info['app_version'] ?? ''),
+                        'device_id'   => (string) ($info['device_id'] ?? ''),
+                        'last_seen'   => date('Y-m-d H:i:s', $ts),
+                    ];
+                }
+            }
+
+            $students[] = array_merge([
+                'user_id'  => $userId,
+                'username' => $attempt['username'],
+                'firstname'=> $attempt['firstname'],
+                'lastname' => $attempt['lastname'],
+                'status'   => $status,
+            ], $device);
+        }
+
+        return $this->response->setJSON([
+            'test_id'  => $testId,
+            'now'      => $now,
+            'students' => $students,
+        ]);
+    }
+}

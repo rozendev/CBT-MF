@@ -30,9 +30,11 @@ $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     $routes->get('exam/stream/(:num)', 'Api\ExamApiController::stream/$1');
 });
 
-// ── Kiosk & Intruder Routes (public) ──────────────────────────
+// ── Kiosk & Intruder Routes (public, token/rate guarded) ──────────
 $routes->group('api', static function ($routes) {
     $routes->get('kiosk/config', 'Api\KioskController::config');
+    $routes->post('kiosk/verify-exit', 'Api\KioskController::verifyExit');
+    $routes->post('kiosk/can-exit', 'Api\KioskController::canExit');
     $routes->post('intruder/report', 'Api\IntruderReportController::report');
 });
 
@@ -87,6 +89,10 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         // Kiosk App Management (Independent Page)
         $routes->get('kiosk', 'Admin\KioskSettingsController::index');
         $routes->post('kiosk/update', 'Admin\KioskSettingsController::update');
+
+        // Kiosk Live Monitoring
+        $routes->get('kiosk/live', 'Admin\KioskLiveController::index');
+        $routes->get('kiosk/live-data', 'Admin\KioskLiveController::data');
 
         // Analytics
         $routes->get('analytics', 'Admin\AnalyticsController::index');
