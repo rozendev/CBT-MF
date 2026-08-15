@@ -106,7 +106,10 @@
 <script>
     // Tunda start Alpine sampai config ujian siap (EXAM_CONFIG wajib ada saat
     // komponen x-data dibuat — fetch init bisa lebih lambat dari DOM ready).
-    window.deferLoadingAlpine = function (startAlpine) { window.__alpineReady = startAlpine; };
+    window.deferLoadingAlpine = function (startAlpine) {
+        if (window.__configReady) startAlpine();
+        else window.__alpineReady = startAlpine;
+    };
 
     var base = window.KIOSK_BASE_URL;
     var params = new URLSearchParams(window.location.search);
@@ -159,6 +162,7 @@
             window.dispatchEvent(new Event('kiosk_config_ready'));
             var ls = document.getElementById('loading-screen');
             if (ls) ls.style.display = 'none';
+            window.__configReady = true;
             if (window.__alpineReady) window.__alpineReady();
             return true;
         };
@@ -531,6 +535,10 @@
 </script>
 <script defer src="assets/jquery-shim.js?v=<?= esc($assetVersion) ?>"></script>
 <script defer src="assets/alpine.min.js?v=<?= esc($assetVersion) ?>"></script>
-<script src="assets/exam-app.js?v=<?= esc($assetVersion) ?>"></script>
+<!-- app.js sengaja NON-defer dan dieksekusi SEBELUM alpine.min.js agar listener
+     alpine:init (registrasi Alpine.data('examApp', ...)) terdaftar lebih dulu —
+     menyimpang dari urutan huruf di plan, tetapi ini yang benar;
+     jangan ubah urutan tanpa mengecek registrasi komponen Alpine. -->
+    <script src="assets/exam-app.js?v=<?= esc($assetVersion) ?>"></script>
 <script defer src="assets/sweetalert2.min.js?v=<?= esc($assetVersion) ?>"></script>
 </body></html>

@@ -8,10 +8,6 @@ src/public/static/
 # Kiosk UI bundle (build artifact — dihasilkan cbt:build-ui-bundle)
 src/public/ui-bundle/
 
-# Nginx maintenance flag (runtime artifact)
-src/writable/.maintenance_redis
-src/writable/.maintenance_manual
-
 # Environment
 .env
 .env.local
