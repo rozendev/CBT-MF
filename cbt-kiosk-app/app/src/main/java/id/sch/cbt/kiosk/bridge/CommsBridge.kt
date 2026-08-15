@@ -18,25 +18,21 @@ class CommsBridge(private val activity: MainActivity) {
         return result
     }
 
+    /**
+     * Request a VERIFIED kiosk exit. The native app checks with the server
+     * that the locked exam session is genuinely finished before unlocking.
+     * A page alone can no longer unlock the kiosk.
+     */
     @JavascriptInterface
-    fun stopKiosk(): Boolean {
-        return activity.kioskManager.stopKiosk()
-    }
-
-    @JavascriptInterface
-    fun setExitPassword(password: String) {
-        if (password.isNotBlank()) {
-            activity.currentExitPassword = password
+    fun requestExit(token: String) {
+        activity.runOnUiThread {
+            activity.handleKioskExitRequest(token)
         }
     }
 
     @JavascriptInterface
-    fun updateKioskConfig(configJson: String) {
-        if (configJson.isNotBlank()) {
-            activity.runOnUiThread {
-                activity.applyKioskConfig(configJson)
-            }
-        }
+    fun setExamActive(active: Boolean) {
+        activity.uiBundleManager.examActive = active
     }
 
     @JavascriptInterface
