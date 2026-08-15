@@ -28,6 +28,9 @@ $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     $routes->post('exam/check-score', 'Api\ExamApiController::checkScore');
     $routes->post('exam/report-cheat', 'Api\ExamApiController::reportCheat');
     $routes->get('exam/stream/(:num)', 'Api\ExamApiController::stream/$1');
+    $routes->get('student/exams', 'Api\StudentApiController::exams');
+    $routes->get('student/results', 'Api\StudentApiController::results');
+    $routes->get('student/review', 'Api\StudentApiController::review');
 });
 
 // ── Kiosk & Intruder Routes (public, token/rate guarded) ──────────
