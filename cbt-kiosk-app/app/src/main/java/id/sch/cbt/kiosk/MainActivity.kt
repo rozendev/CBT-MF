@@ -1,6 +1,8 @@
 package id.sch.cbt.kiosk
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -27,7 +29,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.webkit.WebViewAssetLoader
 import id.sch.cbt.kiosk.bridge.CommsBridge
+import id.sch.cbt.kiosk.bundle.UiBundleManager
 import id.sch.cbt.kiosk.kiosk.HeartbeatManager
 import id.sch.cbt.kiosk.kiosk.KioskGuardService
 import id.sch.cbt.kiosk.kiosk.KioskManager
@@ -35,6 +39,7 @@ import id.sch.cbt.kiosk.security.RootDetector
 import id.sch.cbt.kiosk.security.SecurityManager
 import id.sch.cbt.kiosk.security.SirenAlarmManager
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -44,11 +49,13 @@ class MainActivity : AppCompatActivity() {
     lateinit var webView: WebView
     lateinit var kioskManager: KioskManager
     lateinit var securityManager: SecurityManager
+    lateinit var uiBundleManager: UiBundleManager
 
     private lateinit var setupLayout: View
     private lateinit var examContainer: View
     private lateinit var etServerUrl: EditText
     private lateinit var btnStartExam: Button
+    private lateinit var btnImportBundle: Button
     private lateinit var tvBatteryStatus: TextView
     private lateinit var tvNetworkStatus: TextView
     private lateinit var btnReloadPage: ImageButton
@@ -59,6 +66,22 @@ class MainActivity : AppCompatActivity() {
 
     // Only this host (and its subdomains) may be loaded inside the WebView.
     private var allowedHost: String? = null
+
+    private var pendingBundleBaseUrl: String? = null
+    private var examFlowRequested = false
+
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            if (id < 0) return
+            installDownloadedBundle(id)
+        }
+    }
+
+    companion object {
+        private const val REQ_IMPORT_BUNDLE = 4001
+    }
 
     fun getSafeWebView(): WebView? {
         return try { webView } catch (e: UninitializedPropertyAccessException) { null }
@@ -75,6 +98,20 @@ class MainActivity : AppCompatActivity() {
             setContentView(R.layout.activity_main)
 
             prefs = getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
+
+            uiBundleManager = UiBundleManager(
+                this,
+                prefs,
+                onReady = { ready ->
+                    if (ready) {
+                        runOnUiThread { proceedToBundleExam() }
+                    }
+                },
+                onError = { message ->
+                    runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
+                }
+            )
+            registerDownloadReceiver()
 
             // Load saved security config from preferences for offline resilience
             SirenAlarmManager.isSirenEnabled = prefs.getBoolean("kiosk_siren_enabled", true)
@@ -104,6 +141,7 @@ class MainActivity : AppCompatActivity() {
             examContainer = findViewById(R.id.examContainer)
             etServerUrl = findViewById(R.id.etServerUrl)
             btnStartExam = findViewById(R.id.btnStartExam)
+            btnImportBundle = findViewById(R.id.btnImportBundle)
             webView = findViewById(R.id.webView)
             tvBatteryStatus = findViewById(R.id.tvBatteryStatus)
             tvNetworkStatus = findViewById(R.id.tvNetworkStatus)
@@ -112,6 +150,21 @@ class MainActivity : AppCompatActivity() {
 
             setupWebView()
             setupToolbarListeners()
+
+            btnImportBundle.setOnClickListener {
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    type = "application/zip"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                }
+                try {
+                    startActivityForResult(intent, REQ_IMPORT_BUNDLE)
+                } catch (e: Throwable) {
+                    Toast.makeText(this, "Tidak ada aplikasi pemilih file.", Toast.LENGTH_LONG).show()
+                }
+            }
+
+            // Side-load: bundle zip dibuka dari file manager / share intent.
+            handleBundleIntent(intent)
 
             // Load saved URL from preferences
             val savedUrl = prefs.getString("server_url", "")
@@ -347,30 +400,80 @@ class MainActivity : AppCompatActivity() {
 
     private fun startExamAndLockKiosk(url: String) {
         try {
-            fetchServerKioskConfig(url)
+            var finalUrl = url.trimEnd('/')
+            if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+                finalUrl = "https://$finalUrl"
+            }
+            if (finalUrl.startsWith("http://")) {
+                finalUrl = "https://" + finalUrl.removePrefix("http://")
+            }
+
+            pendingBundleBaseUrl = finalUrl
+            examFlowRequested = true
 
             setupLayout.visibility = View.GONE
             examContainer.visibility = View.VISIBLE
 
-            allowedHost = try { Uri.parse(url).host } catch (e: Throwable) { null }
+            allowedHost = try { Uri.parse(finalUrl).host } catch (e: Throwable) { null }
             if (allowedHost.isNullOrBlank()) {
                 Toast.makeText(this, getString(R.string.toast_url_invalid), Toast.LENGTH_LONG).show()
                 showSetupScreen()
                 return
             }
 
-            webView.loadUrl(url)
-
-            val started = kioskManager.startKiosk("EXAM_SESSION", "TOKEN")
-            if (started) {
-                Toast.makeText(this, getString(R.string.toast_kiosk_locked), Toast.LENGTH_LONG).show()
-                CommsBridge.sendEventToJS(webView, "kiosk_started", "{\"examId\": \"EXAM_SESSION\", \"status\": \"active\"}")
-            } else {
-                Toast.makeText(this, getString(R.string.toast_kiosk_failed), Toast.LENGTH_LONG).show()
-                CommsBridge.sendEventToJS(webView, "kiosk_failed", "{\"error\": \"LOCK_TASK_FAILED\"}")
-            }
+            // Config + bundle check; WebView baru di-load setelah bundle siap
+            // (applyKioskConfig / onReady UiBundleManager → proceedToBundleExam).
+            fetchServerKioskConfig(finalUrl)
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error starting exam and locking kiosk", e)
+        }
+    }
+
+    /**
+     * Memuat halaman login dari bundle lokal via WebViewAssetLoader, lalu
+     * mengunci kiosk. Dipanggil hanya ketika bundle UI sudah siap.
+     */
+    private fun proceedToBundleExam() {
+        if (!examFlowRequested) return
+        val baseUrl = pendingBundleBaseUrl
+        if (baseUrl.isNullOrBlank()) {
+            showSetupScreen()
+            return
+        }
+        loadBundleLoginPage(baseUrl)
+        lockKioskSession()
+    }
+
+    private fun loadBundleLoginPage(baseUrl: String) {
+        val loader = WebViewAssetLoader.Builder()
+            .setDomain("appassets.androidplatform.net")
+            .addPathHandler(
+                "/",
+                WebViewAssetLoader.InternalStoragePathHandler(this, File(filesDir, "ui-bundle"))
+            )
+            .build()
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? =
+                request?.let { loader.shouldInterceptRequest(it.url) }
+
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                // Internal bundle navigation bebas; segala navigasi keluar di-block.
+                val host = request?.url?.host
+                if (host == "appassets.androidplatform.net") return false
+                return true
+            }
+        }
+        webView.loadUrl("https://appassets.androidplatform.net/login.html?server=" + Uri.encode(baseUrl))
+    }
+
+    private fun lockKioskSession() {
+        val started = kioskManager.startKiosk("EXAM_SESSION", "TOKEN")
+        if (started) {
+            Toast.makeText(this, getString(R.string.toast_kiosk_locked), Toast.LENGTH_LONG).show()
+            CommsBridge.sendEventToJS(webView, "kiosk_started", "{\"examId\": \"EXAM_SESSION\", \"status\": \"active\"}")
+        } else {
+            Toast.makeText(this, getString(R.string.toast_kiosk_failed), Toast.LENGTH_LONG).show()
+            CommsBridge.sendEventToJS(webView, "kiosk_failed", "{\"error\": \"LOCK_TASK_FAILED\"}")
         }
     }
 
@@ -399,7 +502,7 @@ class MainActivity : AppCompatActivity() {
                 if (responseCode == 200) {
                     val jsonString = connection.inputStream.bufferedReader().use { it.readText() }
                     runOnUiThread {
-                        applyKioskConfig(jsonString)
+                        applyKioskConfig(jsonString, baseUrl)
                     }
                 } else {
                     Log.w("MainActivity", "Failed to fetch kiosk config, response code: $responseCode")
@@ -411,7 +514,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun applyKioskConfig(configJson: String) {
+    fun applyKioskConfig(configJson: String, serverBaseUrl: String) {
         try {
             val json = org.json.JSONObject(configJson)
             if (json.has("min_app_version")) {
@@ -450,6 +553,25 @@ class MainActivity : AppCompatActivity() {
                 .apply()
 
             Log.d("MainActivity", "Applied kiosk config: sirenEnabled=${SirenAlarmManager.isSirenEnabled}, sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}")
+
+            // ---- Bundle UI: gate load WebView pada ketersediaan bundle ----
+            val bundleInfo = json.optJSONObject("ui_bundle")
+            val serverBundleVersion = bundleInfo?.optString("version") ?: ""
+            if (serverBundleVersion.isBlank()) {
+                Toast.makeText(this, "Bundle UI belum tersedia di server.", Toast.LENGTH_LONG).show()
+                showSetupScreen()
+                return
+            }
+            if (uiBundleManager.canRefresh() && uiBundleManager.localVersion() != serverBundleVersion) {
+                val zipUrl = bundleInfo.optString("url")
+                    .takeIf { it.isNotBlank() } ?: "$serverBaseUrl/ui-bundle/ui-bundle.zip"
+                Toast.makeText(this, "Mengunduh bundle UI, harap tunggu...", Toast.LENGTH_LONG).show()
+                uiBundleManager.downloadViaDownloadManager(serverBaseUrl, zipUrl, serverBundleVersion)
+                // Lanjut ke WebView lewat onReady setelah verifyAndInstall selesai (download receiver).
+                return
+            }
+            // Versi bundle cocok (atau tidak bisa refresh karena exam aktif) → lanjut.
+            proceedToBundleExam()
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error parsing kiosk config JSON", e)
         }
@@ -464,6 +586,90 @@ class MainActivity : AppCompatActivity() {
                 webView.loadUrl("about:blank")
             } catch (e: Throwable) {
                 Log.e("MainActivity", "Error showing setup screen", e)
+            }
+        }
+    }
+
+    private fun registerDownloadReceiver() {
+        try {
+            val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(downloadReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(downloadReceiver, filter)
+            }
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Error registering download receiver", e)
+        }
+    }
+
+    /**
+     * DownloadManager selesai → salin file ke cacheDir lalu verify+install.
+     * onReady UiBundleManager meneruskan ke proceedToBundleExam.
+     */
+    private fun installDownloadedBundle(downloadId: Long) {
+        kotlin.concurrent.thread(start = true, isDaemon = true, name = "BundleInstall") {
+            try {
+                val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val uri = dm.getUriForDownloadedFile(downloadId)
+                if (uri == null) {
+                    runOnUiThread { Toast.makeText(this, "Unduhan bundle gagal.", Toast.LENGTH_LONG).show() }
+                    return@thread
+                }
+                val target = File(cacheDir, "dl-ui-bundle.zip")
+                target.delete()
+                val copied = contentResolver.openInputStream(uri)?.use { input ->
+                    target.outputStream().use { out -> input.copyTo(out) }
+                    true
+                } ?: false
+                if (!copied) {
+                    runOnUiThread { Toast.makeText(this, "Gagal membaca hasil unduhan bundle.", Toast.LENGTH_LONG).show() }
+                    return@thread
+                }
+                uiBundleManager.verifyAndInstall(target)
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "Error installing downloaded bundle", e)
+            }
+        }
+    }
+
+    /**
+     * Bundle zip dibuka dari luar app (file manager / share) → import lalu lanjut exam flow.
+     */
+    private fun handleBundleIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.type == "application/zip" && intent.data != null) {
+            if (uiBundleManager.importBundle(intent.data!!)) {
+                continueExamFlowAfterImport()
+            }
+        }
+    }
+
+    private fun continueExamFlowAfterImport() {
+        val savedUrl = prefs.getString("server_url", "") ?: ""
+        if (savedUrl.isNullOrBlank()) {
+            Toast.makeText(this, "Bundle terpasang. Isi URL server lalu klik Mulai Ujian.", Toast.LENGTH_LONG).show()
+            return
+        }
+        startExamAndLockKiosk(savedUrl)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleBundleIntent(intent)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_IMPORT_BUNDLE && resultCode == Activity.RESULT_OK) {
+            data?.data?.let { uri ->
+                if (uiBundleManager.importBundle(uri)) {
+                    // onReady(true) → proceedToBundleExam (bila exam flow sudah diminta);
+                    // tanpa itu, lanjut via Start / continueExamFlowAfterImport.
+                    continueExamFlowAfterImport()
+                }
             }
         }
     }
@@ -639,6 +845,11 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         try {
+            try {
+                unregisterReceiver(downloadReceiver)
+            } catch (e: Throwable) {
+                // receiver tidak terdaftar — abaikan
+            }
             // Tear down the kiosk (stops the heartbeat timer/worker via stopKiosk)
             // so it never outlives the activity. Guarded: normal exits already ran
             // stopKiosk, which cleared isKioskActive, so this does not double-stop.

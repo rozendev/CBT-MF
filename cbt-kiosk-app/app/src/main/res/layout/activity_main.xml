@@ -2,7 +2,7 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F8F9FA">
+    android:background="@color/surface_bg">
 
     <!-- SETUP & URL INPUT CONTAINER -->
     <ScrollView
@@ -16,92 +16,132 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:orientation="vertical"
-            android:padding="24dp">
+            android:paddingHorizontal="@dimen/spacing_lg"
+            android:paddingVertical="@dimen/spacing_xl">
 
-            <!-- LOGO / HEADER CARD -->
+            <!-- MAIN CARD -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="#FFFFFF"
-                android:elevation="4dp"
-                android:gravity="center"
+                android:background="@drawable/bg_card"
+                android:elevation="@dimen/card_elevation"
+                android:gravity="center_horizontal"
                 android:orientation="vertical"
-                android:padding="28dp">
+                android:paddingHorizontal="@dimen/spacing_lg"
+                android:paddingTop="@dimen/spacing_xl"
+                android:paddingBottom="@dimen/spacing_lg">
 
+                <!-- LOGO ICON -->
                 <ImageView
-                    android:layout_width="72dp"
-                    android:layout_height="72dp"
-                    android:layout_marginBottom="16dp"
-                    android:contentDescription="Logo Kiosk"
-                    android:src="@drawable/ic_launcher_foreground" />
+                    android:layout_width="@dimen/logo_size"
+                    android:layout_height="@dimen/logo_size"
+                    android:layout_marginBottom="@dimen/spacing_md"
+                    android:contentDescription="@string/app_name"
+                    android:src="@drawable/ic_shield" />
 
+                <!-- TITLE -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="CBT-MF Kiosk Client"
-                    android:textColor="#212529"
-                    android:textSize="22sp"
+                    android:letterSpacing="0.02"
+                    android:text="@string/setup_title"
+                    android:textColor="@color/text_primary"
+                    android:textSize="@dimen/text_title"
                     android:textStyle="bold" />
 
+                <!-- SUBTITLE -->
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
+                    android:layout_marginTop="@dimen/spacing_sm"
                     android:gravity="center"
-                    android:text="Masukkan URL Server CBT Sekolah untuk memulai ujian"
-                    android:textColor="#6C757D"
-                    android:textSize="14sp" />
+                    android:text="@string/setup_subtitle"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="@dimen/text_body_sm" />
 
                 <!-- URL INPUT FIELD -->
                 <EditText
                     android:id="@+id/etServerUrl"
                     android:layout_width="match_parent"
-                    android:layout_height="50dp"
-                    android:layout_marginTop="24dp"
-                    android:background="#F1F3F5"
-                    android:hint="http://192.168.1.100 atau http://cbt.sekolah.sch.id"
+                    android:layout_height="@dimen/input_height"
+                    android:layout_marginTop="@dimen/spacing_lg"
+                    android:background="@drawable/bg_input"
+                    android:hint="@string/url_hint"
                     android:inputType="textUri"
                     android:maxLines="1"
-                    android:paddingHorizontal="16dp"
-                    android:textColor="#212529"
-                    android:textSize="15sp" />
+                    android:paddingHorizontal="@dimen/spacing_md"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_secondary"
+                    android:textSize="@dimen/text_body" />
 
                 <!-- START BUTTON -->
                 <Button
                     android:id="@+id/btnStartExam"
                     android:layout_width="match_parent"
-                    android:layout_height="54dp"
-                    android:layout_marginTop="16dp"
-                    android:backgroundTint="#0D6EFD"
-                    android:text="🚀 Mulai Ujian &amp; Kunci Layar"
+                    android:layout_height="@dimen/button_height"
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:background="@drawable/bg_button_primary"
+                    android:drawableEnd="@drawable/ic_arrow_forward"
+                    android:drawablePadding="@dimen/spacing_sm"
+                    android:gravity="center"
+                    android:text="@string/btn_start_exam"
+                    android:textAllCaps="false"
                     android:textColor="#FFFFFF"
-                    android:textSize="16sp"
+                    android:textSize="@dimen/text_body"
                     android:textStyle="bold" />
 
-                <!-- KIOSK INFO BADGE -->
+                <!-- IMPORT BUNDLE BUTTON -->
+                <Button
+                    android:id="@+id/btnImportBundle"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/button_height"
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:text="Import Bundle (.zip)"
+                    android:textAllCaps="false"
+                    android:textColor="#2563EB"
+                    android:textSize="@dimen/text_body"
+                    android:textStyle="bold" />
+
+                <!-- INFO BADGE -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:background="#E7F5FF"
+                    android:layout_marginTop="@dimen/spacing_lg"
+                    android:background="@drawable/bg_info_badge"
+                    android:gravity="center_vertical"
                     android:orientation="vertical"
-                    android:padding="12dp">
+                    android:padding="@dimen/spacing_md">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="@dimen/icon_sm"
+                            android:layout_height="@dimen/icon_sm"
+                            android:layout_marginEnd="@dimen/spacing_sm"
+                            android:contentDescription="@string/info_title"
+                            android:src="@drawable/ic_lock" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/info_title"
+                            android:textColor="@color/text_accent"
+                            android:textSize="@dimen/text_body_sm"
+                            android:textStyle="bold" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="🔒 Kiosk Lock &amp; Anti-Cheat Status:"
-                        android:textColor="#1971C2"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="• Screen Pinning &amp; Anti-Screenshot aktif\n• Pemantau Baterai, Sinyal WiFi/Seluler &amp; Tombol Reload aktif\n• Pengawas dapat keluar Kiosk dengan Password Ujian"
-                        android:textColor="#343A40"
-                        android:textSize="12sp" />
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:lineSpacingExtra="3dp"
+                        android:text="@string/info_body"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="@dimen/text_caption" />
                 </LinearLayout>
 
             </LinearLayout>
@@ -109,7 +149,7 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- EXAM CONTAINER (WEBVIEW + ACCESSIBILITY TOOLBAR) -->
+    <!-- EXAM CONTAINER (WEBVIEW + TOOLBAR) -->
     <LinearLayout
         android:id="@+id/examContainer"
         android:layout_width="match_parent"
@@ -117,69 +157,89 @@
         android:orientation="vertical"
         android:visibility="gone">
 
-        <!-- TOP ACCESSIBILITY TOOLBAR -->
+        <!-- TOP TOOLBAR -->
         <LinearLayout
             android:id="@+id/kioskToolbar"
             android:layout_width="match_parent"
-            android:layout_height="42dp"
-            android:background="#212529"
+            android:layout_height="@dimen/toolbar_height"
+            android:background="@color/surface_dark"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="12dp">
+            android:paddingHorizontal="@dimen/spacing_md">
 
-            <!-- BATTERY STATUS -->
+            <!-- BATTERY ICON -->
+            <ImageView
+                android:layout_width="@dimen/icon_toolbar"
+                android:layout_height="@dimen/icon_toolbar"
+                android:contentDescription="Battery"
+                android:src="@drawable/ic_battery" />
+
+            <!-- BATTERY TEXT -->
             <TextView
                 android:id="@+id/tvBatteryStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="🔋 --%"
-                android:textColor="#F8F9FA"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:layout_marginStart="@dimen/spacing_xs"
+                android:text="@string/battery_placeholder"
+                android:textColor="@color/text_on_dark"
+                android:textSize="@dimen/text_caption"
+                android:fontFamily="sans-serif-medium" />
 
-            <!-- NETWORK STATUS -->
+            <!-- SPACER -->
+            <View
+                android:layout_width="@dimen/spacing_md"
+                android:layout_height="0dp" />
+
+            <!-- WIFI ICON -->
+            <ImageView
+                android:layout_width="@dimen/icon_toolbar"
+                android:layout_height="@dimen/icon_toolbar"
+                android:contentDescription="Network"
+                android:src="@drawable/ic_wifi" />
+
+            <!-- NETWORK TEXT -->
             <TextView
                 android:id="@+id/tvNetworkStatus"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="📶 Checking..."
-                android:textColor="#F8F9FA"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:layout_marginStart="@dimen/spacing_xs"
+                android:text="@string/network_checking"
+                android:textColor="@color/text_on_dark"
+                android:textSize="@dimen/text_caption"
+                android:fontFamily="sans-serif-medium" />
 
+            <!-- FLEXIBLE SPACER -->
             <View
                 android:layout_width="0dp"
                 android:layout_height="0dp"
                 android:layout_weight="1" />
 
             <!-- RELOAD BUTTON -->
-            <Button
+            <ImageButton
                 android:id="@+id/btnReloadPage"
                 style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
+                android:layout_width="36dp"
                 android:layout_height="36dp"
-                android:paddingHorizontal="8dp"
-                android:text="🔄 Refresh"
-                android:textColor="#74C0FC"
-                android:textSize="12sp" />
+                android:contentDescription="@string/btn_reload"
+                android:padding="@dimen/spacing_sm"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_refresh" />
 
-            <!-- EXIT KIOSK BUTTON -->
-            <Button
+            <!-- EXIT BUTTON -->
+            <ImageButton
                 android:id="@+id/btnExitKiosk"
                 style="?android:attr/borderlessButtonStyle"
-                android:layout_width="wrap_content"
+                android:layout_width="36dp"
                 android:layout_height="36dp"
-                android:layout_marginStart="4dp"
-                android:paddingHorizontal="8dp"
-                android:text="🚪 Keluar"
-                android:textColor="#FF8787"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+                android:layout_marginStart="@dimen/spacing_xs"
+                android:contentDescription="@string/btn_exit"
+                android:padding="@dimen/spacing_sm"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_exit" />
 
         </LinearLayout>
 
-        <!-- WEBVIEW CONTAINER -->
+        <!-- WEBVIEW -->
         <WebView
             android:id="@+id/webView"
             android:layout_width="match_parent"

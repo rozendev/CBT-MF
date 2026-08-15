@@ -13,7 +13,7 @@
         android:label="CBT-MF Kiosk"
         android:roundIcon="@drawable/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@style/Theme.CBTKiosk">
         
         <activity
             android:name=".MainActivity"
@@ -27,6 +27,13 @@
                 <!-- Layer 2: Home Launcher -->
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Side-load UI bundle zip: file manager / share apps open this app -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/zip" />
             </intent-filter>
         </activity>
         
