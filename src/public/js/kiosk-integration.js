@@ -1,11 +1,17 @@
 document.addEventListener("DOMContentLoaded", function() {
+    function getKioskToken() {
+        return sessionStorage.getItem("cbt_kiosk_ws_token") || "";
+    }
+
+    // Persist the ws_token across pages so finish/results pages can verify exit.
+    if (window.CBT_EXAM_CONFIG && window.CBT_EXAM_CONFIG.token) {
+        sessionStorage.setItem("cbt_kiosk_ws_token", window.CBT_EXAM_CONFIG.token);
+    }
+
     // If native CommsBridge is available
     if (window.CommsBridge) {
         // If student is taking an exam, trigger startKiosk
         if (window.CBT_EXAM_CONFIG && !window.CBT_EXAM_FINISHED) {
-            if (window.CBT_EXAM_CONFIG.exitPassword) {
-                window.CommsBridge.setExitPassword(window.CBT_EXAM_CONFIG.exitPassword);
-            }
             window.CommsBridge.startKiosk(
                 window.CBT_EXAM_CONFIG.examId || "0",
                 window.CBT_EXAM_CONFIG.token || ""
@@ -17,11 +23,22 @@ document.addEventListener("DOMContentLoaded", function() {
             window.location.pathname.includes('/login') ||
             window.location.pathname.includes('/logout')
         ) {
-            // Unlock kiosk mode when exam is finished, or student lands on results/dashboard/login page
-            console.log("Exam finished or student on non-exam page. Unlocking kiosk mode...");
-            window.CommsBridge.stopKiosk();
+            // Request verified exit: the native app only unlocks after the
+            // server confirms this exam session is genuinely finished.
+            console.log("Exam finished or student on non-exam page. Requesting kiosk exit...");
+            window.CommsBridge.requestExit(getKioskToken());
         }
     }
+
+    // Kiosk bundle mode: config tersedia setelah exam/init resolve.
+    window.addEventListener("kiosk_config_ready", function() {
+        if (window.CommsBridge && window.CBT_EXAM_CONFIG && !window.CBT_EXAM_FINISHED) {
+            window.CommsBridge.startKiosk(
+                window.CBT_EXAM_CONFIG.examId || "0",
+                window.CBT_EXAM_CONFIG.token || ""
+            );
+        }
+    });
 
     window.addEventListener("kiosk_started", function(e) {
         console.log("Kiosk mode activated", e.detail);
@@ -38,6 +55,11 @@ document.addEventListener("DOMContentLoaded", function() {
         sendKioskWsEvent("kiosk_event", "exit_attempt", e.detail);
     });
 
+    window.addEventListener("exit_denied", function(e) {
+        console.warn("Kiosk exit request was denied", e.detail);
+        sendKioskWsEvent("kiosk_event", "exit_denied", e.detail);
+    });
+
     window.addEventListener("security_alert", function(e) {
         console.error("Security alert received", e.detail);
         sendKioskWsEvent("kiosk_event", "security_alert", e.detail);
@@ -45,7 +67,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
     window.addEventListener("kiosk_stop", function() {
         if (window.CommsBridge) {
-            window.CommsBridge.stopKiosk();
+            window.CommsBridge.requestExit(getKioskToken());
         }
     });
 
