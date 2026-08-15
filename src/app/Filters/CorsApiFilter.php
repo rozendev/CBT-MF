@@ -60,14 +60,23 @@ class CorsApiFilter implements FilterInterface
         // Strict Origin/Referer validation for state-changing requests (CSRF mitigation)
         $method = strtoupper($request->getMethod());
         if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
-            $referer = $request->getHeaderLine('Referer');
-            $baseURL = rtrim(config('App')->baseURL, '/');
-            
+            $referer      = $request->getHeaderLine('Referer');
+            $baseURL      = rtrim(config('App')->baseURL, '/');
+            $requestHost  = $request->getServer('HTTP_HOST') ?: '';
+            $requestProto = $request->isSecure() ? 'https' : 'http';
+
             $isValid = false;
             if (!empty($origin)) {
-                $isValid = $this->isOriginAllowed($origin);
+                // Same-origin (desktop web) selalu trusted walau env CORS lupa diupdate.
+                $sameOrigin = $requestHost !== '' && $origin === $requestProto . '://' . $requestHost;
+                $isValid    = $sameOrigin || $this->isOriginAllowed($origin);
             } elseif (!empty($referer)) {
-                $isValid = str_starts_with($referer, $baseURL);
+                $isValid          = str_starts_with($referer, $baseURL);
+                $sameOriginRef    = $requestHost !== '' && str_starts_with(
+                    $referer,
+                    $requestProto . '://' . $requestHost
+                );
+                $isValid = $isValid || $sameOriginRef;
             } else {
                 // Browsers send Origin for cross-origin POST. If both missing, assume safe client/same-origin.
                 $isValid = true;
