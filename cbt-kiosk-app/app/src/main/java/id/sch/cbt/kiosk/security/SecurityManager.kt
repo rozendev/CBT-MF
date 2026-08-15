@@ -14,6 +14,13 @@ class SecurityManager(private val activity: MainActivity) {
     @Volatile
     private var isClearingClipboard = false
 
+    @Volatile
+    private var clipboardGuardEnabled = true
+
+    fun setClipboardGuard(enabled: Boolean) {
+        clipboardGuardEnabled = enabled
+    }
+
     fun enableSecurityFlags() {
         activity.runOnUiThread {
             try {
@@ -22,7 +29,18 @@ class SecurityManager(private val activity: MainActivity) {
                     WindowManager.LayoutParams.FLAG_SECURE,
                     WindowManager.LayoutParams.FLAG_SECURE
                 )
-                
+
+                if (!clipboardGuardEnabled) {
+                    clipboardListener?.let { oldListener ->
+                        try {
+                            val cb = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            cb?.removePrimaryClipChangedListener(oldListener)
+                        } catch (e: Throwable) {}
+                    }
+                    clipboardListener = null
+                    return@runOnUiThread
+                }
+
                 // 2. Clear & Guard Clipboard
                 val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                 clipboard?.let { cb ->

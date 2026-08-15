@@ -1026,6 +1026,10 @@ class BuildUiBundle extends BaseCommand
 - [ ] **Step 7: Hook bundle-mode di exam-app.js + listener kiosk_config_ready**
 
 Empat perubahan wajib di `src/public/assets/exam-app.js` (temuan verifikasi — tanpa ini bundle break):
+```js
+            credentials: 'include',
+```
+Empat perubahan wajib di `src/public/assets/exam-app.js` (temuan verifikasi — tanpa ini bundle break):
 
 1. **`fetchWithTimeout` harus kirim cookie lintas origin** (spes: `credentials: 'include'`). Cari `credentials: 'same-origin'` (baris ~55) → ganti:
 ```js
@@ -1052,6 +1056,39 @@ Empat perubahan wajib di `src/public/assets/exam-app.js` (temuan verifikasi — 
                             window.location.href = target;
 ```
 Jangan sentuh jalur `!__KIOSK_BUNDLE__` (web tetap sama).
+
+5. **CSRF di bundle (updateCsrf)** — karena init di-skip (poin 3), `CSRF_NAME/CSRF_HASH` (let module-scope, baris 9-10) tidak pernah terisi → semua POST (autosave/auto-sync) gagal 403. Tambahkan di exam.html script (SEBELUM app.js load): `window.__bundleCsrf = { csrf_name: '<dari init>', csrf_token: '<dari init>' };` dan di exam-app.js dalam hook poin 3, setelah `await __bundleConfigPromise` sukses, panggil `updateCsrf(window.__bundleCsrf || {});` (fungsi updateCsrf module-scope tersedia di tempat ini).
+
+6. **jQuery shim (wajib)** — exam-app.js memakai `$.ajax` di 5 call site (baris ~538, 621, 670, 873, 935 — performNetworkRequest/actions; lihat `$.ajax({url: API + '/api/exam/auto-sync' ...})` dst). Bundle TIDAK memuat vendor jquery → buat `src/app/Views/bundle/_jquery_shim.php` → di-render sebagai `assets/jquery-shim.js` oleh builder (copy manual dari view render, bukan file statis), isi:
+```js
+// Mini-shim jQuery untuk exam-app.js bundle mode — HANYA $.ajax + .always().
+// Bukan pengganti jquery; data sudah FormData, proses JSON, credentials include.
+window.$ = window.jQuery = {
+    ajax: function (opts) {
+        var headers = { 'Accept': 'application/json', 'X-Requested-With': 'kiosk-bundle' };
+        if (typeof opts.data === 'string') { headers['Content-Type'] = 'application/x-www-form-urlencoded'; }
+        var p = {
+            done: function (cb) { p._done = cb; return p; },
+            fail: function (cb) { p._fail = cb; return p; },
+            always: function (cb) { p._always = cb; return p; },
+            _settle: function (res) {
+                if (p._done) p._done(res);
+                if (p._always) p._always(res);
+            }
+        };
+        fetch(opts.url, {
+            method: opts.type || 'GET',
+            credentials: 'include',
+            headers: headers,
+            body: opts.data
+        }).then(function (r) { return r.json(); })
+          .then(p._settle)
+          .catch(function () { if (p._fail) p._fail(); if (p._always) p._always(null); });
+        return p;
+    }
+};
+```
+Load `assets/jquery-shim.js` di exam.html SEBELUM `assets/exam-app.js` (defer, urutan: kiosk-integration.js (head) → inline config → jquery-shim → alpine → app.js → swal). Builder: render shim via `view('bundle/_jquery_shim')` + tambahkan ke `$files` manifest + zip.
 
 `src/public/js/kiosk-integration.js` — tambahkan listener (di dalam `DOMContentLoaded` yang sudah ada, setelah blok `CommsBridge` start, sekitar baris 31):
 

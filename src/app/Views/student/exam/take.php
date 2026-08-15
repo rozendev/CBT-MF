@@ -585,7 +585,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             
             <template x-if="currentQuestion.question_type == 3">
                 <div>
-                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input.debounce.500ms="saveAnswer()" placeholder="Tulis jawaban Anda di sini..."></textarea>
+                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input="this._typingQid = this.currentQuestion.question_id" @input.debounce.500ms="saveAnswer(this._typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
                 </div>
             </template>
             
@@ -794,8 +794,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         </div>
     </div><!-- /examContent -->
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= base_url('vendor/jquery/jquery-3.6.0.min.js') ?>"></script>
+    <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js') ?>"></script>
     <script>
         const RAW_QUESTIONS = <?= json_encode(!empty($questions) ? $questions : []) ?>;
         const RAW_ANSWERS = <?= json_encode(!empty($answers) ? $answers : (object)[]) ?>;
@@ -1447,7 +1447,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     $.post(FINISH_URL, { attempt_id: ATTEMPT_ID })
                      .done((res) => {
                          if (window.CommsBridge) {
-                             window.CommsBridge.stopKiosk();
+                             window.CommsBridge.requestExit("<?= esc($wsToken) ?>");
                          }
                          if (res.redirect) {
                              window.location.href = res.redirect;
@@ -1849,7 +1849,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
     <script>
         window.CBT_EXAM_CONFIG = {
             examId: "<?= $test->id ?>",
-            exitPassword: "<?= esc($test->exit_password ?? '123456') ?>"
+            token: "<?= esc($wsToken) ?>"
         };
     </script>
     <script src="<?= base_url('js/kiosk-integration.js') ?>"></script>

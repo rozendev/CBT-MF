@@ -143,8 +143,11 @@ class ExamController extends BaseController
         $questionsKey = "attempt_questions_{$attempt->id}";
         $questions = $cache->get($questionsKey);
         if (empty($questions)) {
+            // Whitelist kolom: jangan pernah expose score/reaction_time/comment ke client
             $sql = "
-                SELECT tl.*, tl.id as log_id
+                SELECT tl.id as log_id, tl.test_attempt_id, tl.question_id,
+                       tl.question_text, tl.question_type, tl.question_difficulty,
+                       tl.display_order, tl.num_answers, tl.answer_text, tl.is_unsure
                 FROM test_logs tl
                 WHERE tl.test_attempt_id = ?
                 ORDER BY tl.display_order ASC
@@ -168,8 +171,10 @@ class ExamController extends BaseController
             $answersKey = "attempt_answers_{$attempt->id}";
             $answers = $cache->get($answersKey);
             if (empty($answers)) {
+                // Whitelist kolom: is_correct (kunci jawaban) tidak boleh pernah sampai ke client
                 $ansSql = "
-                    SELECT tla.*, tla.id as log_answer_id
+                    SELECT tla.id as log_answer_id, tla.test_log_id, tla.answer_id,
+                           tla.answer_text, tla.is_selected, tla.display_order, tla.position
                     FROM test_log_answers tla
                     WHERE tla.test_log_id IN ?
                     ORDER BY tla.display_order ASC

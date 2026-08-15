@@ -11,6 +11,8 @@ class IntruderReportController extends BaseController
 
     protected const MAX_PHOTO_BYTES = 1048576; // 1 MB
 
+    protected const MAX_PHOTOS_PER_IP_PER_DAY = 50;
+
     protected const ALLOWED_MIMES = [
         'image/jpeg' => 'jpg',
         'image/png'  => 'png',
@@ -31,6 +33,10 @@ class IntruderReportController extends BaseController
             }
 
             $photoPath = $this->savePhoto($body['photo'] ?? '');
+            if ($photoPath !== null && !$this->withinPhotoQuota()) {
+                @unlink(FCPATH . 'uploads/intruder/' . $photoPath);
+                return $this->response->setStatusCode(429)->setJSON(['status' => 'error', 'message' => 'Melebihi batas laporan harian.']);
+            }
 
             $ip = $this->detectIp();
 
@@ -117,5 +123,24 @@ class IntruderReportController extends BaseController
     private function validDecimal($value): ?float
     {
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    private function withinPhotoQuota(): bool
+    {
+        try {
+            $ip = $this->detectIp();
+            $key = 'intruder_photos:' . md5($ip) . ':' . date('Ymd');
+            $redis = \App\Libraries\RedisClient::getInstance();
+            if ($redis) {
+                $count = (int) $redis->incr($key);
+                if ($count === 1) {
+                    $redis->expire($key, 86400);
+                }
+                return $count <= self::MAX_PHOTOS_PER_IP_PER_DAY;
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'IntruderReport quota check error: ' . $e->getMessage());
+        }
+        return true;
     }
 }

@@ -156,7 +156,15 @@ class StaticExamController extends BaseController
         */
 
         $settingModel = new \App\Models\SettingModel();
-        
+
+        // Sector 2 assets (exam-app.js/css): versi = content hash, sehingga
+        // cache immutable 1 tahun aman — URL berubah hanya saat isi berubah.
+        $assetVersion = [];
+        foreach (['app' => 'assets/exam-app.js', 'css' => 'assets/exam-app.css'] as $key => $relPath) {
+            $absPath = FCPATH . $relPath;
+            $assetVersion[$key] = file_exists($absPath) ? substr(hash_file('sha256', $absPath), 0, 12) : 'dev';
+        }
+
         // Render the static template
         $html = view('admin/static/static_exam_template', [
             'test' => $test,
@@ -166,6 +174,7 @@ class StaticExamController extends BaseController
             'answersData' => $answersData,
             'generatedAt' => time(),
             'wsUrl' => $settingModel->getValue('websocket_url', ''),
+            'assetVersion' => $assetVersion,
         ]);
 
         // Create output directory

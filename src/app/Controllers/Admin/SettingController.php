@@ -136,6 +136,22 @@ class SettingController extends BaseController
             $this->updateEnv('INSTALLER_LOCKED', 'false');
         }
 
+        // Sync the manual maintenance flag consumed by nginx.
+        // The redis flag (set automatically on outage) is never removed here.
+        try {
+            $maintenanceOn = (isset($settings['maintenance_mode']) && $settings['maintenance_mode'] === '1');
+            if ($maintenanceOn) {
+                \App\Libraries\MaintenanceFlag::set(
+                    \App\Libraries\MaintenanceFlag::MODE_MANUAL,
+                    (string) ($settings['maintenance_message'] ?? '')
+                );
+            } else {
+                \App\Libraries\MaintenanceFlag::clear(\App\Libraries\MaintenanceFlag::MODE_MANUAL);
+            }
+        } catch (\Throwable $e) {
+            log_message('error', 'MaintenanceFlag sync failed: ' . $e->getMessage());
+        }
+
         $this->handleFileUpload('app_logo', 'logo', 'is_image[app_logo]|ext_in[app_logo,png,jpg,jpeg,svg]|max_size[app_logo,2048]', 'Format logo tidak valid. Harus berupa gambar (PNG/JPG) maksimal 2MB.');
         $this->handleFileUpload('app_favicon', 'logo', 'is_image[app_favicon]|ext_in[app_favicon,png,jpg,jpeg,ico,svg]|max_size[app_favicon,2048]', 'Format favicon tidak valid. Harus berupa gambar/ico (PNG/JPG/ICO/SVG) maksimal 2MB.');
         $this->handleFileUpload('login_background', 'logo', 'is_image[login_background]|ext_in[login_background,png,jpg,jpeg]|max_size[login_background,5120]', 'Format background tidak valid. Harus berupa gambar maksimal 5MB.');
