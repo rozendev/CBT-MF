@@ -45,6 +45,7 @@ class Filters extends BaseFilters
         'csrfheader'    => \App\Filters\CsrfHeaderFilter::class,
         'loginratelimit'=> \App\Filters\LoginRateLimitFilter::class,
         'apiratelimit'  => \App\Filters\ApiRateLimitFilter::class,
+        'kioskcsrflogin' => \App\Filters\KioskOriginCsrfFilter::class,
     ];
 
     /**
@@ -84,9 +85,12 @@ class Filters extends BaseFilters
     public array $globals = [
         'before' => [
             'csrf' => ['except' => [
+                'login',
                 'student/exam/stream/*',
                 'api/exam/stream/*',
-                'api/intruder/report'
+                'api/intruder/report',
+                'api/kiosk/verify-exit',
+                'api/kiosk/can-exit'
             ]],
             'multilogin' => ['except' => ['login', 'logout', 'maintenance', 'health', 'student/exam/stream/*', 'api/exam/stream/*']],
         ],
@@ -121,8 +125,9 @@ class Filters extends BaseFilters
      * @var array<string, array<string, list<string>>>
      */
     public array $filters = [
-        'corsapi'        => ['before' => ['api/exam/*']],
+        'corsapi'        => ['before' => ['api/exam/*', 'api/student/*', 'login'], 'after' => ['api/exam/*', 'api/student/*', 'login']],
         'loginratelimit' => ['before' => ['login']],
         'apiratelimit'   => ['before' => ['api/*']],
+        'kioskcsrflogin' => ['before' => ['login']],
     ];
 }
