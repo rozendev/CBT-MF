@@ -38,6 +38,13 @@ $routes->group('api', static function ($routes) {
     $routes->post('intruder/report', 'Api\IntruderReportController::report');
 });
 
+// ── CORS Preflight (catch-all OPTIONS) ──────────────
+// Preflight CORS: CorsApiFilter menangani header; rute ini memastikan
+// OPTIONS ke path mana pun (login, api/*, dll) tidak 404 sebelum filter jalan.
+$routes->options('(:any)', static function () {
+    return \Config\Services::response()->setStatusCode(200);
+});
+
 // ── Admin Routes (role-protected) ───────────────────
 $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($routes) {
     $routes->get('/', 'Admin\DashboardController::index');
