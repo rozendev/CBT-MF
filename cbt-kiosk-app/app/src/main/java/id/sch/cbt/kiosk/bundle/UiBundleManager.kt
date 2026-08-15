@@ -58,8 +58,8 @@ class UiBundleManager(
         }
     }
 
-    /** Panggil saat config server menyebut versi baru / versi belum ada. */
-    fun downloadViaDownloadManager(serverBaseUrl: String, zipUrl: String, expectedVersion: String) {
+    /** Panggil saat config server menyebut versi baru / versi belum ada. Return download id, -1 bila gagal. */
+    fun downloadViaDownloadManager(serverBaseUrl: String, zipUrl: String, expectedVersion: String): Long {
         dlDir.mkdirs()
         val request = DownloadManager.Request(Uri.parse(zipUrl))
             .setTitle("UI Bundle")
@@ -68,8 +68,14 @@ class UiBundleManager(
             .setAllowedOverMetered(true)
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "ui-bundle.zip")
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        dm.enqueue(request)
-        Log.i(TAG, "DownloadManager enqueue: $zipUrl (v$expectedVersion)")
+        return try {
+            val id = dm.enqueue(request)
+            Log.i(TAG, "DownloadManager enqueue #$id: $zipUrl (v$expectedVersion)")
+            id
+        } catch (e: Throwable) {
+            Log.e(TAG, "Gagal enqueue unduhan", e)
+            -1L
+        }
     }
 
     /** Pipeline verify+extract untuk download/import. Return true bila berhasil. */

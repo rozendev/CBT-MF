@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
 
     private var pendingBundleBaseUrl: String? = null
     private var examFlowRequested = false
+    private var bundleFlowStarted = false
 
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -240,6 +241,15 @@ class MainActivity : AppCompatActivity() {
         btnReloadPage.setOnClickListener {
             if (::webView.isInitialized) {
                 try {
+                    // Flow bundle belum jalan (config fetch gagal / download belum selesai):
+                    // reload = retry konfigurasi, bukan reload about:blank.
+                    if (examFlowRequested && !bundleFlowStarted) {
+                        val retryUrl = pendingBundleBaseUrl
+                        if (!retryUrl.isNullOrBlank()) {
+                            fetchServerKioskConfig(retryUrl)
+                            return@setOnClickListener
+                        }
+                    }
                     webView.reload()
                     Toast.makeText(this, getString(R.string.toast_page_reloaded), Toast.LENGTH_SHORT).show()
                 } catch (e: Throwable) {
@@ -434,6 +444,11 @@ class MainActivity : AppCompatActivity() {
      * mengunci kiosk. Dipanggil hanya ketika bundle UI sudah siap.
      */
     private fun proceedToBundleExam() {
+        if (bundleFlowStarted) {
+            Log.d("MainActivity", "proceedToBundleExam: bundle flow sudah berjalan; pemanggilan diabaikan")
+            return
+        }
+        bundleFlowStarted = true
         if (!examFlowRequested) return
         val baseUrl = pendingBundleBaseUrl
         if (baseUrl.isNullOrBlank()) {
@@ -453,8 +468,20 @@ class MainActivity : AppCompatActivity() {
             )
             .build()
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? =
-                request?.let { loader.shouldInterceptRequest(it.url) }
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                val req = request ?: return null
+                val host = req.url.host
+                // Bundle lokal → loader; host server (fetch API + cookie) → biarkan normal.
+                if (host == "appassets.androidplatform.net") {
+                    return loader.shouldInterceptRequest(req.url)
+                }
+                val allowed = allowedHost
+                if (allowed != null && host != null && (host == allowed || host.endsWith(".$allowed"))) {
+                    return null
+                }
+                // Hard-block semua resource lintas-host (script/image/iframe/exfil).
+                return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream("blocked".toByteArray()))
+            }
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 // Internal bundle navigation bebas; segala navigasi keluar di-block.
@@ -506,10 +533,25 @@ class MainActivity : AppCompatActivity() {
                     }
                 } else {
                     Log.w("MainActivity", "Failed to fetch kiosk config, response code: $responseCode")
+                    handleConfigFetchFailure()
                 }
                 connection.disconnect()
             } catch (e: Throwable) {
                 Log.e("MainActivity", "Error fetching kiosk config from $serverUrl", e)
+                handleConfigFetchFailure()
+            }
+        }
+    }
+
+    /**
+     * Config fetch gagal → jangan diam dengan WebView kosong: toast + kembali
+     * ke setup screen (retry = tombol "Mulai Ujian" / reload toolbar).
+     */
+    private fun handleConfigFetchFailure() {
+        runOnUiThread {
+            Toast.makeText(this, "Gagal memuat konfigurasi server. Periksa URL server.", Toast.LENGTH_LONG).show()
+            if (examFlowRequested) {
+                showSetupScreen()
             }
         }
     }
@@ -566,7 +608,12 @@ class MainActivity : AppCompatActivity() {
                 val zipUrl = bundleInfo.optString("url")
                     .takeIf { it.isNotBlank() } ?: "$serverBaseUrl/ui-bundle/ui-bundle.zip"
                 Toast.makeText(this, "Mengunduh bundle UI, harap tunggu...", Toast.LENGTH_LONG).show()
-                uiBundleManager.downloadViaDownloadManager(serverBaseUrl, zipUrl, serverBundleVersion)
+                val dlId = uiBundleManager.downloadViaDownloadManager(serverBaseUrl, zipUrl, serverBundleVersion)
+                if (dlId >= 0) {
+                    prefs.edit().putLong("ui_bundle_dl_id", dlId).apply()
+                } else {
+                    Toast.makeText(this, "Gagal memulai unduhan bundle.", Toast.LENGTH_LONG).show()
+                }
                 // Lanjut ke WebView lewat onReady setelah verifyAndInstall selesai (download receiver).
                 return
             }
@@ -610,12 +657,22 @@ class MainActivity : AppCompatActivity() {
     private fun installDownloadedBundle(downloadId: Long) {
         kotlin.concurrent.thread(start = true, isDaemon = true, name = "BundleInstall") {
             try {
+                val myId = prefs.getLong("ui_bundle_dl_id", -1L)
+                if (myId < 0 || downloadId != myId) return@thread
+                prefs.edit().remove("ui_bundle_dl_id").apply()
                 val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                val uri = dm.getUriForDownloadedFile(downloadId)
-                if (uri == null) {
-                    runOnUiThread { Toast.makeText(this, "Unduhan bundle gagal.", Toast.LENGTH_LONG).show() }
+                val cursor = dm.query(DownloadManager.Query().setFilterById(downloadId))
+                if (cursor == null || !cursor.moveToFirst()) {
+                    cursor?.close()
                     return@thread
                 }
+                val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                cursor.close()
+                if (status != DownloadManager.STATUS_SUCCESSFUL) {
+                    runOnUiThread { Toast.makeText(this, "Unduhan bundle gagal (status $status).", Toast.LENGTH_LONG).show() }
+                    return@thread
+                }
+                val uri = dm.getUriForDownloadedFile(downloadId)
                 val target = File(cacheDir, "dl-ui-bundle.zip")
                 target.delete()
                 val copied = contentResolver.openInputStream(uri)?.use { input ->
@@ -638,8 +695,11 @@ class MainActivity : AppCompatActivity() {
      */
     private fun handleBundleIntent(intent: Intent?) {
         if (intent == null) return
-        if (intent.type == "application/zip" && intent.data != null) {
-            if (uiBundleManager.importBundle(intent.data!!)) {
+        val data = intent.data ?: return
+        val isZipMime = intent.type == "application/zip"
+        val isZipPath = data.lastPathSegment?.endsWith(".zip") == true
+        if ((isZipMime || isZipPath) && data != null) {
+            if (uiBundleManager.importBundle(data)) {
                 continueExamFlowAfterImport()
             }
         }
