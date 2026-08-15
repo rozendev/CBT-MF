@@ -80,8 +80,14 @@ dari view yang ada dengan transformasi:
 | `/api/student/results` | GET | data halaman hasil siswa |
 | `/api/student/review` | GET | data review per-soal (sesuai kebijakan kunci jawaban) |
 
-Catatan: `/api/exam/init` saat ini return `need_prepare` bila belum ada attempt;
-flow: dashboard → `exam/start` → `exam/init` → render.
+Catatan `/api/exam/start`: replika persis `ExamController::start` (password check
+jika ujian berpassword, cek attempt aktif, cek `is_repeatable`), panggil
+`ExamService::generateAttempt()` (mulai `started_at` — timer mulai dari sini),
+balikin `{status, attempt_id | message}`. Tidak ada redirect.
+
+Flow: dashboard → `exam/start` (password inline di exam.html jika perlu) →
+`exam/init` → render soal. `/api/exam/init` tetap return `need_prepare` bila
+attempt belum dibuat — bundle harus memanggil `start` dulu.
 
 ### 3. App Android — UiBundleManager
 
