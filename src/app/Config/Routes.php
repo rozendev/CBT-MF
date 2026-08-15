@@ -22,6 +22,7 @@ $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     
     // Static Exam API
     $routes->post('exam/init', 'Api\ExamApiController::init');
+    $routes->post('exam/start', 'Api\ExamApiController::start');
     $routes->post('exam/autosave', 'Api\ExamApiController::autosave');
     $routes->post('exam/auto-sync', 'Api\ExamApiController::autoSync');
     $routes->post('exam/finish', 'Api\ExamApiController::finish');

@@ -69,7 +69,9 @@ class ExamApiController extends BaseController
         $questions = $cache->get($questionsKey);
         if ($questions === null) {
             $questions = $db->query("
-                SELECT tl.*, tl.id as log_id
+                SELECT tl.id as log_id, tl.test_attempt_id, tl.question_id,
+                       tl.question_text, tl.question_type, tl.question_difficulty,
+                       tl.display_order, tl.num_answers, tl.answer_text, tl.is_unsure
                 FROM test_logs tl
                 WHERE tl.test_attempt_id = ?
                 ORDER BY tl.display_order ASC
@@ -86,7 +88,8 @@ class ExamApiController extends BaseController
             $answers = $cache->get($answersKey);
             if ($answers === null) {
                 $rawAnswers = $db->query("
-                    SELECT tla.*, tla.id as log_answer_id
+                    SELECT tla.id as log_answer_id, tla.test_log_id, tla.answer_id,
+                           tla.answer_text, tla.is_selected, tla.display_order, tla.position
                     FROM test_log_answers tla
                     WHERE tla.test_log_id IN ?
                     ORDER BY tla.display_order ASC
@@ -249,6 +252,59 @@ class ExamApiController extends BaseController
     }
 
 
+
+    /**
+     * Start exam: generate attempt (replica of Student\ExamController::start as JSON)
+     * POST /api/exam/start
+     */
+    public function start()
+    {
+        $userId = session('user_id');
+        if (!$userId) {
+            return $this->response->setStatusCode(401)->setJSON(['status' => 'error', 'message' => 'Silakan login terlebih dahulu.']);
+        }
+
+        $testId = (int) ($this->request->getPost('test_id') ?? 0);
+        if ($testId <= 0) {
+            return $this->response->setStatusCode(400)->setJSON(['status' => 'error', 'message' => 'test_id diperlukan.']);
+        }
+
+        $test = $this->testModel->findCached($testId);
+        if (!$test || !$test->is_enabled) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Ujian tidak valid.']);
+        }
+
+        $password = (string) ($this->request->getPost('password') ?? '');
+        if (!empty($test->password) && !hash_equals($test->password, $password)) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Password ujian salah.']);
+        }
+
+        $activeAttempt = $this->attemptModel->getActiveAttemptCached($testId, $userId);
+        if ($activeAttempt) {
+            return $this->response->setJSON(['status' => 'success', 'attempt_id' => (int) $activeAttempt->id, 'resumed' => true]);
+        }
+
+        if (empty($test->is_repeatable)) {
+            $completed = $this->attemptModel->where('user_id', $userId)
+                                             ->where('test_id', $testId)
+                                             ->whereIn('status', [3, 4])
+                                             ->first();
+            if ($completed) {
+                return $this->response->setJSON(['status' => 'error', 'message' => 'Ujian ini hanya dapat dikerjakan satu kali.']);
+            }
+        }
+
+        $examService = new \App\Libraries\ExamService();
+        $attempt = $examService->generateAttempt($testId, (int) $userId, $this->request->getIPAddress());
+
+        if (!$attempt) {
+            return $this->response->setJSON(['status' => 'error', 'message' => 'Ujian ini hanya dapat dikerjakan satu kali atau terjadi kesalahan saat menyiapkan ujian.']);
+        }
+
+        $this->activityLog->log('start_exam', $userId, 'test', $testId, 'Memulai ujian (kiosk bundle)');
+
+        return $this->response->setJSON(['status' => 'success', 'attempt_id' => (int) $attempt->id, 'resumed' => false]);
+    }
 
     /**
      * Save answer via AJAX (same as ExamController::saveAnswer but JSON-only)
