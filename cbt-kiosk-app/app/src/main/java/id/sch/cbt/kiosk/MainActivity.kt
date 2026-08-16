@@ -2,7 +2,6 @@ package id.sch.cbt.kiosk
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -17,6 +16,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.util.Log
 import android.view.View
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -58,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnImportBundle: Button
     private lateinit var tvBatteryStatus: TextView
     private lateinit var tvNetworkStatus: TextView
+    private lateinit var tvBundleStatus: TextView
     private lateinit var btnReloadPage: ImageButton
     private lateinit var btnExitKiosk: ImageButton
     private lateinit var prefs: SharedPreferences
@@ -70,15 +71,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingBundleBaseUrl: String? = null
     private var examFlowRequested = false
     private var bundleFlowStarted = false
-
-    private val downloadReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
-            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-            if (id < 0) return
-            installDownloadedBundle(id)
-        }
-    }
+    private var bundleDownloadActive = false
 
     companion object {
         private const val REQ_IMPORT_BUNDLE = 4001
@@ -112,7 +105,6 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
                 }
             )
-            registerDownloadReceiver()
 
             // Load saved security config from preferences for offline resilience
             SirenAlarmManager.isSirenEnabled = prefs.getBoolean("kiosk_siren_enabled", true)
@@ -146,6 +138,7 @@ class MainActivity : AppCompatActivity() {
             webView = findViewById(R.id.webView)
             tvBatteryStatus = findViewById(R.id.tvBatteryStatus)
             tvNetworkStatus = findViewById(R.id.tvNetworkStatus)
+            tvBundleStatus = findViewById(R.id.tvBundleStatus)
             btnReloadPage = findViewById(R.id.btnReloadPage)
             btnExitKiosk = findViewById(R.id.btnExitKiosk)
 
@@ -607,20 +600,50 @@ class MainActivity : AppCompatActivity() {
             if (uiBundleManager.canRefresh() && uiBundleManager.localVersion() != serverBundleVersion) {
                 val zipUrl = bundleInfo.optString("url")
                     .takeIf { it.isNotBlank() } ?: "$serverBaseUrl/ui-bundle/ui-bundle.zip"
-                Toast.makeText(this, "Mengunduh bundle UI, harap tunggu...", Toast.LENGTH_LONG).show()
-                val dlId = uiBundleManager.downloadViaDownloadManager(serverBaseUrl, zipUrl, serverBundleVersion)
-                if (dlId >= 0) {
-                    prefs.edit().putLong("ui_bundle_dl_id", dlId).apply()
-                } else {
-                    Toast.makeText(this, "Gagal memulai unduhan bundle.", Toast.LENGTH_LONG).show()
+                if (bundleDownloadActive) {
+                    Toast.makeText(this, "Bundle sedang diunduh, harap tunggu...", Toast.LENGTH_LONG).show()
+                    return
                 }
-                // Lanjut ke WebView lewat onReady setelah verifyAndInstall selesai (download receiver).
+                bundleDownloadActive = true
+                setBundleStatus("Mengunduh bundle UI...")
+                Toast.makeText(this, "Mengunduh bundle UI, harap tunggu...", Toast.LENGTH_LONG).show()
+                uiBundleManager.downloadDirect(
+                    zipUrl,
+                    serverBundleVersion,
+                    onProgress = { done, total ->
+                        runOnUiThread {
+                            if (::tvBundleStatus.isInitialized) {
+                                tvBundleStatus.text = "Mengunduh bundle UI... ${(done * 100 / total)}%"
+                            }
+                        }
+                    },
+                    onDone = { ok, message ->
+                        bundleDownloadActive = false
+                        runOnUiThread {
+                            if (ok) {
+                                setBundleStatus("Bundle v${serverBundleVersion.take(8)} terpasang.")
+                            } else {
+                                setBundleStatus("Download gagal: $message")
+                                Toast.makeText(this, "Gagal mengunduh bundle: $message", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                )
+                // Lanjut ke WebView lewat onReady setelah verifyAndInstall selesai.
                 return
             }
             // Versi bundle cocok (atau tidak bisa refresh karena exam aktif) → lanjut.
             proceedToBundleExam()
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error parsing kiosk config JSON", e)
+        }
+    }
+
+    private fun setBundleStatus(text: String) {
+        runOnUiThread {
+            if (::tvBundleStatus.isInitialized) {
+                tvBundleStatus.text = text
+            }
         }
     }
 
@@ -633,59 +656,6 @@ class MainActivity : AppCompatActivity() {
                 webView.loadUrl("about:blank")
             } catch (e: Throwable) {
                 Log.e("MainActivity", "Error showing setup screen", e)
-            }
-        }
-    }
-
-    private fun registerDownloadReceiver() {
-        try {
-            val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-            if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(downloadReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                registerReceiver(downloadReceiver, filter)
-            }
-        } catch (e: Throwable) {
-            Log.e("MainActivity", "Error registering download receiver", e)
-        }
-    }
-
-    /**
-     * DownloadManager selesai → salin file ke cacheDir lalu verify+install.
-     * onReady UiBundleManager meneruskan ke proceedToBundleExam.
-     */
-    private fun installDownloadedBundle(downloadId: Long) {
-        kotlin.concurrent.thread(start = true, isDaemon = true, name = "BundleInstall") {
-            try {
-                val myId = prefs.getLong("ui_bundle_dl_id", -1L)
-                if (myId < 0 || downloadId != myId) return@thread
-                prefs.edit().remove("ui_bundle_dl_id").apply()
-                val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                val cursor = dm.query(DownloadManager.Query().setFilterById(downloadId))
-                if (cursor == null || !cursor.moveToFirst()) {
-                    cursor?.close()
-                    return@thread
-                }
-                val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                cursor.close()
-                if (status != DownloadManager.STATUS_SUCCESSFUL) {
-                    runOnUiThread { Toast.makeText(this, "Unduhan bundle gagal (status $status).", Toast.LENGTH_LONG).show() }
-                    return@thread
-                }
-                val uri = dm.getUriForDownloadedFile(downloadId)
-                val target = File(cacheDir, "dl-ui-bundle.zip")
-                target.delete()
-                val copied = contentResolver.openInputStream(uri)?.use { input ->
-                    target.outputStream().use { out -> input.copyTo(out) }
-                    true
-                } ?: false
-                if (!copied) {
-                    runOnUiThread { Toast.makeText(this, "Gagal membaca hasil unduhan bundle.", Toast.LENGTH_LONG).show() }
-                    return@thread
-                }
-                uiBundleManager.verifyAndInstall(target)
-            } catch (e: Throwable) {
-                Log.e("MainActivity", "Error installing downloaded bundle", e)
             }
         }
     }
@@ -737,6 +707,15 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
         try {
+            // Bundle UI di-load dari origin lokal (appassets.androidplatform.net),
+            // sementara fetch API pergi ke server: tanpa cookie third-party,
+            // Cookie sesi (ci_session; SameSite=None) tidak pernah tersimpan →
+            // semua request API terautentikasi gagal 401 setelah login sukses.
+            CookieManager.getInstance().apply {
+                setAcceptCookie(true)
+                setAcceptThirdPartyCookies(webView, true)
+            }
+
             val settings: WebSettings = webView.settings
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -905,11 +884,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         try {
-            try {
-                unregisterReceiver(downloadReceiver)
-            } catch (e: Throwable) {
-                // receiver tidak terdaftar — abaikan
-            }
             // Tear down the kiosk (stops the heartbeat timer/worker via stopKiosk)
             // so it never outlives the activity. Guarded: normal exits already ran
             // stopKiosk, which cleared isKioskActive, so this does not double-stop.

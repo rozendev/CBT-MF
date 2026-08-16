@@ -1,10 +1,8 @@
 package id.sch.cbt.kiosk.bundle
 
-import android.app.DownloadManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
-import android.os.Environment
 import android.util.Log
 import org.json.JSONObject
 import java.io.File
@@ -12,7 +10,8 @@ import java.security.MessageDigest
 
 /**
  * Menyediakan bundle UI lokal:
- *  - download via DownloadManager (resume native) / import dari file picker
+ *  - download langsung (HttpURLConnection, tak bergantung DownloadManager OEM)
+ *    / import dari file picker; keduanya memakai pipeline verify+extract yang sama
  *  - verifikasi sha256 per file vs manifest.json (satu pipeline untuk keduanya)
  *  - extract ke staging dir lalu ATOMIC rename ke ui-bundle/
  */
@@ -28,12 +27,10 @@ class UiBundleManager(
         private const val PREFS_EXAM_ACTIVE = "ui_exam_active"
         const val BUNDLE_DIR = "ui-bundle"
         const val STAGING_DIR = "ui-bundle.staging"
-        const val DL_DIR = "ui-bundle-download"
     }
 
     private val bundleDir: File get() = File(context.filesDir, BUNDLE_DIR)
     private val stagingDir: File get() = File(context.filesDir, STAGING_DIR)
-    private val dlDir: File get() = File(context.filesDir, DL_DIR)
 
     var examActive: Boolean
         get() = prefs.getBoolean(PREFS_EXAM_ACTIVE, false)
@@ -58,23 +55,61 @@ class UiBundleManager(
         }
     }
 
-    /** Panggil saat config server menyebut versi baru / versi belum ada. Return download id, -1 bila gagal. */
-    fun downloadViaDownloadManager(serverBaseUrl: String, zipUrl: String, expectedVersion: String): Long {
-        dlDir.mkdirs()
-        val request = DownloadManager.Request(Uri.parse(zipUrl))
-            .setTitle("UI Bundle")
-            .setDescription("Mengunduh paket UI ujian ($expectedVersion)")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-            .setAllowedOverMetered(true)
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "ui-bundle.zip")
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        return try {
-            val id = dm.enqueue(request)
-            Log.i(TAG, "DownloadManager enqueue #$id: $zipUrl (v$expectedVersion)")
-            id
-        } catch (e: Throwable) {
-            Log.e(TAG, "Gagal enqueue unduhan", e)
-            -1L
+    /** Unduh langsung via HttpURLConnection (bukan DownloadManager sistem: di banyak OEM
+     *  layanan DM dimatikan/tidak berjalan → download macet tanpa error apapun).
+     *  Jalankan di thread daemon; progress/done dijembatani ke UI oleh pemanggil. */
+    fun downloadDirect(
+        zipUrl: String,
+        expectedVersion: String,
+        onProgress: (Long, Long) -> Unit,
+        onDone: (Boolean, String?) -> Unit
+    ) {
+        kotlin.concurrent.thread(start = true, isDaemon = true, name = "BundleDownload") {
+            val target = File(context.cacheDir, "dl-ui-bundle-v$expectedVersion.zip")
+            var conn: java.net.HttpURLConnection? = null
+            try {
+                val url = java.net.URL(zipUrl)
+                conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 15000
+                conn.readTimeout = 30000
+                conn.setRequestProperty("Accept", "application/zip")
+                conn.setRequestProperty("Accept-Encoding", "identity")
+                val code = conn.responseCode
+                if (code != 200) {
+                    Log.w(TAG, "Download HTTP $code untuk $zipUrl")
+                    onDone(false, "Server menjawab HTTP $code.")
+                    return@thread
+                }
+                val total = conn.contentLengthLong
+                target.delete()
+                target.parentFile?.mkdirs()
+                val input = conn.inputStream.buffered()
+                val output = target.outputStream().buffered()
+                val buf = ByteArray(64 * 1024)
+                var done: Long = 0
+                while (true) {
+                    val read = input.read(buf)
+                    if (read < 0) break
+                    output.write(buf, 0, read)
+                    done += read
+                    if (total > 0) onProgress(done, total)
+                }
+                output.flush()
+                output.close()
+                input.close()
+                Log.i(TAG, "Download selesai: ${target.length()} byte (v$expectedVersion)")
+                val ok = verifyAndInstall(target)
+                onDone(ok, if (ok) null else "Verifikasi bundle gagal.")
+            } catch (e: Throwable) {
+                Log.e(TAG, "Download bundle gagal", e)
+                target.delete()
+                onDone(false, "Gagal mengunduh: ${e.message}")
+            } finally {
+                try {
+                    conn?.disconnect()
+                } catch (_: Throwable) {
+                }
+            }
         }
     }
 
