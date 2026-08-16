@@ -104,4 +104,6 @@ graphify-out/
 # Uploads / Dynamic Data (Ensure they aren't tracked)
 docker/mysql/data/
 docker/redis/data/
-src/public/uploads/intruder/
+src/public/uploads/
+src/writable.maintenance_manual
+src/writable/maintenance*

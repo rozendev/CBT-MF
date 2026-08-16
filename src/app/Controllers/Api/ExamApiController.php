@@ -154,8 +154,12 @@ class ExamApiController extends BaseController
                 $answersData[$q->question_id] = $qAnswers;
                 $questionsData[] = [
                     'question_id' => (int)$q->question_id,
+                    'question_type' => (int)$q->question_type,
                     'display_order' => (int)$q->display_order,
                     'answer_text' => $q->answer_text,
+                    // question_text wajib: bundle kiosk merender soal dari
+                    // respon ini (halaman static web tidak menggunakannya).
+                    'question_text' => $q->question_text,
                 ];
             } else {
                 $answersData[$q->log_id] = $qAnswers;
