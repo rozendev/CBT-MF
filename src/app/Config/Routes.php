@@ -21,6 +21,9 @@ $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     $routes->post('keep-alive', 'Api\SyncController::keepAlive');
     
     // Static Exam API
+    // init dipanggil GET oleh bundle kiosk (exam.php) dan POST oleh web
+    // desktop (static_exam_template.php) — controller membaca getPost ?? getGet.
+    $routes->get('exam/init', 'Api\ExamApiController::init');
     $routes->post('exam/init', 'Api\ExamApiController::init');
     $routes->post('exam/start', 'Api\ExamApiController::start');
     $routes->post('exam/autosave', 'Api\ExamApiController::autosave');

@@ -70,6 +70,10 @@ class Filters extends BaseFilters
             'pagecache',   // Web Page Caching
             'performance', // Performance Metrics
             'toolbar',     // Debug Toolbar
+            // CORS headers harus ada bahkan saat before-filter short-circuit
+            // (401 AuthFilter / 429 rate-limit): respon tersebut dilewati
+            // controller, sehingga $filters['after'] tidak sempat dijalankan.
+            'corsapi',
         ],
     ];
 
@@ -90,7 +94,12 @@ class Filters extends BaseFilters
                 'api/exam/stream/*',
                 'api/intruder/report',
                 'api/kiosk/verify-exit',
-                'api/kiosk/can-exit'
+                'api/kiosk/can-exit',
+                // Rute API kiosk: kioskcsrflogin (KioskOriginCsrfFilter) yang
+                // menjaga — skip CSRF hanya untuk origin kiosk (validasi Origin
+                // di CorsApiFilter); origin lain tetap diverifikasi di sana.
+                'api/exam/*',
+                'api/student/*',
             ]],
             'multilogin' => ['except' => ['login', 'logout', 'maintenance', 'health', 'student/exam/stream/*', 'api/exam/stream/*']],
         ],
@@ -128,6 +137,6 @@ class Filters extends BaseFilters
         'corsapi'        => ['before' => ['api/exam/*', 'api/student/*', 'login'], 'after' => ['api/exam/*', 'api/student/*', 'login']],
         'loginratelimit' => ['before' => ['login']],
         'apiratelimit'   => ['before' => ['api/*']],
-        'kioskcsrflogin' => ['before' => ['login']],
+        'kioskcsrflogin' => ['before' => ['login', 'api/exam/*', 'api/student/*']],
     ];
 }
