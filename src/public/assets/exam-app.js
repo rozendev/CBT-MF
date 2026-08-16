@@ -248,6 +248,13 @@
             isSaving: false,
             showSavedToast: false,
             showErrorToast: false,
+            // Status simpan yang MENETAP (tidak hilang sendiri seperti toast 2 detik).
+            // 'idle' | 'saving' | 'saved' | 'failed' — state 'failed' sengaja tidak
+            // pernah hilang otomatis: kegagalan simpan harus terus terlihat siswa.
+            saveState: 'idle',
+            saveErrorMsg: '',
+            unsavedCount: 0,
+            unsavedIds: {},
             timeLeft: 0,
             timerInterval: null,
             warningShown: false,
@@ -722,6 +729,7 @@
 
                         this.isSaving = true;
                         this.showErrorToast = false;
+                        this.saveState = 'saving';
                         const fd = buildFormData(passedData);
 
                         $.ajax({
@@ -746,12 +754,14 @@
                                         this.isSaving = false;
                                         this.showErrorToast = true;
                                         setTimeout(() => { this.showErrorToast = false; }, 4000);
+                                        this.markUnsaved(logId, res.message || 'Server menolak menyimpan jawaban ini.');
                                         resolve();
                                     }
                                     return;
                                 }
 
                                 this.isSaving = false;
+                                this.markSaved(logId);
                                 this.showSavedToast = true;
                                 setTimeout(() => { this.showSavedToast = false; }, 2000);
 
@@ -780,6 +790,7 @@
                                         this.isSaving = false;
                                         this.showErrorToast = true;
                                         setTimeout(() => { this.showErrorToast = false; }, 4000);
+                                        this.markUnsaved(logId, 'Koneksi ke server gagal.');
                                         resolve();
                                     }
                                 }
@@ -789,6 +800,27 @@
                         resolve();
                     }
                 });
+            },
+
+            /* Status simpan menetap: 'failed' tidak pernah hilang sendiri selama
+               masih ada jawaban yang belum tersimpan, supaya siswa tidak
+               menyelesaikan ujian dengan mengira semuanya aman. */
+            markUnsaved(logId, message) {
+                this.unsavedIds[logId] = true;
+                this.unsavedCount = Object.keys(this.unsavedIds).length;
+                this.saveErrorMsg = message || '';
+                this.saveState = 'failed';
+            },
+
+            markSaved(logId) {
+                if (this.unsavedIds[logId]) delete this.unsavedIds[logId];
+                this.unsavedCount = Object.keys(this.unsavedIds).length;
+                if (this.unsavedCount === 0) {
+                    this.saveErrorMsg = '';
+                    this.saveState = 'saved';
+                } else {
+                    this.saveState = 'failed';
+                }
             },
 
             saveAnswer(qIdToSave = null) {

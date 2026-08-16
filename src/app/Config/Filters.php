@@ -90,6 +90,9 @@ class Filters extends BaseFilters
         'before' => [
             'csrf' => ['except' => [
                 'login',
+                // logout dijaga kioskcsrflogin: origin kiosk di-skip (CORS allowlist
+                // yang membatasi), origin lain tetap diverifikasi CSRF di sana.
+                'logout',
                 'student/exam/stream/*',
                 'api/exam/stream/*',
                 'api/intruder/report',
@@ -134,9 +137,9 @@ class Filters extends BaseFilters
      * @var array<string, array<string, list<string>>>
      */
     public array $filters = [
-        'corsapi'        => ['before' => ['api/exam/*', 'api/student/*', 'login'], 'after' => ['api/exam/*', 'api/student/*', 'login']],
+        'corsapi'        => ['before' => ['api/exam/*', 'api/student/*', 'login', 'logout'], 'after' => ['api/exam/*', 'api/student/*', 'login', 'logout']],
         'loginratelimit' => ['before' => ['login']],
         'apiratelimit'   => ['before' => ['api/*']],
-        'kioskcsrflogin' => ['before' => ['login', 'api/exam/*', 'api/student/*']],
+        'kioskcsrflogin' => ['before' => ['login', 'logout', 'api/exam/*', 'api/student/*']],
     ];
 }

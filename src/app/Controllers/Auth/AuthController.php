@@ -282,6 +282,19 @@ class AuthController extends BaseController
 
         session()->destroy();
 
+        // Bundle kiosk memanggil lewat fetch lintas origin: redirect tidak berguna
+        // di sana (fetch mengikutinya dan menerima HTML login). Pola sama dengan
+        // attemptLogin.
+        $wantsJson = str_contains($this->request->getHeaderLine('Accept'), 'application/json')
+            || $this->request->getHeaderLine('X-Requested-With') === 'kiosk-bundle';
+
+        if ($wantsJson) {
+            return $this->response->setJSON([
+                'status'  => 'success',
+                'message' => 'Anda telah berhasil logout.',
+            ]);
+        }
+
         return redirect()->to('/login')
             ->with('success', 'Anda telah berhasil logout.');
     }

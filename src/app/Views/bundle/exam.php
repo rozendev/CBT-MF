@@ -261,6 +261,17 @@
             <div class="progress-fill" :style="'width: ' + ((countAnswered() / questions.length) * 100) + '%'"></div>
         </div>
 
+        <!-- Status simpan MENETAP: banner ini tinggal selama masih ada jawaban
+             yang gagal tersimpan. Bug fatal sebelumnya lolos justru karena
+             satu-satunya penanda adalah chip "Tersimpan" selama 2 detik. -->
+        <div class="k-savebar k-savebar--bad" x-show="saveState === 'failed'" style="display:none">
+            <div class="k-savebar__title">
+                ⚠ <span x-text="unsavedCount + ' jawaban belum tersimpan'"></span>
+            </div>
+            <div class="k-savebar__msg" x-text="saveErrorMsg"></div>
+            <div class="k-savebar__msg">Jangan selesaikan ujian dulu — beri tahu pengawas.</div>
+        </div>
+
         <!-- Autosave Indicator -->
         <div class="autosave-chip" x-show="showSavedToast" x-transition.opacity.duration.300ms style="display: none;">
             <span style="color:#198754;">✔</span> Tersimpan

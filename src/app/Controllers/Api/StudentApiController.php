@@ -106,6 +106,15 @@ class StudentApiController extends BaseController
 
         return $this->response->setJSON([
             'status' => 'success',
+            // Identitas dikirim agar dashboard bisa menampilkan "login sebagai siapa":
+            // siswa yang salah akun harus tahu SEBELUM ujian dimulai, karena
+            // attempt yang terlanjur dibuat tidak bisa dibatalkan sendiri.
+            'user' => [
+                'id' => $userId,
+                'username' => session('username'),
+                'firstname' => session('firstname'),
+                'lastname' => session('lastname'),
+            ],
             'exams' => $exams,
             'active_attempt' => $activeAttempt,
         ]);

@@ -1,35 +1,85 @@
 <?= view('bundle/_head', ['pageTitle' => 'Review', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl]) ?>
 <body>
-<div style="max-width:640px;margin:4vh auto;padding:0 16px">
-    <div class="k-card">
-        <h2 style="margin-top:0">Review Jawaban</h2>
-        <div id="review">Memuat...</div>
-        <button class="k-btn" style="margin-top:16px" onclick="window.location.href='dashboard.html'">Kembali</button>
+<div class="k-wrap" style="padding-top:5vh">
+    <h1>Review Jawaban</h1>
+    <div id="review" class="k-stack">
+        <div class="k-card k-muted">Memuat review…</div>
     </div>
+    <button class="k-btn k-btn--ghost" type="button" style="margin-top:16px"
+            onclick="location.href='dashboard.html'">Kembali ke Beranda</button>
 </div>
+
 <script>
     (function () {
         var base = window.KIOSK_BASE_URL;
-        var params = new URLSearchParams(window.location.search);
-        fetch(base + '/api/student/review?test_id=' + encodeURIComponent(params.get('test_id') || ''), { credentials: 'include', headers: { 'Accept': 'application/json' } })
+        var params = new URLSearchParams(location.search);
+        var wrap = document.getElementById('review');
+
+        function el(tag, cls, text) {
+            var n = document.createElement(tag);
+            if (cls) n.className = cls;
+            if (text !== undefined && text !== null) n.textContent = text;
+            return n;
+        }
+
+        function note(cls, msg) {
+            wrap.innerHTML = '';
+            wrap.appendChild(el('div', 'k-note ' + cls, msg));
+        }
+
+        fetch(base + '/api/student/review?test_id=' + encodeURIComponent(params.get('test_id') || ''), {
+            credentials: 'include', headers: { 'Accept': 'application/json' }
+        })
             .then(function (r) { return r.json(); })
             .then(function (j) {
-                if (j.status !== 'success') { document.getElementById('review').innerHTML = '<p>' + (j.message || 'Gagal memuat review.') + '</p>'; return; }
-                if (!j.allow_review) { document.getElementById('review').innerHTML = '<p>Review tidak tersedia.</p>'; return; }
-                var el = document.getElementById('review');
-                el.innerHTML = '';
+                if (j.status !== 'success') { note('k-error', j.message || 'Gagal memuat review.'); return; }
+                if (!j.allow_review) { note('k-error', 'Review jawaban tidak tersedia untuk ujian ini.'); return; }
+
+                wrap.innerHTML = '';
                 j.questions.forEach(function (q, i) {
-                    var user = (q.user_answers || []).map(function (a) { return a.answer_text; }).join(', ') || '(kosong)';
-                    var correct = (q.correct_answers || []).map(function (a) { return a.answer_text; }).join(', ');
-                    var html = '<div style="border:1px solid var(--kiosk-border);border-radius:10px;padding:14px;margin-bottom:12px">' +
-                        '<h3 style="margin:0 0 6px">' + (i + 1) + '. ' + q.question_text + '</h3>' +
-                        '<p style="margin:4px 0;color:#475569">Jawaban Anda: <b>' + user + '</b></p>';
-                    if (j.show_correct && correct) { html += '<p style="margin:4px 0;color:#15803d">Kunci: ' + correct + '</p>'; }
-                    html += '</div>';
-                    el.innerHTML += html;
+                    var card = el('div', 'k-card');
+
+                    card.appendChild(el('div', 'k-muted', 'Soal ' + (i + 1) + ' dari ' + j.questions.length));
+
+                    // question_text & answer_text berasal dari editor guru dan memang
+                    // boleh mengandung markup (gambar, format) — innerHTML disengaja
+                    // di sini, berbeda dengan nama ujian di dashboard yang teks polos.
+                    var qt = el('div');
+                    qt.style.cssText = 'margin:8px 0 14px;font-size:17px';
+                    qt.innerHTML = q.question_text || '';
+                    card.appendChild(qt);
+
+                    var userAns = (q.user_answers || []).map(function (a) { return a.answer_text; });
+                    var answered = userAns.length > 0;
+
+                    var mine = el('div');
+                    mine.style.cssText = 'border-left:4px solid ' +
+                        (answered ? 'var(--kiosk-primary)' : 'var(--kiosk-border)') +
+                        ';padding-left:12px;margin-bottom:8px';
+                    mine.appendChild(el('div', 'k-muted', 'Jawaban Anda'));
+                    var mineVal = el('div');
+                    mineVal.style.cssText = 'font-weight:600';
+                    if (answered) { mineVal.innerHTML = userAns.join(', '); }
+                    else { mineVal.textContent = '(tidak dijawab)'; mineVal.style.color = 'var(--kiosk-muted)'; }
+                    mine.appendChild(mineVal);
+                    card.appendChild(mine);
+
+                    var correct = (q.correct_answers || []).map(function (a) { return a.answer_text; });
+                    if (j.show_correct && correct.length) {
+                        var key = el('div');
+                        key.style.cssText = 'border-left:4px solid var(--kiosk-ok);padding-left:12px';
+                        key.appendChild(el('div', 'k-muted', 'Kunci jawaban'));
+                        var keyVal = el('div');
+                        keyVal.style.cssText = 'font-weight:600;color:var(--kiosk-ok)';
+                        keyVal.innerHTML = correct.join(', ');
+                        key.appendChild(keyVal);
+                        card.appendChild(key);
+                    }
+
+                    wrap.appendChild(card);
                 });
             })
-            .catch(function () { document.getElementById('review').innerHTML = '<div class="k-error">Tidak dapat terhubung ke server.</div>'; });
+            .catch(function () { note('k-error', 'Tidak dapat terhubung ke server.'); });
     })();
 </script>
 </body></html>
