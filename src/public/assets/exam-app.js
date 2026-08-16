@@ -243,12 +243,12 @@
             isSaving: false,
             showSavedToast: false,
             showErrorToast: false,
-            timeLeft: EXAM_CONFIG.durationMinutes * 60 * 1000,
+            timeLeft: 0,
             timerInterval: null,
             warningShown: false,
-            testName: EXAM_CONFIG.testName,
+            testName: '',
             studentName: '',
-            durationMinutes: EXAM_CONFIG.durationMinutes,
+            durationMinutes: 0,
             sseSource: null,
             sseErrorCount: 0,
             syncInterval: null,
@@ -311,7 +311,13 @@
                 if (window.__KIOSK_BUNDLE__) {
                     // Tanpa event exam-data-loaded: set sendiri data yang
                     // biasanya datang dari sana (nama + timer berjalan).
+                    // CATATAN: factory komponen tidak boleh membaca EXAM_CONFIG
+                    // (alpine.min.js bundle auto-start sebelum fetch init selesai);
+                    // semua nilai dibaca di sini — setelah __bundleConfigPromise.
                     this.studentName = EXAM_CONFIG.studentName || '';
+                    this.testName = EXAM_CONFIG.testName || '';
+                    this.durationMinutes = EXAM_CONFIG.durationMinutes || 0;
+                    this.timeLeft = this.durationMinutes > 0 ? this.durationMinutes * 60 * 1000 : 0;
                     if (this.durationMinutes > 0) {
                         this.startTimer(EXAM_CONFIG.beginTimeMs || Date.now(), (EXAM_CONFIG.serverNowMs || Date.now()) - Date.now());
                     }
@@ -1019,7 +1025,7 @@
 
         // Use a getter so we always read the LATEST antiCheat config
         // (initExam overwrites EXAM_CONFIG.antiCheat after API response)
-        window.getAC = function() { return EXAM_CONFIG.antiCheat || {}; };
+        window.getAC = function() { return (typeof EXAM_CONFIG !== 'undefined' && EXAM_CONFIG.antiCheat) || {}; };
 
         function clearSuspend() {
             isSuspended = false;
