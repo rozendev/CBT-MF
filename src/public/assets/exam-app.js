@@ -21,10 +21,15 @@
         const fd = new FormData();
         if (CSRF_NAME) fd.append(CSRF_NAME, CSRF_HASH);
         for (const key in obj) {
-            if (Array.isArray(obj[key])) {
-                obj[key].forEach(v => fd.append(key + '[]', v));
+            const val = obj[key];
+            // Field yang tidak ada JANGAN dikirim: FormData mengubah undefined/null
+            // jadi string "undefined"/"null", dan server memperlakukannya sebagai
+            // nilai valid (mis. generated_at → dianggap kadaluarsa, jawaban ditolak).
+            if (val === undefined || val === null) continue;
+            if (Array.isArray(val)) {
+                val.forEach(v => fd.append(key + '[]', v));
             } else {
-                fd.append(key, obj[key]);
+                fd.append(key, val);
             }
         }
         return fd;
@@ -728,6 +733,24 @@
                             dataType: 'json',
                             success: (res) => {
                                 updateCsrf(res);
+
+                                // HTTP 200 TIDAK berarti tersimpan: server bisa menolak
+                                // dengan {status:'error'}. Menampilkan toast "tersimpan"
+                                // di sini membuat jawaban hilang tanpa disadari siswa.
+                                if (res && res.status === 'error') {
+                                    if (retries > 0) {
+                                        setTimeout(() => {
+                                            this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
+                                        }, 2500);
+                                    } else {
+                                        this.isSaving = false;
+                                        this.showErrorToast = true;
+                                        setTimeout(() => { this.showErrorToast = false; }, 4000);
+                                        resolve();
+                                    }
+                                    return;
+                                }
+
                                 this.isSaving = false;
                                 this.showSavedToast = true;
                                 setTimeout(() => { this.showSavedToast = false; }, 2000);

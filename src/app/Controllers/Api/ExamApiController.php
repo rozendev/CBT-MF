@@ -378,9 +378,11 @@ class ExamApiController extends BaseController
             }
         }
 
-        // Validate generated_at timestamp for static exams (offline mode protection)
+        // Validate generated_at timestamp for static exams (offline mode protection).
+        // Hanya nilai numerik yang divalidasi: nilai non-numerik dulu di-cast jadi 0
+        // sehingga selalu dianggap kadaluarsa dan jawaban ditolak diam-diam.
         $generatedAt = $this->request->getPost('generated_at');
-        if ($generatedAt) {
+        if (is_numeric($generatedAt)) {
             $test = $this->testModel->findCached($attempt->test_id);
             if ($test && $test->exam_mode === 'static') {
                 $maxAge = 7 * 86400; // 7 days
