@@ -117,38 +117,47 @@ class UiBundleManager(
     @Synchronized
     fun verifyAndInstall(zipFile: File): Boolean {
         return try {
-            if (!zipFile.exists()) { onError("File bundle tidak ditemukan."); return false }
+            if (!zipFile.exists()) { fail("File bundle tidak ditemukan."); return false }
+            Log.d(TAG, "verifyAndInstall: mulai, zip=${zipFile.length()} byte")
             // ekstrak ke staging (hapus staging lama dulu)
             stagingDir.deleteRecursively()
             stagingDir.mkdirs()
             val zin = java.util.zip.ZipInputStream(zipFile.inputStream().buffered())
             var entry = zin.nextEntry
+            var entryCount = 0
             while (entry != null) {
                 val target = File(stagingDir, entry.name)
                 if (!target.canonicalPath.startsWith(stagingDir.canonicalPath + File.separator) && entry.name != "manifest.json") {
-                    onError("Bundle tidak valid (path traversal)."); zin.close(); return false
+                    fail("Bundle tidak valid (path traversal): ${entry.name}"); zin.close(); return false
                 }
                 if (!entry.isDirectory) {
                     target.parentFile?.mkdirs()
                     target.outputStream().use { out -> zin.copyTo(out) }
+                    entryCount++
                 }
                 entry = zin.nextEntry
             }
             zin.close()
+            Log.d(TAG, "verifyAndInstall: ekstrak selesai, $entryCount file")
 
             // verifikasi per-file vs manifest
             val mf = File(stagingDir, "manifest.json")
-            if (!mf.exists()) { onError("manifest.json tidak ada di bundle."); return false }
+            if (!mf.exists()) { fail("manifest.json tidak ada di bundle."); return false }
             val manifest = JSONObject(mf.readText())
             val files = manifest.getJSONObject("files")
             val expectedVersion = manifest.getString("version")
+            Log.d(TAG, "verifyAndInstall: manifest version=$expectedVersion, ${files.length()} file terdaftar")
             val it = files.keys()
             while (it.hasNext()) {
                 val rel = it.next()
                 val f = File(stagingDir, rel)
-                if (!f.exists()) { onError("File hilang di bundle: $rel"); return false }
+                if (!f.exists()) { fail("File hilang di bundle: $rel"); return false }
                 val actual = sha256(f.readBytes())
-                if (actual != files.getString(rel)) { onError("Hash tidak cocok: $rel"); return false }
+                val expected = files.getString(rel)
+                if (actual != expected) {
+                    fail("Hash tidak cocok: $rel (dapat=$actual milik manifest=$expected, size=${f.length()})")
+                    return false
+                }
             }
 
             // atomic rename: hapus staging lama bila ada sisa, ganti ui-bundle
@@ -157,7 +166,7 @@ class UiBundleManager(
             if (bundleDir.exists()) bundleDir.renameTo(backup)
             if (!stagingDir.renameTo(bundleDir)) {
                 if (backup.exists()) backup.renameTo(bundleDir)
-                onError("Gagal menginstal bundle (rename).")
+                fail("Gagal menginstal bundle (rename).")
                 return false
             }
             backup.deleteRecursively()
@@ -167,9 +176,14 @@ class UiBundleManager(
             Log.i(TAG, "Bundle v$expectedVersion terinstal")
             true
         } catch (e: Throwable) {
-            onError("Gagal memproses bundle: ${e.message}")
+            fail("Gagal memproses bundle: ${e.message}", e)
             false
         }
+    }
+
+    private fun fail(message: String, e: Throwable? = null) {
+        if (e != null) Log.e(TAG, "verifyAndInstall gagal: $message", e) else Log.w(TAG, "verifyAndInstall gagal: $message")
+        onError(message)
     }
 
     private fun sha256(bytes: ByteArray): String =

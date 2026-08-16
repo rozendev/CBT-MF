@@ -16,7 +16,10 @@ import android.os.Bundle
 import android.text.InputType
 import android.util.Log
 import android.view.View
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -480,6 +483,28 @@ class MainActivity : AppCompatActivity() {
                 // Internal bundle navigation bebas; segala navigasi keluar di-block.
                 val host = request?.url?.host
                 if (host == "appassets.androidplatform.net") return false
+                return true
+            }
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                Log.d("MainActivity", "WebView onPageStarted: $url")
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                Log.d("MainActivity", "WebView onPageFinished: $url")
+            }
+
+            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                Log.e("MainActivity", "WebView onReceivedError: url=${request?.url} isMainFrame=${request?.isForMainFrame} code=${error?.errorCode} desc=${error?.description}")
+            }
+
+            override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: android.webkit.WebResourceResponse?) {
+                Log.e("MainActivity", "WebView onReceivedHttpError: url=${request?.url} status=${errorResponse?.statusCode}")
+            }
+        }
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                Log.d("WebViewConsole", "${consoleMessage?.messageLevel()} ${consoleMessage?.message()} [${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()}]")
                 return true
             }
         }
