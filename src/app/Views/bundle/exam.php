@@ -272,6 +272,11 @@
             <div class="k-savebar__msg">Jangan selesaikan ujian dulu — beri tahu pengawas.</div>
         </div>
 
+        <!-- Peredam aksi beruntun: di kiosk dipakai Toast native lewat
+             CommsBridge; ini cadangan bila bridge tidak tersedia. -->
+        <div class="k-ratetoast" x-show="showRateToast" x-transition.opacity.duration.200ms
+             style="display:none" x-text="rateToastMsg"></div>
+
         <!-- Autosave Indicator -->
         <div class="autosave-chip" x-show="showSavedToast" x-transition.opacity.duration.300ms style="display: none;">
             <span style="color:#198754;">✔</span> Tersimpan

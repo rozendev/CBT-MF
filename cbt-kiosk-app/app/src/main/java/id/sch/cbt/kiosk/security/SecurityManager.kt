@@ -30,6 +30,14 @@ class SecurityManager(private val activity: MainActivity) {
                     WindowManager.LayoutParams.FLAG_SECURE
                 )
 
+                // 2. Layar wajib menyala selama kiosk aktif: layar yang mati di
+                // tengah ujian memaksa siswa membuka kunci, yang pada sebagian
+                // perangkat menjatuhkan lock task. addFlags dipakai (bukan
+                // setFlags) agar FLAG_SECURE di atas tidak ikut tertimpa.
+                // Tanpa WakeLock: flag ini hanya berlaku selama window terlihat,
+                // jadi otomatis lepas saat aplikasi tidak di depan.
+                activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
                 if (!clipboardGuardEnabled) {
                     clipboardListener?.let { oldListener ->
                         try {
@@ -85,6 +93,8 @@ class SecurityManager(private val activity: MainActivity) {
         activity.runOnUiThread {
             try {
                 activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                // Kiosk selesai: layar boleh mati lagi mengikuti setelan perangkat.
+                activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                 clipboardListener?.let { listener ->
                     try { clipboard?.removePrimaryClipChangedListener(listener) } catch (e: Throwable) {}

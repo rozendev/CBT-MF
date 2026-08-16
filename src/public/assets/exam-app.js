@@ -48,6 +48,15 @@
     const FETCH_TIMEOUT_MS = APP_CFG.fetch_timeout_ms || 15000;
     const FETCH_MAX_RETRIES = 3;
 
+    /* Peredam aksi beruntun (tap cepat / spam) pada satu soal.
+       AUTOSAVE_DEBOUNCE_MS menahan pengiriman sampai siswa berhenti mengubah,
+       sehingga yang naik ke server adalah STATE TERAKHIR — bukan satu request
+       per tap yang menumpuk di antrean. */
+    const AUTOSAVE_DEBOUNCE_MS = 700;
+    const RATE_WINDOW_MS = 3000;
+    const RATE_MAX_ACTIONS = 8;
+    const RATE_TOAST_COOLDOWN_MS = 4000;
+
     function redirectReplace(url) {
         window.location.replace(url);
     }
@@ -255,6 +264,11 @@
             saveErrorMsg: '',
             unsavedCount: 0,
             unsavedIds: {},
+            saveTimers: {},
+            actionTimes: [],
+            lastRateToast: 0,
+            showRateToast: false,
+            rateToastMsg: '',
             timeLeft: 0,
             timerInterval: null,
             warningShown: false,
@@ -831,7 +845,59 @@
                 if (!logId) return;
 
                 this.scheduleAutoSync();
-                this.enqueueRequest('autosave', { logId: logId, retries: 3 });
+                this.queueAutosave(logId);
+            },
+
+            /* Peredam per-soal. Timer di-reset tiap perubahan, jadi burst tap
+               hanya menghasilkan SATU request berisi state terakhir.
+               Yang dibatasi adalah jumlah request, BUKAN perubahan jawaban:
+               perubahan terakhir selalu ikut terkirim, sehingga pembatasan ini
+               tidak akan pernah menghilangkan jawaban siswa. */
+            queueAutosave(logId) {
+                // Cadangan lokal ditulis segera (bukan ikut ditunda), agar
+                // jawaban tetap ada walau aplikasi mati sebelum timer jalan.
+                this.saveLocalBackup();
+                this.noteAction();
+                if (this.saveTimers[logId]) clearTimeout(this.saveTimers[logId]);
+                this.saveTimers[logId] = setTimeout(() => {
+                    delete this.saveTimers[logId];
+                    this.enqueueRequest('autosave', { logId: logId, retries: 3 });
+                }, AUTOSAVE_DEBOUNCE_MS);
+            },
+
+            /* Wajib dipanggil sebelum menyelesaikan ujian: timer yang masih
+               menunggu belum masuk antrean, jadi tanpa flush ini jawaban
+               terakhir bisa hilang justru karena debounce. */
+            flushPendingSaves() {
+                Object.keys(this.saveTimers).forEach((logId) => {
+                    clearTimeout(this.saveTimers[logId]);
+                    delete this.saveTimers[logId];
+                    this.enqueueRequest('autosave', { logId: isNaN(logId) ? logId : Number(logId), retries: 3 });
+                });
+            },
+
+            noteAction() {
+                const now = Date.now();
+                this.actionTimes = this.actionTimes.filter(t => now - t < RATE_WINDOW_MS);
+                this.actionTimes.push(now);
+                if (this.actionTimes.length > RATE_MAX_ACTIONS &&
+                    now - this.lastRateToast > RATE_TOAST_COOLDOWN_MS) {
+                    this.lastRateToast = now;
+                    this.notifyRateLimited();
+                }
+            },
+
+            notifyRateLimited() {
+                const msg = 'Terlalu banyak aksi. Jawaban terakhir Anda tetap tersimpan.';
+                try {
+                    if (window.CommsBridge && typeof window.CommsBridge.toast === 'function') {
+                        window.CommsBridge.toast(msg);
+                        return;
+                    }
+                } catch (e) { /* di luar kiosk: pakai toast halaman */ }
+                this.rateToastMsg = msg;
+                this.showRateToast = true;
+                setTimeout(() => { this.showRateToast = false; }, 3000);
             },
 
             saveLocalBackup() {
@@ -1032,6 +1098,11 @@
             async submitFinish() {
                 window.isSubmitting = true;
                 if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+
+                // URUTAN PENTING: dorong dulu simpanan yang masih tertahan timer
+                // debounce ke antrean, BARU tunggu antreannya habis. Kebalikannya
+                // akan mengirim "selesai" sementara jawaban terakhir belum naik.
+                this.flushPendingSaves();
 
                 if (this.activeQueue) {
                     try { await this.activeQueue; } catch(e) {}

@@ -2,10 +2,26 @@ package id.sch.cbt.kiosk.bridge
 
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.widget.Toast
 import id.sch.cbt.kiosk.MainActivity
 import id.sch.cbt.kiosk.security.RootDetector
 
 class CommsBridge(private val activity: MainActivity) {
+
+    /**
+     * Toast native untuk pesan singkat dari halaman ujian (mis. peredam aksi
+     * beruntun). Dipakai karena di kiosk halaman berjalan fullscreen — notifikasi
+     * ala web mudah terlewat, sedangkan Toast muncul di atas WebView.
+     */
+    @JavascriptInterface
+    fun toast(message: String) {
+        val text = message.trim()
+        if (text.isEmpty()) return
+        activity.runOnUiThread {
+            // Batasi panjang: pesan dari halaman tidak boleh membanjiri layar.
+            Toast.makeText(activity, text.take(160), Toast.LENGTH_SHORT).show()
+        }
+    }
 
     @JavascriptInterface
     fun startKiosk(examId: String, token: String): Boolean {

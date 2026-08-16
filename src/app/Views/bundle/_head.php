@@ -96,6 +96,17 @@
         .k-savebar__title { font-weight: 700; font-size: 17px; }
         .k-savebar__msg { font-size: 14px; margin-top: 2px; }
 
+        /* Toast peredam aksi (cadangan non-kiosk) — melayang di bawah agar
+           tidak menutupi soal maupun banner status simpan di atas. */
+        .k-ratetoast {
+            position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+            z-index: 9998; max-width: 88vw;
+            background: rgba(15, 23, 42, .94); color: #fff;
+            padding: 12px 18px; border-radius: 999px;
+            font-size: 15px; text-align: center;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+        }
+
         .k-row { display: flex; gap: 12px; }
         .k-row > * { flex: 1; }
         .k-stack > * + * { margin-top: 12px; }
