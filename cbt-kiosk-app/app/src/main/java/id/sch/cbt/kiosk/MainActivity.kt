@@ -416,6 +416,10 @@ class MainActivity : AppCompatActivity() {
 
             pendingBundleBaseUrl = finalUrl
             examFlowRequested = true
+            // Sesi ujian baru pada Activity yang sama (mis. setelah kembali ke
+            // setup atau selesai ujian): latch harus bersih, kalau tidak
+            // penekanan "Mulai Ujian" berikutnya diabaikan.
+            bundleFlowStarted = false
 
             setupLayout.visibility = View.GONE
             examContainer.visibility = View.VISIBLE
@@ -440,12 +444,17 @@ class MainActivity : AppCompatActivity() {
      * mengunci kiosk. Dipanggil hanya ketika bundle UI sudah siap.
      */
     private fun proceedToBundleExam() {
+        // Urutan penting: cek examFlowRequested SEBELUM membakar latch.
+        // fetchServerKioskConfig juga dipanggil saat startup (URL tersimpan),
+        // jadi jalur ini tercapai sebelum user menekan "Mulai Ujian". Bila latch
+        // terbakar di situ, penekanan tombol berikutnya diabaikan sehingga
+        // WebView tetap about:blank DAN kiosk tidak pernah terkunci.
+        if (!examFlowRequested) return
         if (bundleFlowStarted) {
             Log.d("MainActivity", "proceedToBundleExam: bundle flow sudah berjalan; pemanggilan diabaikan")
             return
         }
         bundleFlowStarted = true
-        if (!examFlowRequested) return
         val baseUrl = pendingBundleBaseUrl
         if (baseUrl.isNullOrBlank()) {
             showSetupScreen()
