@@ -232,8 +232,12 @@ class WordImportController extends BaseController
         $section->addTextBreak(1);
 
         // 3) Soal & opsi lewat fitur List/Numbering bawaan Word
-        $section->addText('Contoh soal ditulis lewat fitur List/Numbering bawaan Word (tanpa mengetik angka/huruf):', $fontNormal);
-        $section->addListItem('Ibukota Jepang adalah?', 0, $fontNormal, 'templateListLevel0');
+        // Catatan penjelas TIDAK ditulis sebagai paragraf terpisah: baris bebas
+        // di antara opsi soal sebelumnya dan soal berikutnya akan ikut nyambung
+        // ke opsi terakhir yang sedang berjalan (lihat "Multi line question and
+        // option text is joined with br" di WordQuestionParser). Makanya
+        // penjelasannya digabung ke teks soal lewat list item ini sendiri.
+        $section->addListItem('Ibukota Jepang adalah? (soal dan opsi ini ditulis lewat fitur List/Numbering bawaan Word, tanpa mengetik angka/huruf)', 0, $fontNormal, 'templateListLevel0');
         $section->addListItem('Osaka', 1, $fontNormal, 'templateListLevel1');
         $section->addListItem('*Tokyo', 1, $fontNormal, 'templateListLevel1');
         $section->addListItem('Kyoto', 1, $fontNormal, 'templateListLevel1');
