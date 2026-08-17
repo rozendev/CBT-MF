@@ -119,4 +119,31 @@ class WordBlockExtractorTest extends TestCase
             $blocks[0]['rows']
         );
     }
+
+    public function testInlineImageWithinParagraphIsWrappedAndSaved(): void
+    {
+        $pngData = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+        $imgPath = tempnam(sys_get_temp_dir(), 'wordimport_img_') . '.png';
+        file_put_contents($imgPath, $pngData);
+
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $textRun = $section->addTextRun();
+            $textRun->addText('Lihat gambar: ');
+            $textRun->addImage($imgPath, ['width' => 50, 'height' => 50]);
+            $textRun->addText(' Apa itu?');
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord);
+        unlink($path);
+
+        $savedFiles = glob($this->uploadDir . '*.png');
+        $this->assertCount(1, $savedFiles);
+
+        $allText = implode(' ', array_column($blocks, 'text'));
+        $this->assertStringContainsString('<img src="/uploads/questions/', $allText);
+        $this->assertStringContainsString('Lihat gambar', $allText);
+        $this->assertStringContainsString('Apa itu', $allText);
+    }
 }
