@@ -33,7 +33,11 @@ class WordImportValidator
             return $this->validateMultipleChoice($q, $snippet);
         }
 
-        return []; // Esai (type 3): tidak ada aturan wajib. Menjodohkan/Benar-Salah: Task 8.
+        if ($q['type'] === 4 || $q['type'] === 5) {
+            return $this->validatePairs($q, $snippet);
+        }
+
+        return []; // Esai (type 3): tidak ada aturan wajib.
     }
 
     private function validateMultipleChoice(array $q, string $snippet): array
@@ -44,6 +48,27 @@ class WordImportValidator
         }
         if (empty($q['correct'])) {
             $errors[] = "Soal \"{$snippet}\" belum ada opsi yang ditandai (*) sebagai jawaban benar.";
+        }
+        return $errors;
+    }
+
+    private function validatePairs(array $q, string $snippet): array
+    {
+        $label = $q['type'] === 5 ? 'Benar/Salah' : 'Menjodohkan';
+
+        if (empty($q['matches'])) {
+            return ["Soal \"{$snippet}\" bertipe {$label} tapi tidak ditemukan tabel pasangan di bawahnya."];
+        }
+
+        $errors = [];
+        foreach ($q['matches'] as $pair) {
+            if ($pair['left'] === '' || $pair['right'] === '') {
+                $errors[] = "Soal \"{$snippet}\" baris pasangan \"{$pair['left']}\" → \"{$pair['right']}\" tidak lengkap.";
+                continue;
+            }
+            if ($q['type'] === 5 && !in_array(mb_strtolower($pair['right']), ['benar', 'salah'], true)) {
+                $errors[] = "Soal \"{$snippet}\" baris \"{$pair['left']}\" → \"{$pair['right']}\" bukan \"Benar\"/\"Salah\" yang valid.";
+            }
         }
         return $errors;
     }

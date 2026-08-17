@@ -77,4 +77,56 @@ class WordImportValidatorTest extends TestCase
         $this->assertStringContainsString('(soal tanpa teks / berisi gambar)', $errors[0]);
         $this->assertStringNotContainsString('Soal ""', $errors[0]);
     }
+
+    public function testMatchingWithoutTableIsRejected(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question(['type' => 4, 'options' => [], 'correct' => [], 'matches' => []]),
+        ]);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('bertipe Menjodohkan', $errors[0]);
+        $this->assertStringContainsString('tidak ditemukan tabel pasangan', $errors[0]);
+    }
+
+    public function testMatchingPairWithEmptyCellIsRejected(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question([
+                'type' => 4, 'options' => [], 'correct' => [],
+                'matches' => [['left' => 'Jepang', 'right' => '']],
+            ]),
+        ]);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('tidak lengkap', $errors[0]);
+    }
+
+    public function testTrueFalseWithInvalidValueIsRejected(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question([
+                'type' => 5, 'options' => [], 'correct' => [],
+                'matches' => [['left' => 'Bumi itu berbentuk datar', 'right' => 'Salahh']],
+            ]),
+        ]);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('bukan "Benar"/"Salah" yang valid', $errors[0]);
+    }
+
+    public function testTrueFalseWithValidValuesProducesNoErrors(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question([
+                'type' => 5, 'options' => [], 'correct' => [],
+                'matches' => [
+                    ['left' => 'Matahari terbit dari timur', 'right' => 'Benar'],
+                    ['left' => 'Bumi itu berbentuk datar', 'right' => 'salah'],
+                ],
+            ]),
+        ]);
+
+        $this->assertSame([], $errors);
+    }
 }
