@@ -7,6 +7,9 @@ use App\Models\ModuleModel;
 use App\Models\SubjectModel;
 use App\Models\QuestionModel;
 use App\Models\AnswerModel;
+use App\Libraries\WordImport\WordBlockExtractor;
+use App\Libraries\WordImport\WordQuestionParser;
+use App\Libraries\WordImport\WordImportValidator;
 use PhpOffice\PhpWord\IOFactory;
 
 class WordImportController extends BaseController
@@ -103,14 +106,13 @@ class WordImportController extends BaseController
         $filepath = $file->getTempName();
 
         try {
-            // Read document using PhpWord to support Images and Tables
             $phpWord = IOFactory::load($filepath);
-            $blocks = $this->extractTextUsingPhpWord($phpWord);
 
-            $parsedQuestions = $this->parseBlocks($blocks);
-            
+            $blocks = (new WordBlockExtractor())->extract($phpWord);
+            $parsedQuestions = (new WordQuestionParser())->parse($blocks);
+
             // ─── DRY-RUN VALIDATION ───
-            $validationErrors = $this->validateParsedQuestions($parsedQuestions);
+            $validationErrors = (new WordImportValidator())->validate($parsedQuestions);
             if (!empty($validationErrors)) {
                 return $this->response->setJSON([
                     'status' => 'validation_error',
@@ -123,26 +125,9 @@ class WordImportController extends BaseController
 
             $insertedCount = 0;
             foreach ($parsedQuestions as $q) {
-                // Determine question type
-                if (!empty($q['explicit_type'])) {
-                    if ($q['explicit_type'] === 'ESSAY') {
-                        $type = 3;
-                    } elseif ($q['explicit_type'] === 'MATCHING') {
-                        $type = 4;
-                    } elseif ($q['explicit_type'] === 'TRUEFALSE') {
-                        $type = 5;
-                    } else {
-                        $type = 1;
-                    }
-                } else {
-                    $correctAnswers = explode(',', $q['answer']);
-                    $type = count($correctAnswers) > 1 ? 2 : 1; // 1: PG Tunggal, 2: PG Kompleks
-                }
-
-                // Insert Question
                 $questionId = $this->questionModel->insert([
                     'subject_id'  => $subjectId,
-                    'type'        => $type,
+                    'type'        => $q['type'],
                     'description' => $q['question'],
                     'difficulty'  => 1,
                     'is_enabled'  => 1
@@ -157,13 +142,11 @@ class WordImportController extends BaseController
                     ]);
                 }
 
-                // Insert Options
                 $position = 1;
-                
-                if ($type == 1 || $type == 2) {
-                    $correctAnswers = array_map('trim', explode(',', $q['answer']));
+
+                if ($q['type'] == 1 || $q['type'] == 2) {
                     foreach ($q['options'] as $letter => $text) {
-                        $isCorrect = in_array(strtoupper($letter), $correctAnswers, true) ? 1 : 0;
+                        $isCorrect = in_array($letter, $q['correct'], true) ? 1 : 0;
                         $this->answerModel->skipValidation(true)->insert([
                             'question_id' => $questionId,
                             'description' => $text,
@@ -173,21 +156,19 @@ class WordImportController extends BaseController
                         ]);
                         $position++;
                     }
-                } elseif ($type == 3) {
-                    // Essay
+                } elseif ($q['type'] == 3) {
                     $this->answerModel->skipValidation(true)->insert([
                         'question_id' => $questionId,
-                        'description' => $q['answer'], // RIGHT:text
+                        'description' => $q['answer_key'],
                         'is_correct'  => 1,
                         'is_enabled'  => 1,
                         'position'    => 1
                     ]);
-                } elseif ($type == 4 || $type == 5) {
-                    // Matching / TrueFalse
-                    foreach ($q['matches'] as $matchText) {
+                } elseif ($q['type'] == 4 || $q['type'] == 5) {
+                    foreach ($q['matches'] as $pair) {
                         $this->answerModel->skipValidation(true)->insert([
                             'question_id' => $questionId,
-                            'description' => $matchText, // left|::|right
+                            'description' => $pair['left'] . '|::|' . $pair['right'],
                             'is_correct'  => 1,
                             'is_enabled'  => 1,
                             'position'    => $position
@@ -195,7 +176,7 @@ class WordImportController extends BaseController
                         $position++;
                     }
                 }
-                
+
                 $insertedCount++;
             }
 
@@ -300,258 +281,5 @@ class WordImportController extends BaseController
         $objWriter->save($tempFile);
 
         return $this->response->download($tempFile, null)->setFileName($fileName);
-    }
-
-    private function extractTextUsingPhpWord($phpWord)
-    {
-        $blocks = [];
-        foreach ($phpWord->getSections() as $section) {
-            foreach ($section->getElements() as $element) {
-                $blocks = array_merge($blocks, $this->processPhpWordElement($element));
-            }
-        }
-        return $blocks;
-    }
-
-    private function processPhpWordElement($element)
-    {
-        $blocks = [];
-        
-        if ($element instanceof \PhpOffice\PhpWord\Element\TextRun || method_exists($element, 'getElements')) {
-            $paragraphText = '';
-            foreach ($element->getElements() as $textElement) {
-                if (method_exists($textElement, 'getText')) {
-                    $paragraphText .= htmlspecialchars($textElement->getText(), ENT_QUOTES, 'UTF-8');
-                } elseif (get_class($textElement) === 'PhpOffice\PhpWord\Element\TextBreak') {
-                    $paragraphText .= "\n";
-                } elseif ($textElement instanceof \PhpOffice\PhpWord\Element\Image) {
-                    $raw = $textElement->getImageStringData();
-                    if ($raw) {
-                        $ext = $textElement->getImageExtension();
-                        $allowedImageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
-                        if (!in_array(strtolower($ext), $allowedImageExts, true)) {
-                            continue; // skip non-image embedded objects
-                        }
-                        $filename = uniqid('img_') . '.' . $ext;
-                        $uploadPath = FCPATH . 'uploads/questions/';
-                        if (!is_dir($uploadPath)) {
-                            @mkdir($uploadPath, 0755, true);
-                        }
-                        @file_put_contents($uploadPath . $filename, $raw);
-                        $paragraphText .= "<br><img src=\"/uploads/questions/" . $filename . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\"><br>";
-                    }
-                }
-            }
-            $lines = explode("\n", $paragraphText);
-            foreach ($lines as $line) {
-                $line = trim($line);
-                if (!empty($line)) {
-                    $blocks[] = $line;
-                }
-            }
-        } elseif ($element instanceof \PhpOffice\PhpWord\Element\Table) {
-            $html = '<div class="table-responsive my-3"><table class="table table-bordered table-sm" style="border-collapse: collapse; width: 100%;" border="1">';
-            foreach ($element->getRows() as $row) {
-                $html .= '<tr>';
-                foreach ($row->getCells() as $cell) {
-                    $html .= '<td style="padding: 8px; border: 1px solid #dee2e6;">';
-                    foreach ($cell->getElements() as $cellElement) {
-                        $cellBlocks = $this->processPhpWordElement($cellElement);
-                        $html .= implode('<br>', $cellBlocks);
-                    }
-                    $html .= '</td>';
-                }
-                $html .= '</tr>';
-            }
-            $html .= '</table></div>';
-            $blocks[] = $html;
-        } elseif ($element instanceof \PhpOffice\PhpWord\Element\Image) {
-            $raw = $element->getImageStringData();
-            if ($raw) {
-                $ext = $element->getImageExtension();
-                $allowedImageExts = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
-                if (!in_array(strtolower($ext), $allowedImageExts, true)) {
-                    return $blocks; // skip non-image embedded objects
-                }
-                $filename = uniqid('img_') . '.' . $ext;
-                $uploadPath = FCPATH . 'uploads/questions/';
-                if (!is_dir($uploadPath)) {
-                    @mkdir($uploadPath, 0755, true);
-                }
-                @file_put_contents($uploadPath . $filename, $raw);
-                $blocks[] = "<img src=\"/uploads/questions/" . $filename . "\" style=\"max-width:100%; height:auto; margin:10px 0;\" class=\"img-fluid rounded shadow-sm\">";
-            }
-        } elseif (method_exists($element, 'getText')) {
-            $text = trim($element->getText());
-            if (!empty($text)) {
-                $blocks[] = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
-            }
-        }
-        
-        return $blocks;
-    }
-
-    private function parseBlocks($blocks)
-    {
-        $questions = [];
-        $currentQuestion = null;
-        $currentSection = 'none'; // 'question', 'option', 'none'
-        $lastOptionKey = null;
-
-        foreach ($blocks as $text) {
-            $trimmed = trim($text);
-            if (empty($trimmed)) {
-                continue;
-            }
-
-            // Ignore MODULE:= and TOPIC:= if present
-            if (preg_match('/^(?:MODULE|TOPIC)\s*:=/i', $trimmed)) {
-                continue;
-            }
-
-            // 1. Question Prefix: Q:1), Q: 1., Q.1), Q1), Q1., Q:, SOAL 1:, QUESTION 1:
-            if (preg_match('/^(?:Q|SOAL|QUESTION)(?:\s*[:.\-)]|\s*\d+[\s:.\-)]*)\s*(.*)/i', $trimmed, $matches)) {
-                if ($currentQuestion && !empty($currentQuestion['question'])) {
-                    $questions[] = $currentQuestion;
-                }
-                $currentQuestion = [
-                    'question'      => trim($matches[1]),
-                    'options'       => [],
-                    'answer'        => '',
-                    'explicit_type' => '',
-                    'matches'       => []
-                ];
-                $currentSection = 'question';
-                $lastOptionKey = null;
-                continue;
-            }
-
-            if (!$currentQuestion) {
-                continue;
-            }
-
-            // 2. Question Type: TYPE: ESSAY / MATCHING / TRUEFALSE / PG / PGK
-            if (preg_match('/^(?:TYPE|TIPE)\s*[:=]\s*(ESSAY|MATCHING|TRUEFALSE|PGK|PG)/i', $trimmed, $matches)) {
-                $typeStr = strtoupper(trim($matches[1]));
-                if ($typeStr === 'PG' || $typeStr === 'PGK') {
-                    $currentQuestion['explicit_type'] = '';
-                } else {
-                    $currentQuestion['explicit_type'] = $typeStr;
-                }
-                $currentSection = 'none';
-                continue;
-            }
-
-            // 3. Right Answer: RIGHT: A or RIGHT: A,B,C or KUNCI: A
-            if (preg_match('/^(?:RIGHT|KUNCI|JAWABAN)\s*[:=]\s*(.*)/i', $trimmed, $matches)) {
-                $currentQuestion['answer'] = trim($matches[1]);
-                if (preg_match('/^[A-Z, ]+$/i', $currentQuestion['answer']) && empty($currentQuestion['explicit_type'])) {
-                    $currentQuestion['answer'] = strtoupper(str_replace(' ', '', $currentQuestion['answer']));
-                }
-                $currentSection = 'none';
-                continue;
-            }
-
-            // 4. Match Pair: MATCH: Left|::|Right or PASANGAN: Left|::|Right
-            if (preg_match('/^(?:MATCH|PASANGAN)\s*[:=]\s*(.*)/i', $trimmed, $matches)) {
-                $currentQuestion['matches'][] = trim($matches[1]);
-                $currentSection = 'none';
-                continue;
-            }
-
-            // 5. Option Prefix: A:), A.), A., A), A:, A -
-            if (preg_match('/^([A-Z])\s*[:.\-)]+\s*(.*)/i', $trimmed, $matches)) {
-                $letter = strtoupper($matches[1]);
-                $optionText = trim($matches[2]);
-                $currentQuestion['options'][$letter] = $optionText;
-                $currentSection = 'option';
-                $lastOptionKey = $letter;
-                continue;
-            }
-
-            // 6. Continuation of multi-line question text or option text
-            if ($currentSection === 'question') {
-                if (!empty($currentQuestion['question'])) {
-                    $currentQuestion['question'] .= '<br>' . $trimmed;
-                } else {
-                    $currentQuestion['question'] = $trimmed;
-                }
-            } elseif ($currentSection === 'option' && $lastOptionKey !== null) {
-                if (!empty($currentQuestion['options'][$lastOptionKey])) {
-                    $currentQuestion['options'][$lastOptionKey] .= '<br>' . $trimmed;
-                } else {
-                    $currentQuestion['options'][$lastOptionKey] = $trimmed;
-                }
-            }
-        }
-
-        if ($currentQuestion && !empty($currentQuestion['question'])) {
-            $questions[] = $currentQuestion;
-        }
-
-        return $questions;
-    }
-
-    private function validateParsedQuestions(array $questions): array
-    {
-        $errors = [];
-
-        if (empty($questions)) {
-            return ['Tidak ada soal yang terdeteksi. Pastikan format dokumen sesuai (contoh: Q:1) Teks Soal).'];
-        }
-
-        foreach ($questions as $index => $q) {
-            $no = $index + 1;
-            $qText = trim(strip_tags($q['question'], '<img><table><tr><td><th><br><p><b><i><strong><em>'));
-
-            if (empty($qText)) {
-                $errors[] = "Soal No. #{$no}: Teks soal tidak boleh kosong.";
-            }
-
-            $explicitType = strtoupper(trim($q['explicit_type'] ?? ''));
-
-            if ($explicitType === 'ESSAY') {
-                if (empty(trim($q['answer']))) {
-                    $errors[] = "Soal No. #{$no} (Essay): Kunci jawaban (RIGHT:) belum diisi.";
-                }
-            } elseif ($explicitType === 'MATCHING' || $explicitType === 'TRUEFALSE') {
-                if (empty($q['matches'])) {
-                    $errors[] = "Soal No. #{$no} ({$explicitType}): Tidak ada pasangan jawaban (MATCH:) yang ditemukan.";
-                } else {
-                    foreach ($q['matches'] as $mIdx => $mText) {
-                        if (!str_contains($mText, '|::|')) {
-                            $errors[] = "Soal No. #{$no} ({$explicitType}): Format baris MATCH " . ($mIdx + 1) . " ('{$mText}') salah. Harus menggunakan separator '|::|'.";
-                        } else {
-                            $parts = explode('|::|', $mText);
-                            if (empty(trim($parts[0])) || empty(trim($parts[1]))) {
-                                $errors[] = "Soal No. #{$no} ({$explicitType}): Sisi kiri atau kanan pada MATCH " . ($mIdx + 1) . " tidak boleh kosong.";
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Multiple Choice / PG / PGK
-                if (empty($q['options']) || count($q['options']) < 2) {
-                    $errors[] = "Soal No. #{$no} (Pilihan Ganda): Harus memiliki minimal 2 pilihan jawaban (A, B, dst).";
-                }
-
-                if (empty(trim($q['answer']))) {
-                    $errors[] = "Soal No. #{$no} (Pilihan Ganda): Kunci jawaban (RIGHT:) belum ditentukan.";
-                } else {
-                    $correctAnswers = array_map('trim', explode(',', $q['answer']));
-                    $availableOptions = array_keys($q['options']);
-
-                    foreach ($correctAnswers as $ansKey) {
-                        $ansKeyUpper = strtoupper($ansKey);
-                        if (!in_array($ansKeyUpper, $availableOptions, true)) {
-                            $optStr = implode(', ', $availableOptions);
-                            $errors[] = "Soal No. #{$no}: Kunci jawaban '{$ansKeyUpper}' tidak cocok dengan opsi yang tersedia ({$optStr}).";
-                        }
-                    }
-                }
-            }
-        }
-
-        return $errors;
     }
 }
