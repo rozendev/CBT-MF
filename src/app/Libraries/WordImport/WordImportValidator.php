@@ -51,6 +51,9 @@ class WordImportValidator
     private function snippet(string $html): string
     {
         $text = trim(preg_replace('/\s+/', ' ', strip_tags($html)) ?? '');
+        if ($text === '') {
+            return '(soal tanpa teks / berisi gambar)';
+        }
         if (mb_strlen($text) > self::SNIPPET_LENGTH) {
             $text = mb_substr($text, 0, self::SNIPPET_LENGTH) . '...';
         }

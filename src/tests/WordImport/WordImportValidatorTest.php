@@ -63,4 +63,18 @@ class WordImportValidatorTest extends TestCase
 
         $this->assertSame([], $errors);
     }
+
+    public function testImageOnlyQuestionGetsFallbackSnippetInErrorMessage(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question([
+                'question' => '<br><img src="/uploads/questions/img_abc123.png" class="img-fluid rounded shadow-sm"><br>',
+                'correct'  => [],
+            ]),
+        ]);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('(soal tanpa teks / berisi gambar)', $errors[0]);
+        $this->assertStringNotContainsString('Soal ""', $errors[0]);
+    }
 }
