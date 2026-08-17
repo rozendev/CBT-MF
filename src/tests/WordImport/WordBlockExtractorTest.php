@@ -69,4 +69,28 @@ class WordBlockExtractorTest extends TestCase
         $this->assertSame(1, $blocks[2]['list_depth']);
         $this->assertSame('*Tokyo', $blocks[2]['text']);
     }
+
+    public function testStandaloneImageIsSavedAndReferencedAsImgTag(): void
+    {
+        // 1x1 pixel PNG transparan, base64-encoded.
+        $pngData = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+        $imgPath = tempnam(sys_get_temp_dir(), 'wordimport_img_') . '.png';
+        file_put_contents($imgPath, $pngData);
+
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord);
+        unlink($path);
+
+        $this->assertCount(1, $blocks);
+        $this->assertSame('line', $blocks[0]['kind']);
+        $this->assertStringContainsString('<img src="/uploads/questions/', $blocks[0]['text']);
+
+        $savedFiles = glob($this->uploadDir . '*.png');
+        $this->assertCount(1, $savedFiles);
+    }
 }

@@ -44,6 +44,11 @@ class WordBlockExtractor
     /** @return array<int, array<string, mixed>> */
     private function processElement($element): array
     {
+        if ($element instanceof Image) {
+            $tag = $this->saveImageAndBuildTag($element);
+            return $tag === null ? [] : [$this->line($tag, false, 0)];
+        }
+
         if (method_exists($element, 'getElements')) {
             return $this->processRun($element);
         }
@@ -70,6 +75,11 @@ class WordBlockExtractor
             foreach ($element->getElements() as $child) {
                 if ($child instanceof TextBreak) {
                     $paragraphText .= "\n";
+                } elseif ($child instanceof Image) {
+                    $tag = $this->saveImageAndBuildTag($child);
+                    if ($tag !== null) {
+                        $paragraphText .= '<br>' . $tag . '<br>';
+                    }
                 } elseif (method_exists($child, 'getText')) {
                     $paragraphText .= htmlspecialchars($child->getText(), ENT_QUOTES, 'UTF-8');
                 }
@@ -98,5 +108,24 @@ class WordBlockExtractor
             'is_list_item' => $isListItem,
             'list_depth'   => $depth,
         ];
+    }
+
+    private function saveImageAndBuildTag(Image $image): ?string
+    {
+        $raw = $image->getImageStringData();
+        if (!$raw) {
+            return null;
+        }
+        $ext = strtolower($image->getImageExtension());
+        if (!in_array($ext, self::ALLOWED_IMAGE_EXTS, true)) {
+            return null;
+        }
+        if (!is_dir($this->uploadDir)) {
+            @mkdir($this->uploadDir, 0755, true);
+        }
+        $filename = uniqid('img_') . '.' . $ext;
+        @file_put_contents($this->uploadDir . $filename, $raw);
+        $src = rtrim($this->uploadUrlPrefix, '/') . '/' . $filename;
+        return '<img src="' . $src . '" style="max-width:100%; height:auto; margin:10px 0;" class="img-fluid rounded shadow-sm">';
     }
 }
