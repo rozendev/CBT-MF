@@ -81,37 +81,34 @@ Import Soal dari Word
                     <h5 class="fw-bold mb-3 text-secondary">
                         <i class="bi bi-info-circle me-2"></i> Panduan Format Penulisan Word
                     </h5>
-                    <p class="mb-3">Agar sistem dapat membaca soal dengan presisi, <strong>pastikan penulisan di dalam file Word persis seperti format di bawah ini</strong>:</p>
-                    
-                    <div class="bg-white p-3 border rounded font-monospace small mb-3" style="max-height: 250px; overflow-y: auto;">
-Q:1) Siapa penemu bola lampu?<br>
-A:) Albert Einstein<br>
-B:) Thomas Alva Edison<br>
-C:) Isaac Newton<br>
-RIGHT:B<br>
+                    <p class="mb-3">Format sekarang jauh lebih natural — tidak perlu hafal kode "Q:", "RIGHT:", dsb. Contoh:</p>
+
+                    <div class="bg-white p-3 border rounded font-monospace small mb-3" style="max-height: 280px; overflow-y: auto;">
+1. Siapa penemu bola lampu?<br>
+A. Albert Einstein<br>
+*B. Thomas Alva Edison<br>
+C. Isaac Newton<br>
 <br>
-Q:2) Apa nama ibukota Indonesia saat ini?<br>
-TYPE:ESSAY<br>
-RIGHT:Jakarta<br>
+2. Siapa nama presiden pertama Republik Indonesia?<br>
+Jawaban: Ir. Soekarno<br>
 <br>
-Q:3) Pasangkan negara dengan ibukotanya!<br>
-TYPE:MATCHING<br>
-MATCH:Jepang|::|Tokyo<br>
-MATCH:Korea|::|Seoul<br>
+3. Pasangkan negara berikut dengan ibukotanya!<br>
+Tipe: Menjodohkan<br>
+[Tabel 2 kolom: Negara | Ibukota]<br>
 <br>
-Q:4) Tentukan benar salah pernyataan ini!<br>
-TYPE:TRUEFALSE<br>
-MATCH:Bumi itu bulat|::|Benar<br>
-MATCH:Matahari terbit dari barat|::|Salah
+4. Tentukan benar atau salah pernyataan berikut!<br>
+Tipe: Benar/Salah<br>
+[Tabel 2 kolom: Pernyataan | Benar/Salah]
                     </div>
-                    
+
                     <ul class="text-muted small">
-                        <li class="mb-1">Teks soal diawali <code>Q:1) </code>, <code>Q: 1. </code>, <code>SOAL 1: </code> dst.</li>
-                        <li class="mb-1"><strong>Pilihan Ganda:</strong> Opsi dapat diawali <code>A:) </code>, <code>A.) </code>, <code>A. </code>, <code>A) </code>, atau <code>A: </code>. Kunci ditulis <code>RIGHT:A</code> atau <code>RIGHT:A,B</code>.</li>
-                        <li class="mb-1"><strong>Esai:</strong> Tambahkan <code>TYPE:ESSAY</code> di bawah soal. Kunci ditulis <code>RIGHT:Teks Jawaban</code>.</li>
-                        <li class="mb-1"><strong>Menjodohkan:</strong> Tambahkan <code>TYPE:MATCHING</code>. Pasangan ditulis <code>MATCH:Premis Kiri|::|Jawaban Kanan</code>.</li>
-                        <li class="mb-1"><strong>Benar/Salah:</strong> Tambahkan <code>TYPE:TRUEFALSE</code>. Pernyataan ditulis <code>MATCH:Pernyataan|::|Benar</code> atau <code>Salah</code>.</li>
-                        <li class="mb-1">Mendukung teks multi-baris (multi-line), tabel, dan gambar yang disisipkan di dalam dokumen.</li>
+                        <li class="mb-1">Soal baru diawali angka polos, mis. <code>1.</code> atau <code>1)</code> — atau pakai fitur List/Numbering bawaan Word (tidak perlu mengetik angka sama sekali).</li>
+                        <li class="mb-1"><strong>Pilihan Ganda:</strong> opsi diawali huruf polos, mis. <code>A.</code> atau <code>A)</code>. Tandai jawaban benar dengan <code>*</code> tepat di depan huruf, mis. <code>*B. Thomas Alva Edison</code>. Boleh lebih dari satu opsi ber-<code>*</code> (otomatis jadi Pilihan Ganda Kompleks).</li>
+                        <li class="mb-1"><strong>Esai:</strong> cukup tulis soalnya saja. Baris <code>Jawaban: ...</code> di bawahnya sifatnya opsional, hanya untuk referensi.</li>
+                        <li class="mb-1"><strong>Menjodohkan:</strong> tambahkan baris <code>Tipe: Menjodohkan</code> di bawah soal, lalu buat tabel Word 2 kolom tepat di bawahnya — baris pertama tabel jadi judul kolom (dilewati), baris berikutnya jadi pasangan.</li>
+                        <li class="mb-1"><strong>Benar/Salah:</strong> sama seperti Menjodohkan, tapi tulis <code>Tipe: Benar/Salah</code> dan isi kolom kanan tabel dengan "Benar" atau "Salah".</li>
+                        <li class="mb-1">Tabel biasa (tanpa <code>Tipe:</code> di atasnya) tetap bisa dipakai sebagai data pendukung soal, seperti sebelumnya.</li>
+                        <li class="mb-1">Mendukung teks multi-baris, gambar yang disisipkan di dalam dokumen, dan opsi/soal lewat list bawaan Word.</li>
                     </ul>
                 </div>
             </div>
