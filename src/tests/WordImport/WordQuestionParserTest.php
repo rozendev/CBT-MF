@@ -128,4 +128,18 @@ class WordQuestionParserTest extends TestCase
         $this->assertStringContainsString('Soal dengan tabel data:', $questions[0]['question']);
         $this->assertStringContainsString('<table><tr><td>Nama</td><td>Usia</td></tr></table>', $questions[0]['question']);
     }
+
+    public function testJawabanLineIsStoredAsOptionalAnswerKey(): void
+    {
+        $blocks = [
+            $this->line('4. Siapa nama presiden pertama Republik Indonesia?'),
+            $this->line('Jawaban: Ir. Soekarno'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame(3, $questions[0]['type']);
+        $this->assertSame('Ir. Soekarno', $questions[0]['answer_key']);
+        $this->assertSame([], $questions[0]['options']);
+    }
 }

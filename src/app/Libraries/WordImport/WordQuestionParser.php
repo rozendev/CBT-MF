@@ -13,6 +13,7 @@ class WordQuestionParser
 {
     private const QUESTION_NUMBER_RE = '/^\d+\s*[.\-):]+\s*(.*)$/';
     private const OPTION_LETTER_RE   = '/^(\*?)([A-Za-z])\s*[.\-):]+\s*(.*)$/';
+    private const JAWABAN_RE         = '/^Jawaban\s*:\s*(.*)$/i';
 
     /** @return array<int, array<string, mixed>> */
     public function parse(array $blocks): array
@@ -31,6 +32,14 @@ class WordQuestionParser
 
             $text = trim($block['text']);
             if ($text === '') {
+                continue;
+            }
+
+            if (preg_match(self::JAWABAN_RE, $text, $m)) {
+                if ($current !== null) {
+                    $current['answer_key'] = trim($m[1]);
+                }
+                $section = 'none';
                 continue;
             }
 
