@@ -93,4 +93,30 @@ class WordBlockExtractorTest extends TestCase
         $savedFiles = glob($this->uploadDir . '*.png');
         $this->assertCount(1, $savedFiles);
     }
+
+    public function testTableBecomesTableBlockWithHtmlAndRawRows(): void
+    {
+        $path = WordFixtureBuilder::buildDocx(function ($section) {
+            $table = $section->addTable();
+            $table->addRow();
+            $table->addCell(2000)->addText('Negara');
+            $table->addCell(2000)->addText('Ibukota');
+            $table->addRow();
+            $table->addCell(2000)->addText('Indonesia');
+            $table->addCell(2000)->addText('Jakarta');
+        });
+
+        $phpWord = IOFactory::load($path);
+        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord);
+        unlink($path);
+
+        $this->assertCount(1, $blocks);
+        $this->assertSame('table', $blocks[0]['kind']);
+        $this->assertStringContainsString('<table', $blocks[0]['html']);
+        $this->assertStringContainsString('Jakarta', $blocks[0]['html']);
+        $this->assertSame(
+            [['Negara', 'Ibukota'], ['Indonesia', 'Jakarta']],
+            $blocks[0]['rows']
+        );
+    }
 }

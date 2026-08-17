@@ -44,6 +44,10 @@ class WordBlockExtractor
     /** @return array<int, array<string, mixed>> */
     private function processElement($element): array
     {
+        if ($element instanceof Table) {
+            return [$this->processTable($element)];
+        }
+
         if ($element instanceof Image) {
             $tag = $this->saveImageAndBuildTag($element);
             return $tag === null ? [] : [$this->line($tag, false, 0)];
@@ -127,5 +131,48 @@ class WordBlockExtractor
         @file_put_contents($this->uploadDir . $filename, $raw);
         $src = rtrim($this->uploadUrlPrefix, '/') . '/' . $filename;
         return '<img src="' . $src . '" style="max-width:100%; height:auto; margin:10px 0;" class="img-fluid rounded shadow-sm">';
+    }
+
+    private function processTable(Table $table): array
+    {
+        $htmlRows = [];
+        $rawRows = [];
+
+        foreach ($table->getRows() as $row) {
+            $htmlCells = [];
+            $rawCells = [];
+            foreach ($row->getCells() as $cell) {
+                $cellBlocks = [];
+                foreach ($cell->getElements() as $cellElement) {
+                    $cellBlocks = array_merge($cellBlocks, $this->processElement($cellElement));
+                }
+                $htmlCells[] = implode('<br>', array_map(
+                    fn (array $b) => $b['kind'] === 'table' ? $b['html'] : $b['text'],
+                    $cellBlocks
+                ));
+                $rawCells[] = trim(implode(' ', array_map(
+                    fn (array $b) => trim(strip_tags($b['kind'] === 'table' ? $b['html'] : $b['text'])),
+                    $cellBlocks
+                )));
+            }
+            $htmlRows[] = $htmlCells;
+            $rawRows[] = $rawCells;
+        }
+
+        $html = '<div class="table-responsive my-3"><table class="table table-bordered table-sm" style="border-collapse: collapse; width: 100%;" border="1">';
+        foreach ($htmlRows as $htmlCells) {
+            $html .= '<tr>';
+            foreach ($htmlCells as $cellHtml) {
+                $html .= '<td style="padding: 8px; border: 1px solid #dee2e6;">' . $cellHtml . '</td>';
+            }
+            $html .= '</tr>';
+        }
+        $html .= '</table></div>';
+
+        return [
+            'kind' => 'table',
+            'html' => $html,
+            'rows' => $rawRows,
+        ];
     }
 }
