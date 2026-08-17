@@ -69,7 +69,11 @@ class WordBlockExtractor
     private function processRun($element): array
     {
         $isListItem = $element instanceof ListItemRun || $element instanceof ListItem;
-        $depth = $isListItem ? $element->getDepth() : 0;
+        // Word asli sering tidak menulis <w:ilvl> untuk level teratas (0
+        // adalah default kalau elemen itu tidak ada di XML), jadi PhpWord\Reader
+        // mengembalikan null, bukan 0 -- beda dari dokumen yang ditulis lewat
+        // PhpWord\Writer sendiri yang selalu eksplisit.
+        $depth = $isListItem ? ($element->getDepth() ?? 0) : 0;
 
         if ($element instanceof ListItem) {
             // ListItem (beda dari ListItemRun) membungkus satu Text tunggal.

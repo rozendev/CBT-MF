@@ -70,6 +70,40 @@ class WordBlockExtractorTest extends TestCase
         $this->assertSame('*Tokyo', $blocks[2]['text']);
     }
 
+    public function testTopLevelNativeListWithoutExplicitIlvlDefaultsToDepthZero(): void
+    {
+        // Word (aplikasi asli, bukan PhpWord) sering TIDAK menulis <w:ilvl>
+        // untuk item list level teratas (0 adalah default kalau elemen itu
+        // tidak ada) -- beda dari PhpWord\Writer yang selalu menulisnya
+        // eksplisit. PhpWord\Reader::getAttribute() mengembalikan null kalau
+        // elemen tidak ada, jadi ListItemRun::getDepth() bisa null untuk
+        // dokumen yang benar-benar diketik manual di Word.
+        $path = WordFixtureBuilder::buildDocx(function ($section) {
+            $section->addListItem('Ibukota Jepang adalah?', 0, null, 'listLevel0');
+        });
+        $this->stripIlvlElement($path);
+
+        $phpWord = IOFactory::load($path);
+        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord);
+        unlink($path);
+
+        $this->assertCount(1, $blocks);
+        $this->assertTrue($blocks[0]['is_list_item']);
+        $this->assertSame(0, $blocks[0]['list_depth']);
+        $this->assertSame('Ibukota Jepang adalah?', $blocks[0]['text']);
+    }
+
+    private function stripIlvlElement(string $docxPath): void
+    {
+        $zip = new \ZipArchive();
+        $zip->open($docxPath);
+        $xml = $zip->getFromName('word/document.xml');
+        $xml = preg_replace('/<w:ilvl[^>]*\/>/', '', $xml);
+        $zip->deleteName('word/document.xml');
+        $zip->addFromString('word/document.xml', $xml);
+        $zip->close();
+    }
+
     public function testStandaloneImageIsSavedAndReferencedAsImgTag(): void
     {
         // 1x1 pixel PNG transparan, base64-encoded.
