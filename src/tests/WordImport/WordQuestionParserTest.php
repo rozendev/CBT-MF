@@ -82,4 +82,50 @@ class WordQuestionParserTest extends TestCase
         $this->assertSame(3, $questions[0]['type']);
         $this->assertSame('', $questions[0]['answer_key']);
     }
+
+    public function testMultiLineQuestionAndOptionTextIsJoinedWithBr(): void
+    {
+        $blocks = [
+            $this->line('1. Baris pertama soal'),
+            $this->line('lanjutan baris kedua soal'),
+            $this->line('A. Opsi baris pertama'),
+            $this->line('lanjutan opsi'),
+            $this->line('*B. Jawaban benar'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame('Baris pertama soal<br>lanjutan baris kedua soal', $questions[0]['question']);
+        $this->assertSame('Opsi baris pertama<br>lanjutan opsi', $questions[0]['options']['A']);
+    }
+
+    public function testTableBeforeAnyQuestionIsDroppedSilently(): void
+    {
+        $blocks = [
+            ['kind' => 'table', 'html' => '<table><tr><td>orphan</td></tr></table>', 'rows' => [['orphan']]],
+            $this->line('1. Soal setelah tabel'),
+            $this->line('A. Satu'),
+            $this->line('*B. Dua'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertCount(1, $questions);
+        $this->assertStringNotContainsString('orphan', $questions[0]['question']);
+    }
+
+    public function testReferenceTableIsAppendedToCurrentQuestionBody(): void
+    {
+        $blocks = [
+            $this->line('1. Soal dengan tabel data:'),
+            ['kind' => 'table', 'html' => '<table><tr><td>Nama</td><td>Usia</td></tr></table>', 'rows' => [['Nama', 'Usia']]],
+            $this->line('A. Satu'),
+            $this->line('*B. Dua'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertStringContainsString('Soal dengan tabel data:', $questions[0]['question']);
+        $this->assertStringContainsString('<table><tr><td>Nama</td><td>Usia</td></tr></table>', $questions[0]['question']);
+    }
 }
