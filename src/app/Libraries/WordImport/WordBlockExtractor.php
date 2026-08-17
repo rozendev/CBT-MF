@@ -59,23 +59,33 @@ class WordBlockExtractor
     /** @return array<int, array<string, mixed>> */
     private function processRun($element): array
     {
-        $paragraphText = '';
-        foreach ($element->getElements() as $child) {
-            if ($child instanceof TextBreak) {
-                $paragraphText .= "\n";
-            } elseif (method_exists($child, 'getText')) {
-                $paragraphText .= htmlspecialchars($child->getText(), ENT_QUOTES, 'UTF-8');
+        $isListItem = $element instanceof ListItemRun || $element instanceof ListItem;
+        $depth = $isListItem ? $element->getDepth() : 0;
+
+        if ($element instanceof ListItem) {
+            // ListItem (beda dari ListItemRun) membungkus satu Text tunggal.
+            $paragraphText = htmlspecialchars($element->getText(), ENT_QUOTES, 'UTF-8');
+        } else {
+            $paragraphText = '';
+            foreach ($element->getElements() as $child) {
+                if ($child instanceof TextBreak) {
+                    $paragraphText .= "\n";
+                } elseif (method_exists($child, 'getText')) {
+                    $paragraphText .= htmlspecialchars($child->getText(), ENT_QUOTES, 'UTF-8');
+                }
             }
         }
 
         $lines = explode("\n", $paragraphText);
         $blocks = [];
+        $isFirstLine = true;
         foreach ($lines as $rawLine) {
             $lineText = trim($rawLine);
             if ($lineText === '') {
                 continue;
             }
-            $blocks[] = $this->line($lineText, false, 0);
+            $blocks[] = $this->line($lineText, $isListItem && $isFirstLine, $isFirstLine ? $depth : 0);
+            $isFirstLine = false;
         }
         return $blocks;
     }
