@@ -12,6 +12,11 @@ class WordQuestionParserTest extends TestCase
         return ['kind' => 'line', 'text' => $text, 'is_list_item' => $isListItem, 'list_depth' => $depth];
     }
 
+    private function table(array $rows): array
+    {
+        return ['kind' => 'table', 'html' => '<table></table>', 'rows' => $rows];
+    }
+
     public function testSingleChoiceQuestionWithStarredOption(): void
     {
         $blocks = [
@@ -141,5 +146,79 @@ class WordQuestionParserTest extends TestCase
         $this->assertSame(3, $questions[0]['type']);
         $this->assertSame('Ir. Soekarno', $questions[0]['answer_key']);
         $this->assertSame([], $questions[0]['options']);
+    }
+
+    public function testMatchingTypeConsumesTableAsPairsSkippingHeaderRow(): void
+    {
+        $blocks = [
+            $this->line('3. Pasangkan negara berikut dengan ibukotanya!'),
+            $this->line('Tipe: Menjodohkan'),
+            $this->table([
+                ['Negara', 'Ibukota'],
+                ['Indonesia', 'Jakarta'],
+                ['Jepang', 'Tokyo'],
+            ]),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame(4, $questions[0]['type']);
+        $this->assertSame(
+            [
+                ['left' => 'Indonesia', 'right' => 'Jakarta'],
+                ['left' => 'Jepang', 'right' => 'Tokyo'],
+            ],
+            $questions[0]['matches']
+        );
+    }
+
+    public function testTrueFalseTypeUsesSameTableMechanism(): void
+    {
+        $blocks = [
+            $this->line('4. Tentukan benar atau salah pernyataan berikut!'),
+            $this->line('Tipe: Benar/Salah'),
+            $this->table([
+                ['Pernyataan', 'Jawaban'],
+                ['Matahari terbit dari timur', 'Benar'],
+                ['Bumi itu berbentuk datar', 'Salah'],
+            ]),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame(5, $questions[0]['type']);
+        $this->assertSame('Benar', $questions[0]['matches'][0]['right']);
+    }
+
+    public function testDeclaredPairTypeWithoutTableStillResolvesToThatType(): void
+    {
+        $blocks = [
+            $this->line('3. Pasangkan negara berikut dengan ibukotanya!'),
+            $this->line('Tipe: Menjodohkan'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame(4, $questions[0]['type']);
+        $this->assertSame([], $questions[0]['matches']);
+    }
+
+    public function testPlainTableWithoutTipeMarkerStaysAsReferenceTable(): void
+    {
+        $blocks = [
+            $this->line('7. Soal dengan tabel data:'),
+            $this->table([
+                ['Nama', 'Usia'],
+                ['Andi', '15 Tahun'],
+            ]),
+            $this->line('Berapa usia Andi?'),
+            $this->line('*A. 15 Tahun'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame(1, $questions[0]['type']);
+        $this->assertNull($questions[0]['matches']);
+        $this->assertStringContainsString('<table></table>', $questions[0]['question']);
     }
 }

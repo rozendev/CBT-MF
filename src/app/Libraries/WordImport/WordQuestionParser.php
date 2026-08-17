@@ -14,6 +14,7 @@ class WordQuestionParser
     private const QUESTION_NUMBER_RE = '/^\d+\s*[.\-):]+\s*(.*)$/';
     private const OPTION_LETTER_RE   = '/^(\*?)([A-Za-z])\s*[.\-):]+\s*(.*)$/';
     private const JAWABAN_RE         = '/^Jawaban\s*:\s*(.*)$/i';
+    private const TIPE_RE            = '/^Tipe\s*:\s*(Menjodohkan|Benar\s*\/?\s*Salah)/i';
 
     /** @return array<int, array<string, mixed>> */
     public function parse(array $blocks): array
@@ -32,6 +33,14 @@ class WordQuestionParser
 
             $text = trim($block['text']);
             if ($text === '') {
+                continue;
+            }
+
+            if (preg_match(self::TIPE_RE, $text, $m)) {
+                if ($current !== null) {
+                    $current['declared_pair_type'] = stripos($m[1], 'Menjodohkan') !== false ? 'MENJODOHKAN' : 'BENARSALAH';
+                }
+                $section = 'none';
                 continue;
             }
 
@@ -90,10 +99,26 @@ class WordQuestionParser
         if ($current === null) {
             return $current;
         }
-        // Tanpa "Tipe: Menjodohkan/Benar-Salah" (Task 6), tabel selalu dianggap
-        // tabel referensi biasa dan ditempel ke body soal.
+        if (($current['declared_pair_type'] ?? null) !== null && $current['matches'] === null) {
+            $current['matches'] = $this->rowsToMatches($block['rows']);
+            return $current;
+        }
         $current['question'] .= ($current['question'] !== '' ? '<br>' : '') . $block['html'];
         return $current;
+    }
+
+    private function rowsToMatches(array $rows): array
+    {
+        $pairs = [];
+        foreach (array_slice($rows, 1) as $row) {
+            $left = trim($row[0] ?? '');
+            $right = trim($row[1] ?? '');
+            if ($left === '' && $right === '') {
+                continue;
+            }
+            $pairs[] = ['left' => $left, 'right' => $right];
+        }
+        return $pairs;
     }
 
     private function matchQuestionBoundary(array $block, string $text): ?string
@@ -136,21 +161,26 @@ class WordQuestionParser
     private function emptyQuestion(): array
     {
         return [
-            'question'   => '',
-            'options'    => [],
-            'correct'    => [],
-            'answer_key' => '',
-            'matches'    => null,
+            'question'           => '',
+            'options'            => [],
+            'correct'            => [],
+            'answer_key'         => '',
+            'matches'            => null,
+            'declared_pair_type' => null,
         ];
     }
 
     private function finalize(array $q): array
     {
-        if (!empty($q['options'])) {
+        if ($q['declared_pair_type'] !== null) {
+            $q['type'] = $q['declared_pair_type'] === 'BENARSALAH' ? 5 : 4;
+            $q['matches'] = $q['matches'] ?? [];
+        } elseif (!empty($q['options'])) {
             $q['type'] = count($q['correct']) > 1 ? 2 : 1;
         } else {
             $q['type'] = 3; // Esai: tidak ada opsi berlabel.
         }
+        unset($q['declared_pair_type']);
         return $q;
     }
 }
