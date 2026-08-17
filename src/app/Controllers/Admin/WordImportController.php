@@ -194,7 +194,8 @@ class WordImportController extends BaseController
                 'message' => "$insertedCount soal berhasil diimport ke Subjek '$subjectName'."
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            log_message('critical', 'WordImportController::process gagal: {exception}', ['exception' => $e]);
             return $this->response->setJSON([
                 'status'  => 'error',
                 'message' => 'Gagal memproses file Word: ' . $e->getMessage()
