@@ -207,76 +207,97 @@ class WordImportController extends BaseController
         $phpWord = new \PhpOffice\PhpWord\PhpWord();
         $section = $phpWord->addSection();
 
-        $fontStyleTitle = ['bold' => true, 'size' => 14];
-        $fontStyleNormal = ['size' => 12];
+        $fontTitle  = ['bold' => true, 'size' => 14];
+        $fontNormal = ['size' => 12];
+        $tableStyle = ['borderSize' => 6, 'borderColor' => '999999'];
 
-        $section->addText('TEMPLATE IMPORT SOAL PILIHAN GANDA', $fontStyleTitle);
+        $section->addText('TEMPLATE IMPORT SOAL (FORMAT BARU)', $fontTitle);
         $section->addTextBreak(1);
 
-        $section->addText('Q:1) Siapa penemu bola lampu?', $fontStyleNormal);
-        $section->addText('A:) Albert Einstein', $fontStyleNormal);
-        $section->addText('B:) Thomas Alva Edison', $fontStyleNormal);
-        $section->addText('C:) Isaac Newton', $fontStyleNormal);
-        $section->addText('D:) Nikola Tesla', $fontStyleNormal);
-        $section->addText('E:) Galileo Galilei', $fontStyleNormal);
-        $section->addText('RIGHT:B', $fontStyleNormal);
+        // 1) PG Tunggal - angka & huruf polos, jawaban ditandai *
+        $section->addText('1. Siapa penemu bola lampu?', $fontNormal);
+        $section->addText('A. Albert Einstein', $fontNormal);
+        $section->addText('*B. Thomas Alva Edison', $fontNormal);
+        $section->addText('C. Isaac Newton', $fontNormal);
+        $section->addText('D. Nikola Tesla', $fontNormal);
         $section->addTextBreak(1);
 
-        $section->addText('Q:2) Apa nama ibukota Indonesia saat ini?', $fontStyleNormal);
-        $section->addText('A:) Bandung', $fontStyleNormal);
-        $section->addText('B:) Surabaya', $fontStyleNormal);
-        $section->addText('C:) Jakarta', $fontStyleNormal);
-        $section->addText('D:) Medan', $fontStyleNormal);
-        $section->addText('E:) Semarang', $fontStyleNormal);
-        $section->addText('RIGHT:C', $fontStyleNormal);
+        // 2) PG Kompleks - lebih dari satu opsi ber-bintang
+        $section->addText('2. Pilihlah semua jawaban yang merupakan nama benua:', $fontNormal);
+        $section->addText('*A. Asia', $fontNormal);
+        $section->addText('B. Pasifik', $fontNormal);
+        $section->addText('*C. Eropa', $fontNormal);
+        $section->addText('D. Hindia', $fontNormal);
+        $section->addText('*E. Afrika', $fontNormal);
         $section->addTextBreak(1);
 
-        $section->addText('Q:3) Contoh Soal Pilihan Ganda Kompleks (Banyak Jawaban)', $fontStyleNormal);
-        $section->addText('Pilihlah semua jawaban yang merupakan nama benua:', $fontStyleNormal);
-        $section->addText('A:) Asia', $fontStyleNormal);
-        $section->addText('B:) Pasifik', $fontStyleNormal);
-        $section->addText('C:) Eropa', $fontStyleNormal);
-        $section->addText('D:) Hindia', $fontStyleNormal);
-        $section->addText('E:) Afrika', $fontStyleNormal);
-        $section->addText('RIGHT:A,C,E', $fontStyleNormal);
+        // 3) Soal & opsi lewat fitur List/Numbering bawaan Word
+        $section->addText('Contoh soal ditulis lewat fitur List/Numbering bawaan Word (tanpa mengetik angka/huruf):', $fontNormal);
+        $section->addListItem('Ibukota Jepang adalah?', 0, $fontNormal, 'templateListLevel0');
+        $section->addListItem('Osaka', 1, $fontNormal, 'templateListLevel1');
+        $section->addListItem('*Tokyo', 1, $fontNormal, 'templateListLevel1');
+        $section->addListItem('Kyoto', 1, $fontNormal, 'templateListLevel1');
         $section->addTextBreak(1);
 
-        $section->addText('Q:4) Siapa nama presiden pertama Republik Indonesia?', $fontStyleNormal);
-        $section->addText('TYPE:ESSAY', $fontStyleNormal);
-        $section->addText('RIGHT:Ir. Soekarno', $fontStyleNormal);
+        // 4) Esai dengan kunci jawaban opsional
+        $section->addText('4. Siapa nama presiden pertama Republik Indonesia?', $fontNormal);
+        $section->addText('Jawaban: Ir. Soekarno', $fontNormal);
         $section->addTextBreak(1);
 
-        $section->addText('Q:5) Pasangkan negara berikut dengan ibukotanya!', $fontStyleNormal);
-        $section->addText('TYPE:MATCHING', $fontStyleNormal);
-        $section->addText('MATCH:Indonesia|::|Jakarta', $fontStyleNormal);
-        $section->addText('MATCH:Jepang|::|Tokyo', $fontStyleNormal);
-        $section->addText('MATCH:Korea Selatan|::|Seoul', $fontStyleNormal);
+        // 5) Esai tanpa kunci sama sekali - tetap valid
+        $section->addText('5. Jelaskan pendapatmu tentang pentingnya menjaga lingkungan.', $fontNormal);
         $section->addTextBreak(1);
 
-        $section->addText('Q:6) Tentukan benar atau salah untuk pernyataan berikut!', $fontStyleNormal);
-        $section->addText('TYPE:TRUEFALSE', $fontStyleNormal);
-        $section->addText('MATCH:Matahari terbit dari timur|::|Benar', $fontStyleNormal);
-        $section->addText('MATCH:Bumi itu berbentuk datar|::|Salah', $fontStyleNormal);
+        // 6) Menjodohkan lewat tabel
+        $section->addText('6. Pasangkan negara berikut dengan ibukotanya!', $fontNormal);
+        $section->addText('Tipe: Menjodohkan', $fontNormal);
+        $table1 = $section->addTable($tableStyle);
+        $table1->addRow();
+        $table1->addCell(2500)->addText('Negara', $fontTitle);
+        $table1->addCell(2500)->addText('Ibukota', $fontTitle);
+        $table1->addRow();
+        $table1->addCell(2500)->addText('Indonesia', $fontNormal);
+        $table1->addCell(2500)->addText('Jakarta', $fontNormal);
+        $table1->addRow();
+        $table1->addCell(2500)->addText('Jepang', $fontNormal);
+        $table1->addCell(2500)->addText('Tokyo', $fontNormal);
+        $table1->addRow();
+        $table1->addCell(2500)->addText('Korea Selatan', $fontNormal);
+        $table1->addCell(2500)->addText('Seoul', $fontNormal);
         $section->addTextBreak(1);
 
-        $section->addText('Q:7) Soal dengan Tabel:', $fontStyleNormal);
-        $tableStyle = array('borderSize' => 6, 'borderColor' => '999999');
-        $table = $section->addTable($tableStyle);
-        $table->addRow();
-        $table->addCell(2000)->addText('Nama', $fontStyleTitle);
-        $table->addCell(2000)->addText('Usia', $fontStyleTitle);
-        $table->addRow();
-        $table->addCell(2000)->addText('Andi', $fontStyleNormal);
-        $table->addCell(2000)->addText('15 Tahun', $fontStyleNormal);
-        $section->addText('Berdasarkan tabel di atas, berapakah usia Andi?', $fontStyleNormal);
-        $section->addText('A:) 10 Tahun', $fontStyleNormal);
-        $section->addText('B:) 15 Tahun', $fontStyleNormal);
-        $section->addText('C:) 20 Tahun', $fontStyleNormal);
-        $section->addText('RIGHT:B', $fontStyleNormal);
+        // 7) Benar/Salah lewat tabel
+        $section->addText('7. Tentukan benar atau salah untuk pernyataan berikut!', $fontNormal);
+        $section->addText('Tipe: Benar/Salah', $fontNormal);
+        $table2 = $section->addTable($tableStyle);
+        $table2->addRow();
+        $table2->addCell(4000)->addText('Pernyataan', $fontTitle);
+        $table2->addCell(2000)->addText('Jawaban', $fontTitle);
+        $table2->addRow();
+        $table2->addCell(4000)->addText('Matahari terbit dari timur', $fontNormal);
+        $table2->addCell(2000)->addText('Benar', $fontNormal);
+        $table2->addRow();
+        $table2->addCell(4000)->addText('Bumi itu berbentuk datar', $fontNormal);
+        $table2->addCell(2000)->addText('Salah', $fontNormal);
+        $section->addTextBreak(1);
+
+        // 8) Soal dengan tabel data referensi biasa (BUKAN tabel pasangan, tanpa "Tipe:")
+        $section->addText('8. Soal dengan tabel data:', $fontNormal);
+        $table3 = $section->addTable($tableStyle);
+        $table3->addRow();
+        $table3->addCell(2000)->addText('Nama', $fontTitle);
+        $table3->addCell(2000)->addText('Usia', $fontTitle);
+        $table3->addRow();
+        $table3->addCell(2000)->addText('Andi', $fontNormal);
+        $table3->addCell(2000)->addText('15 Tahun', $fontNormal);
+        $section->addText('Berdasarkan tabel di atas, berapakah usia Andi?', $fontNormal);
+        $section->addText('A. 10 Tahun', $fontNormal);
+        $section->addText('*B. 15 Tahun', $fontNormal);
+        $section->addText('C. 20 Tahun', $fontNormal);
 
         $fileName = 'Template_Import_Soal_CBT.docx';
         $tempFile = tempnam(sys_get_temp_dir(), 'phpword');
-        
+
         $objWriter = IOFactory::createWriter($phpWord, 'Word2007');
         $objWriter->save($tempFile);
 
