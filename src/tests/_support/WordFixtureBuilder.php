@@ -13,13 +13,13 @@ use PhpOffice\PhpWord\PhpWord;
 class WordFixtureBuilder
 {
     /**
-     * @param callable(\PhpOffice\PhpWord\Element\Section): void $build
+     * @param callable(\PhpOffice\PhpWord\Element\Section, PhpWord): void $build
      */
     public static function buildDocx(callable $build): string
     {
         $phpWord = new PhpWord();
         $section = $phpWord->addSection();
-        $build($section);
+        $build($section, $phpWord);
 
         $path = sys_get_temp_dir() . '/wordimport_fixture_' . uniqid('', true) . '.docx';
         IOFactory::createWriter($phpWord, 'Word2007')->save($path);

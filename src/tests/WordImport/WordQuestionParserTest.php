@@ -7,9 +7,15 @@ use PHPUnit\Framework\TestCase;
 
 class WordQuestionParserTest extends TestCase
 {
-    private function line(string $text, bool $isListItem = false, int $depth = 0): array
+    private function line(string $text, bool $isListItem = false, int $depth = 0, ?string $format = null): array
     {
-        return ['kind' => 'line', 'text' => $text, 'is_list_item' => $isListItem, 'list_depth' => $depth];
+        return [
+            'kind'         => 'line',
+            'text'         => $text,
+            'is_list_item' => $isListItem,
+            'list_depth'   => $depth,
+            'list_format'  => $format,
+        ];
     }
 
     private function table(array $rows): array
@@ -74,6 +80,81 @@ class WordQuestionParserTest extends TestCase
         );
         $this->assertSame(['B'], $q['correct']);
         $this->assertSame(1, $q['type']);
+    }
+
+    public function testExplicitOptionLetterBeatsTopLevelListMetadata(): void
+    {
+        // Word sering menandai paragraf biasa sebagai list (numId 0 =
+        // "tanpa penomoran") sesudah user mematikan AutoCorrect. Kalau user
+        // sudah mengetik "A."/"*C." sendiri, teks itu yang menang -- bukan
+        // metadata list-nya.
+        $blocks = [
+            $this->line('9. Siapakah dibawah ini yang menurut kamu benar?', true, 0),
+            $this->line('*A. Ronaldo.', true, 0),
+            $this->line('B. Messi.', true, 0),
+            $this->line('*C. Mbappe', true, 0),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertCount(1, $questions);
+        $this->assertSame('Siapakah dibawah ini yang menurut kamu benar?', $questions[0]['question']);
+        $this->assertSame(
+            ['A' => 'Ronaldo.', 'B' => 'Messi.', 'C' => 'Mbappe'],
+            $questions[0]['options']
+        );
+        $this->assertSame(['A', 'C'], $questions[0]['correct']);
+        $this->assertSame(2, $questions[0]['type']);
+    }
+
+    public function testLetterFormattedTopLevelListItemsBecomeOptions(): void
+    {
+        // AutoCorrect Word mengubah "A. Osaka" jadi list ber-huruf otomatis:
+        // huruf pindah ke penomoran, teks tinggal "Osaka", dan levelnya tetap
+        // 0 -- sejajar dengan soal.
+        $blocks = [
+            $this->line('10. Apa yang lebih berat?'),
+            $this->line('Satu kilogram emas', true, 0, 'letter'),
+            $this->line('*Satu kilogram besi', true, 0, 'letter'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertCount(1, $questions);
+        $this->assertSame('Apa yang lebih berat?', $questions[0]['question']);
+        $this->assertSame(
+            ['A' => 'Satu kilogram emas', 'B' => 'Satu kilogram besi'],
+            $questions[0]['options']
+        );
+        $this->assertSame(['B'], $questions[0]['correct']);
+    }
+
+    public function testNumberPrefixIsStrippedFromListItemQuestion(): void
+    {
+        $blocks = [
+            $this->line('9. Siapakah dibawah ini yang menurut kamu benar?', true, 0),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame('Siapakah dibawah ini yang menurut kamu benar?', $questions[0]['question']);
+    }
+
+    public function testNumberFormattedTopLevelListItemStillStartsNewQuestion(): void
+    {
+        $blocks = [
+            $this->line('Ibukota Jepang adalah?', true, 0, 'number'),
+            $this->line('Osaka', true, 1),
+            $this->line('*Tokyo', true, 1),
+            $this->line('Ibukota Korea Selatan adalah?', true, 0, 'number'),
+            $this->line('Seoul', true, 1),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertCount(2, $questions);
+        $this->assertSame('Ibukota Jepang adalah?', $questions[0]['question']);
+        $this->assertSame('Ibukota Korea Selatan adalah?', $questions[1]['question']);
     }
 
     public function testQuestionWithoutOptionsDefaultsToEssay(): void

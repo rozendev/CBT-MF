@@ -20,8 +20,18 @@ class WordBlockExtractor
 {
     private const ALLOWED_IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'];
 
+    private const NUMBERING_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+
     private string $uploadDir;
     private string $uploadUrlPrefix;
+
+    /**
+     * Peta numId => [ilvl => 'letter'|'number'|'bullet'], dibaca dari
+     * word/numbering.xml. Kosong kalau file .docx-nya tidak diberikan.
+     *
+     * @var array<int, array<int, string>>
+     */
+    private array $listFormats = [];
 
     public function __construct(?string $uploadDir = null, string $uploadUrlPrefix = '/uploads/questions/')
     {
@@ -29,9 +39,18 @@ class WordBlockExtractor
         $this->uploadUrlPrefix = $uploadUrlPrefix;
     }
 
-    /** @return array<int, array<string, mixed>> */
-    public function extract(PhpWord $phpWord): array
+    /**
+     * @param ?string $docxPath Path file .docx sumbernya. Opsional, tapi tanpa
+     *                          ini format penomoran list (huruf vs angka) tidak
+     *                          bisa dibaca -- PhpWord tidak mem-parse
+     *                          word/numbering.xml.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function extract(PhpWord $phpWord, ?string $docxPath = null): array
     {
+        $this->listFormats = $docxPath === null ? [] : $this->readListFormats($docxPath);
+
         $blocks = [];
         foreach ($phpWord->getSections() as $section) {
             foreach ($section->getElements() as $element) {
@@ -74,6 +93,7 @@ class WordBlockExtractor
         // mengembalikan null, bukan 0 -- beda dari dokumen yang ditulis lewat
         // PhpWord\Writer sendiri yang selalu eksplisit.
         $depth = $isListItem ? ($element->getDepth() ?? 0) : 0;
+        $format = $isListItem ? $this->listFormatOf($element, $depth) : null;
 
         if ($element instanceof ListItem) {
             // ListItem (beda dari ListItemRun) membungkus satu Text tunggal.
@@ -102,20 +122,112 @@ class WordBlockExtractor
             if ($lineText === '') {
                 continue;
             }
-            $blocks[] = $this->line($lineText, $isListItem && $isFirstLine, $isFirstLine ? $depth : 0);
+            $blocks[] = $this->line(
+                $lineText,
+                $isListItem && $isFirstLine,
+                $isFirstLine ? $depth : 0,
+                $isFirstLine ? $format : null
+            );
             $isFirstLine = false;
         }
         return $blocks;
     }
 
-    private function line(string $text, bool $isListItem, int $depth): array
+    private function line(string $text, bool $isListItem, int $depth, ?string $format = null): array
     {
         return [
             'kind'         => 'line',
             'text'         => $text,
             'is_list_item' => $isListItem,
             'list_depth'   => $depth,
+            'list_format'  => $format,
         ];
+    }
+
+    /**
+     * PhpWord\Reader menamai style list dengan "PHPWordList{numId}", jadi numId
+     * asli dari dokumen masih bisa dipulihkan dari situ.
+     */
+    private function listFormatOf($element, int $depth): ?string
+    {
+        if (!method_exists($element, 'getStyle')) {
+            return null;
+        }
+        $style = $element->getStyle();
+        if ($style === null || !method_exists($style, 'getNumStyle')) {
+            return null;
+        }
+        if (!preg_match('/^PHPWordList(\d+)$/', (string) $style->getNumStyle(), $m)) {
+            return null;
+        }
+
+        return $this->listFormats[(int) $m[1]][$depth] ?? null;
+    }
+
+    /**
+     * Baca word/numbering.xml dan petakan numId => ilvl => jenis penomoran.
+     *
+     * @return array<int, array<int, string>>
+     */
+    private function readListFormats(string $docxPath): array
+    {
+        $zip = new \ZipArchive();
+        if ($zip->open($docxPath) !== true) {
+            return [];
+        }
+        $xml = $zip->getFromName('word/numbering.xml');
+        $zip->close();
+        if (!is_string($xml) || $xml === '') {
+            return [];
+        }
+
+        $dom = new \DOMDocument();
+        if (!@$dom->loadXML($xml)) {
+            return [];
+        }
+        $xpath = new \DOMXPath($dom);
+        $xpath->registerNamespace('w', self::NUMBERING_NS);
+
+        $abstract = [];
+        foreach ($xpath->query('//w:abstractNum') as $abstractNode) {
+            $abstractId = $abstractNode->getAttributeNS(self::NUMBERING_NS, 'abstractNumId');
+            foreach ($xpath->query('./w:lvl', $abstractNode) as $levelNode) {
+                $ilvl = (int) $levelNode->getAttributeNS(self::NUMBERING_NS, 'ilvl');
+                $fmtNode = $xpath->query('./w:numFmt', $levelNode)->item(0);
+                if ($fmtNode === null) {
+                    continue;
+                }
+                $kind = $this->numFmtToKind($fmtNode->getAttributeNS(self::NUMBERING_NS, 'val'));
+                if ($kind !== null) {
+                    $abstract[$abstractId][$ilvl] = $kind;
+                }
+            }
+        }
+
+        $formats = [];
+        foreach ($xpath->query('//w:num') as $numNode) {
+            $numId = (int) $numNode->getAttributeNS(self::NUMBERING_NS, 'numId');
+            $refNode = $xpath->query('./w:abstractNumId', $numNode)->item(0);
+            if ($refNode === null) {
+                continue;
+            }
+            $abstractId = $refNode->getAttributeNS(self::NUMBERING_NS, 'val');
+            if (isset($abstract[$abstractId])) {
+                $formats[$numId] = $abstract[$abstractId];
+            }
+        }
+
+        return $formats;
+    }
+
+    private function numFmtToKind(string $numFmt): ?string
+    {
+        return match ($numFmt) {
+            'upperLetter', 'lowerLetter' => 'letter',
+            'decimal', 'decimalZero', 'ordinal' => 'number',
+            'bullet' => 'bullet',
+            default => null,
+        };
     }
 
     private function saveImageAndBuildTag(Image $image): ?string

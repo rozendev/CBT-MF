@@ -108,7 +108,7 @@ class WordImportController extends BaseController
         try {
             $phpWord = IOFactory::load($filepath);
 
-            $blocks = (new WordBlockExtractor())->extract($phpWord);
+            $blocks = (new WordBlockExtractor())->extract($phpWord, $filepath);
             $parsedQuestions = (new WordQuestionParser())->parse($blocks);
 
             // ─── DRY-RUN VALIDATION ───
@@ -206,6 +206,20 @@ class WordImportController extends BaseController
     public function downloadTemplate()
     {
         $phpWord = new \PhpOffice\PhpWord\PhpWord();
+
+        // Numbering style-nya wajib didaftarkan: kalau tidak, addListItem()
+        // menulis <w:numId w:val=""/> yang tidak menunjuk ke definisi apa pun,
+        // jadi contoh "list bawaan Word"-nya bukan list beneran di Word.
+        // Level 0 bernomor angka (soal), level 1 berhuruf (opsi) -- sama persis
+        // dengan yang dihasilkan AutoCorrect Word saat user mengetik sendiri.
+        $phpWord->addNumberingStyle('templateList', [
+            'type'   => 'multilevel',
+            'levels' => [
+                ['format' => 'decimal', 'text' => '%1.', 'left' => 360, 'hanging' => 360, 'tabPos' => 360],
+                ['format' => 'upperLetter', 'text' => '%2.', 'left' => 720, 'hanging' => 360, 'tabPos' => 720],
+            ],
+        ]);
+
         $section = $phpWord->addSection();
 
         $fontTitle  = ['bold' => true, 'size' => 14];
@@ -238,10 +252,10 @@ class WordImportController extends BaseController
         // ke opsi terakhir yang sedang berjalan (lihat "Multi line question and
         // option text is joined with br" di WordQuestionParser). Makanya
         // penjelasannya digabung ke teks soal lewat list item ini sendiri.
-        $section->addListItem('Ibukota Jepang adalah? (soal dan opsi ini ditulis lewat fitur List/Numbering bawaan Word, tanpa mengetik angka/huruf)', 0, $fontNormal, 'templateListLevel0');
-        $section->addListItem('Osaka', 1, $fontNormal, 'templateListLevel1');
-        $section->addListItem('*Tokyo', 1, $fontNormal, 'templateListLevel1');
-        $section->addListItem('Kyoto', 1, $fontNormal, 'templateListLevel1');
+        $section->addListItem('Ibukota Jepang adalah? (soal dan opsi ini ditulis lewat fitur List/Numbering bawaan Word, tanpa mengetik angka/huruf)', 0, $fontNormal, 'templateList');
+        $section->addListItem('Osaka', 1, $fontNormal, 'templateList');
+        $section->addListItem('*Tokyo', 1, $fontNormal, 'templateList');
+        $section->addListItem('Kyoto', 1, $fontNormal, 'templateList');
         $section->addTextBreak(1);
 
         // 4) Esai dengan kunci jawaban opsional

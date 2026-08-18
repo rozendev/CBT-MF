@@ -93,6 +93,63 @@ class WordBlockExtractorTest extends TestCase
         $this->assertSame('Ibukota Jepang adalah?', $blocks[0]['text']);
     }
 
+    public function testLetterNumberedListIsMarkedWithLetterFormat(): void
+    {
+        // Word/LibreOffice AutoCorrect mengubah ketikan "A. " jadi list
+        // ber-huruf otomatis di level teratas (ilvl 0). Format penomorannya
+        // yang membedakan daftar opsi dari daftar soal, bukan kedalamannya.
+        $path = WordFixtureBuilder::buildDocx(function ($section, $phpWord) {
+            $phpWord->addNumberingStyle('optionLetters', [
+                'type'   => 'multilevel',
+                'levels' => [
+                    ['format' => 'upperLetter', 'text' => '%1.', 'left' => 360, 'hanging' => 360],
+                ],
+            ]);
+            $section->addListItem('Osaka', 0, null, 'optionLetters');
+        });
+
+        $phpWord = IOFactory::load($path);
+        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord, $path);
+        unlink($path);
+
+        $this->assertCount(1, $blocks);
+        $this->assertTrue($blocks[0]['is_list_item']);
+        $this->assertSame(0, $blocks[0]['list_depth']);
+        $this->assertSame('letter', $blocks[0]['list_format']);
+    }
+
+    public function testDecimalNumberedListIsMarkedWithNumberFormat(): void
+    {
+        $path = WordFixtureBuilder::buildDocx(function ($section, $phpWord) {
+            $phpWord->addNumberingStyle('questionNumbers', [
+                'type'   => 'multilevel',
+                'levels' => [
+                    ['format' => 'decimal', 'text' => '%1.', 'left' => 360, 'hanging' => 360],
+                ],
+            ]);
+            $section->addListItem('Ibukota Jepang adalah?', 0, null, 'questionNumbers');
+        });
+
+        $phpWord = IOFactory::load($path);
+        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord, $path);
+        unlink($path);
+
+        $this->assertSame('number', $blocks[0]['list_format']);
+    }
+
+    public function testListFormatIsNullWhenNumberingDefinitionIsUnavailable(): void
+    {
+        $path = WordFixtureBuilder::buildDocx(function ($section) {
+            $section->addListItem('Ibukota Jepang adalah?', 0, null, 'listLevel0');
+        });
+
+        $phpWord = IOFactory::load($path);
+        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord, $path);
+        unlink($path);
+
+        $this->assertNull($blocks[0]['list_format']);
+    }
+
     private function stripIlvlElement(string $docxPath): void
     {
         $zip = new \ZipArchive();

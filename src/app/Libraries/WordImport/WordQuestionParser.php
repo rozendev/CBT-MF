@@ -52,23 +52,30 @@ class WordQuestionParser
                 continue;
             }
 
-            $questionText = $this->matchQuestionBoundary($block, $text);
-            if ($questionText !== null) {
-                if ($current !== null && $current['question'] !== '') {
-                    $questions[] = $this->finalize($current);
+            $option = $current === null ? null : $this->matchOptionBoundary($block, $text);
+
+            // Opsi menang lebih dulu kalau penandanya eksplisit ("A." / "*C.")
+            // atau kalau list-nya bernomor huruf: dua-duanya bukti jauh lebih
+            // kuat daripada kedalaman list, yang gampang meleset di dokumen
+            // Word asli.
+            if ($option === null || !$option['explicit']) {
+                $questionText = $this->matchQuestionBoundary($block, $text);
+                if ($questionText !== null) {
+                    if ($current !== null && $current['question'] !== '') {
+                        $questions[] = $this->finalize($current);
+                    }
+                    $current = $this->emptyQuestion();
+                    $current['question'] = $questionText;
+                    $section = 'question';
+                    $lastOptionLetter = null;
+                    continue;
                 }
-                $current = $this->emptyQuestion();
-                $current['question'] = $questionText;
-                $section = 'question';
-                $lastOptionLetter = null;
-                continue;
             }
 
             if ($current === null) {
                 continue;
             }
 
-            $option = $this->matchOptionBoundary($block, $text);
             if ($option !== null) {
                 $letter = $option['letter'] ?? $this->nextLetter($current['options']);
                 $current['options'][$letter] = $option['text'];
@@ -123,31 +130,41 @@ class WordQuestionParser
 
     private function matchQuestionBoundary(array $block, string $text): ?string
     {
-        if ($block['is_list_item'] && $block['list_depth'] === 0) {
-            return $text;
-        }
         if (preg_match(self::QUESTION_NUMBER_RE, $text, $m)) {
             return trim($m[1]);
+        }
+        if ($block['is_list_item'] && $block['list_depth'] === 0) {
+            return $text;
         }
         return null;
     }
 
-    /** @return array{letter: ?string, text: string, is_correct: bool}|null */
+    /**
+     * 'explicit' menandai opsi yang pengenalnya tidak bergantung pada kedalaman
+     * list: huruf yang diketik sendiri, atau list yang penomorannya memang
+     * huruf (hasil AutoCorrect Word saat user mengetik "A. ").
+     *
+     * @return array{letter: ?string, text: string, is_correct: bool, explicit: bool}|null
+     */
     private function matchOptionBoundary(array $block, string $text): ?array
     {
+        $isLetterList = $block['is_list_item'] && ($block['list_format'] ?? null) === 'letter';
+
         if (preg_match(self::OPTION_LETTER_RE, $text, $m)) {
             return [
                 'letter'     => strtoupper($m[2]),
                 'text'       => trim($m[3]),
                 'is_correct' => $m[1] === '*',
+                'explicit'   => true,
             ];
         }
-        if ($block['is_list_item'] && $block['list_depth'] >= 1) {
+        if ($block['is_list_item'] && ($block['list_depth'] >= 1 || $isLetterList)) {
             $isCorrect = str_starts_with($text, '*');
             return [
                 'letter'     => null,
                 'text'       => $isCorrect ? trim(substr($text, 1)) : $text,
                 'is_correct' => $isCorrect,
+                'explicit'   => $isLetterList,
             ];
         }
         return null;
