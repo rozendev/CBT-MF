@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.media.ToneGenerator
 import android.util.Log
 import kotlin.concurrent.thread
 import kotlin.math.sin
@@ -24,6 +25,10 @@ object SirenAlarmManager {
      * Bunyi peringatan pendek ("titung") untuk percobaan keluar yang GAGAL --
      * tekan back, tarik notification shade, dsb. Sirene panjang disimpan khusus
      * untuk kasus siswa benar-benar lolos dari layar yang di-pin.
+     *
+     * SENGAJA tidak terikat [isSirenEnabled]: sirene boleh dimatikan pengawas,
+     * tapi titung adalah umpan balik dasar -- tanpa itu siswa menekan back
+     * berkali-kali tanpa tahu tombolnya memang tidak berfungsi.
      */
     @Volatile
     var isWarningBeepEnabled: Boolean = true
@@ -37,6 +42,8 @@ object SirenAlarmManager {
     private var suppressUntilMs: Long = 0L
 
     private const val BEEP_DEBOUNCE_MS = 1200L
+    private const val TONE_VOLUME = 100
+    private const val TONE_DURATION_MS = 350
 
     @Volatile
     private var lastBeepAtMs: Long = 0L
@@ -178,6 +185,12 @@ object SirenAlarmManager {
         lastBeepAtMs = now
 
         thread(start = true, isDaemon = true, name = "KioskWarningBeep") {
+            // Stream ALARM sengaja dipilih: ia tidak ikut mode senyap/getar,
+            // beda dari stream notifikasi yang bikin beep ini tak terdengar
+            // sama sekali di HP yang di-silent.
+            ensureAlarmStreamAudible(context)
+            if (playViaToneGenerator()) return@thread
+
             try {
                 val sampleRate = 44100
                 val samples = buildBeepSamples(sampleRate)
@@ -186,7 +199,7 @@ object SirenAlarmManager {
                     AudioTrack.Builder()
                         .setAudioAttributes(
                             AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                                .setUsage(AudioAttributes.USAGE_ALARM)
                                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                                 .build()
                         )
@@ -203,7 +216,7 @@ object SirenAlarmManager {
                 } else {
                     @Suppress("DEPRECATION")
                     AudioTrack(
-                        AudioManager.STREAM_NOTIFICATION,
+                        AudioManager.STREAM_ALARM,
                         sampleRate,
                         AudioFormat.CHANNEL_OUT_MONO,
                         AudioFormat.ENCODING_PCM_16BIT,
@@ -225,6 +238,44 @@ object SirenAlarmManager {
             } catch (e: Throwable) {
                 Log.e("SirenAlarmManager", "Warning beep failed", e)
             }
+        }
+    }
+
+    /**
+     * Stream alarm kebal mode senyap, tapi volumenya sendiri bisa 0. Naikkan ke
+     * lantai yang masih terdengar TANPA memaksa maksimal seperti sirene.
+     */
+    private fun ensureAlarmStreamAudible(context: Context) {
+        try {
+            val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            val floor = ((max * 4) / 10).coerceAtLeast(1)
+            if (am.getStreamVolume(AudioManager.STREAM_ALARM) < floor) {
+                am.setStreamVolume(AudioManager.STREAM_ALARM, floor, 0)
+            }
+        } catch (e: Throwable) {
+            // Do Not Disturb tanpa Notification Policy Access bisa menolak ini.
+            Log.w("SirenAlarmManager", "Cannot raise alarm stream volume", e)
+        }
+    }
+
+    /**
+     * TONE_PROP_BEEP2 adalah beep ganda bawaan Android -- persis "titung" dan
+     * jauh lebih tahan banting lintas perangkat daripada AudioTrack buatan
+     * sendiri, yang buffer pendeknya kadang terpotong sebelum sempat berbunyi.
+     */
+    private fun playViaToneGenerator(): Boolean {
+        var tone: ToneGenerator? = null
+        return try {
+            tone = ToneGenerator(AudioManager.STREAM_ALARM, TONE_VOLUME)
+            val ok = tone.startTone(ToneGenerator.TONE_PROP_BEEP2, TONE_DURATION_MS)
+            if (ok) Thread.sleep((TONE_DURATION_MS + 120).toLong())
+            ok
+        } catch (e: Throwable) {
+            Log.w("SirenAlarmManager", "ToneGenerator unavailable, falling back", e)
+            false
+        } finally {
+            try { tone?.release() } catch (e: Throwable) {}
         }
     }
 
