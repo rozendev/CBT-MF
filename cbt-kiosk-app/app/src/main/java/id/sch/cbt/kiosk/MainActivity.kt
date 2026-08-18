@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etServerUrl: EditText
     private lateinit var btnStartExam: Button
     private lateinit var btnImportBundle: Button
+    private lateinit var btnTestBeep: Button
     private lateinit var tvBatteryStatus: TextView
     private lateinit var tvNetworkStatus: TextView
     private lateinit var tvBundleStatus: TextView
@@ -138,12 +139,28 @@ class MainActivity : AppCompatActivity() {
             etServerUrl = findViewById(R.id.etServerUrl)
             btnStartExam = findViewById(R.id.btnStartExam)
             btnImportBundle = findViewById(R.id.btnImportBundle)
+            btnTestBeep = findViewById(R.id.btnTestBeep)
             webView = findViewById(R.id.webView)
             tvBatteryStatus = findViewById(R.id.tvBatteryStatus)
             tvNetworkStatus = findViewById(R.id.tvNetworkStatus)
             tvBundleStatus = findViewById(R.id.tvBundleStatus)
             btnReloadPage = findViewById(R.id.btnReloadPage)
             btnExitKiosk = findViewById(R.id.btnExitKiosk)
+
+            // AppCompatActivity modern menyalurkan back lewat dispatcher ini,
+            // bukan lagi selalu ke onBackPressed().
+            onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    handleBackAttempt()
+                }
+            })
+
+            // Pengawas bisa memastikan bunyi peringatan terdengar SEBELUM ujian
+            // dimulai, tanpa harus masuk kiosk lebih dulu.
+            btnTestBeep.setOnClickListener {
+                SirenAlarmManager.playWarningBeep(this)
+                Toast.makeText(this, getString(R.string.toast_test_beep), Toast.LENGTH_SHORT).show()
+            }
 
             setupWebView()
             setupToolbarListeners()
@@ -861,9 +878,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+    private fun isKioskLocked(): Boolean =
+        ::kioskManager.isInitialized && kioskManager.isKioskActive
+
+    /**
+     * Satu-satunya tempat back ditangani. Dipanggil dari tiga jalur karena back
+     * bisa sampai lewat rute berbeda tergantung versi Android dan mode navigasi:
+     * dispatchKeyEvent (tombol/gesture mentah), OnBackPressedDispatcher
+     * (androidx, rute utama di AppCompatActivity modern), dan onBackPressed()
+     * lama. Debounce di SirenAlarmManager menjaga bunyinya tetap sekali.
+     */
+    private fun handleBackAttempt() {
+        if (isKioskLocked()) {
             // Tombol back memang diblokir lock task: ini percobaan keluar yang
             // gagal, bukan pelolosan. Cukup "titung" pendek + toast.
             SirenAlarmManager.playWarningBeep(this)
@@ -871,13 +897,33 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, getString(R.string.toast_kiosk_locked_warning), Toast.LENGTH_SHORT).show()
             return
         }
-        if (setupLayout.visibility == View.VISIBLE) {
-            super.onBackPressed()
+        if (::setupLayout.isInitialized && setupLayout.visibility == View.VISIBLE) {
+            finish()
             return
         }
         if (::webView.isInitialized && webView.canGoBack()) {
             webView.goBack()
         }
+    }
+
+    /**
+     * Rute paling awal: event back mentah, sebelum WebView atau dispatcher mana
+     * pun sempat menelannya.
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK &&
+            event.action == android.view.KeyEvent.ACTION_UP &&
+            isKioskLocked()
+        ) {
+            handleBackAttempt()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        handleBackAttempt()
     }
 
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean) {

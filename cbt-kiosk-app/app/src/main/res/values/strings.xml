@@ -24,6 +24,8 @@
     <string name="toast_page_reloaded">Halaman dimuat ulang</string>
     <string name="toast_exam_finished">Ujian selesai \u2014 Kiosk dibuka</string>
     <string name="toast_exam_not_verified">Ujian belum selesai atau tidak terverifikasi</string>
+    <string name="btn_test_beep">Tes Suara Peringatan</string>
+    <string name="toast_test_beep">Memutar bunyi peringatan…</string>
     <string name="toast_kiosk_locked_warning">Kiosk terkunci \u2014 Masukkan password pengawas</string>
     <string name="toast_wrong_password">Password salah \u2014 Alarm aktif</string>
     <string name="toast_url_invalid">URL server tidak valid</string>
