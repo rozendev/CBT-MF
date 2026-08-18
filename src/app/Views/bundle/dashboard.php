@@ -35,6 +35,7 @@
 
             var meta = [];
             if (t.duration_minutes) meta.push('Durasi ' + t.duration_minutes + ' menit');
+            if (t.password_required) meta.push('Perlu token ujian');
             if (t.attempt_status === 3) meta.push('Sudah dikerjakan');
             else if (isResume) meta.push('Belum selesai');
             card.appendChild(el('p', 'k-muted', meta.join(' · ')));
@@ -93,6 +94,30 @@
                 j.exams.forEach(function (t) {
                     list.appendChild(examCard(t, resumeId !== null && t.id === resumeId));
                 });
+
+                // Sesudah ujian selesai, kiosk sengaja TIDAK lepas sendiri. Siswa
+                // yang sudah balik ke beranda tetap butuh jalan keluar yang jelas.
+                if (window.CommsBridge && window.CBTKioskHasFinishedExam && window.CBTKioskHasFinishedExam()) {
+                    var exitCard = el('div', 'k-card');
+                    exitCard.appendChild(el('h3', null, 'Selesai mengerjakan?'));
+                    exitCard.appendChild(el('p', 'k-muted', 'Keluar dari mode ujian dan kembalikan perangkat kepada pengawas.'));
+                    var exitBtn = el('button', 'k-btn');
+                    exitBtn.type = 'button';
+                    exitBtn.textContent = 'Keluar dari Ujian';
+                    exitBtn.onclick = function () {
+                        if (!window.CBTKioskRequestExit || !window.CBTKioskRequestExit()) return;
+                        exitBtn.disabled = true;
+                        exitBtn.textContent = 'Melepas kunci ujian…';
+                        window.addEventListener('exit_denied', function onDenied() {
+                            window.removeEventListener('exit_denied', onDenied);
+                            exitBtn.disabled = false;
+                            exitBtn.textContent = 'Keluar dari Ujian';
+                            exitCard.appendChild(el('div', 'k-note k-error', 'Kunci ujian belum bisa dilepas. Minta bantuan pengawas.'));
+                        });
+                    };
+                    exitCard.appendChild(exitBtn);
+                    list.appendChild(exitCard);
+                }
             })
             .catch(function () {
                 showError('Tidak dapat terhubung ke server. Periksa koneksi lalu coba lagi.', true);

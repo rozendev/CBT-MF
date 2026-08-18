@@ -279,8 +279,8 @@ class MainActivity : AppCompatActivity() {
                             kioskManager.stopKiosk()
                             Toast.makeText(this, getString(R.string.toast_kiosk_unlocked), Toast.LENGTH_SHORT).show()
                         } else {
-                            // Trigger loud siren alarm when password is wrong
-                            SirenAlarmManager.startSiren(this)
+                            // Salah password itu percobaan, bukan pelolosan.
+                            SirenAlarmManager.playWarningBeep(this)
                             Toast.makeText(this, message ?: getString(R.string.toast_wrong_password), Toast.LENGTH_LONG).show()
                         }
                     }
@@ -371,8 +371,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Beri tahu halaman ujian bahwa ada percobaan keluar (untuk dicatat server). */
+    private fun notifyExitAttempt(reason: String) {
+        getSafeWebView()?.let {
+            CommsBridge.sendEventToJS(it, "exit_attempt", "{\"reason\": \"$reason\"}")
+        }
+    }
+
     private fun triggerDeniedExit(reason: String) {
-        SirenAlarmManager.startSiren(this)
+        SirenAlarmManager.playWarningBeep(this)
         getSafeWebView()?.let {
             CommsBridge.sendEventToJS(it, "exit_denied", "{\"reason\": \"$reason\"}")
         }
@@ -857,8 +864,10 @@ class MainActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
-            // Trigger siren alarm if back button is pressed repeatedly in attempt to break out
-            SirenAlarmManager.startSiren(this)
+            // Tombol back memang diblokir lock task: ini percobaan keluar yang
+            // gagal, bukan pelolosan. Cukup "titung" pendek + toast.
+            SirenAlarmManager.playWarningBeep(this)
+            notifyExitAttempt("BACK_BUTTON")
             Toast.makeText(this, getString(R.string.toast_kiosk_locked_warning), Toast.LENGTH_SHORT).show()
             return
         }
@@ -874,7 +883,7 @@ class MainActivity : AppCompatActivity() {
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean) {
         super.onMultiWindowModeChanged(isInMultiWindowMode)
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
-            SirenAlarmManager.startSiren(this)
+            SirenAlarmManager.playWarningBeep(this)
             if (::securityManager.isInitialized) {
                 securityManager.handleMultiWindow(isInMultiWindowMode, isInPictureInPictureMode)
             } else if (isInMultiWindowMode && ::webView.isInitialized) {
@@ -887,7 +896,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode)
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
-            SirenAlarmManager.startSiren(this)
+            SirenAlarmManager.playWarningBeep(this)
             if (::securityManager.isInitialized) {
                 securityManager.handleMultiWindow(isInMultiWindowMode = false, isInPictureInPictureMode = isInPictureInPictureMode)
             } else if (isInPictureInPictureMode && ::webView.isInitialized) {
@@ -907,8 +916,10 @@ class MainActivity : AppCompatActivity() {
         KioskGuardService.isMainActivityVisible = false
         unregisterStatusReceivers()
         if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
-            // Trigger loud siren alarm when app goes to background / force exit attempt
-            SirenAlarmManager.startSiren(this)
+            // Sekadar ter-pause belum tentu lolos: dialog sistem, notification
+            // shade, dan animasi lock task juga memicu onPause. Bunyikan beep
+            // saja; KioskGuardService yang memutuskan kapan ini jadi sirene.
+            SirenAlarmManager.playWarningBeep(this)
             if (::webView.isInitialized) {
                 CommsBridge.sendEventToJS(webView, "exit_attempt", "{}")
             }

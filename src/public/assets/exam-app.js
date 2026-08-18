@@ -1120,12 +1120,27 @@
                 })
                 .done((res) => {
                     updateCsrf(res);
-                    if (window.CommsBridge) {
-                        window.CommsBridge.requestExit(window.__examData ? (window.__examData.wsToken || '') : '');
-                    }
+                    // Simpan token supaya halaman hasil bisa meminta lepas kiosk
+                    // nanti, saat siswa menekan tombol keluar.
+                    try {
+                        const wsToken = window.__examData ? (window.__examData.wsToken || '') : '';
+                        if (wsToken) sessionStorage.setItem('cbt_kiosk_ws_token', wsToken);
+                        sessionStorage.setItem('cbt_kiosk_exam_finished', '1');
+                    } catch (e) {}
+
                     if (window.__KIOSK_BUNDLE__) {
+                        // JANGAN langsung requestExit: kiosk akan lepas seketika dan
+                        // siswa terlempar ke layar setup sebelum sempat melihat apa
+                        // pun. Pelepasan kiosk sekarang dipicu tombol di results.html.
                         if (window.CommsBridge) window.CommsBridge.setExamActive(false);
-                        window.location.href = 'results.html?test_id=' + EXAM_CONFIG.testId;
+                        window.location.href = 'results.html?test_id=' + EXAM_CONFIG.testId + '&finished=1';
+                    } else if (window.CommsBridge) {
+                        window.CommsBridge.requestExit(window.__examData ? (window.__examData.wsToken || '') : '');
+                        if (res.redirect) {
+                            window.location.href = res.redirect;
+                        } else {
+                            window.location.href = API + '/student/results/view/' + EXAM_CONFIG.testId;
+                        }
                     } else if (res.redirect) {
                         window.location.href = res.redirect;
                     } else {

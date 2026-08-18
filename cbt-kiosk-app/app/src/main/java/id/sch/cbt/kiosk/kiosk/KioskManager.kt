@@ -36,6 +36,10 @@ class KioskManager(private val activity: Activity) {
         currentToken = token
         Log.d("KioskManager", "Starting kiosk for exam: $examId")
         return try {
+            // Masuk lock task memicu dialog sistem "Layar dinyematkan" + animasi,
+            // yang mem-pause activity sesaat. Tanpa peredam ini alarm berbunyi
+            // justru pada detik kiosk baru menyala.
+            SirenAlarmManager.suppressFor(KIOSK_SETTLE_MS)
             securityManager?.enableSecurityFlags()
             activity.runOnUiThread {
                 try {
@@ -73,6 +77,8 @@ class KioskManager(private val activity: Activity) {
         return try {
             // Stop Siren Alarm if active
             SirenAlarmManager.stopSiren()
+            // Keluar sah: jangan sampai transisi ke layar setup ikut memicu alarm.
+            SirenAlarmManager.suppressFor(KIOSK_SETTLE_MS)
 
             securityManager?.disableSecurityFlags()
             activity.runOnUiThread {
@@ -103,5 +109,10 @@ class KioskManager(private val activity: Activity) {
     
     fun getStatusJson(): String {
         return "{\"active\": $isKioskActive}"
+    }
+
+    companion object {
+        /** Jeda tenang saat masuk/keluar lock task. */
+        private const val KIOSK_SETTLE_MS = 4000L
     }
 }

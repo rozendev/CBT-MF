@@ -86,6 +86,34 @@
     <p style="margin:0">Memuat soal...</p>
 </div>
 
+<!-- GERBANG PASSWORD UJIAN (hanya tampil kalau ujian memakai token) -->
+<div id="passwordGate" class="loading-screen" style="display:none">
+    <div style="width:100%;max-width:420px;padding:0 20px">
+        <div style="background:var(--color-surface);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,0.12);padding:24px">
+            <div style="font-size:2rem;text-align:center;margin-bottom:8px">&#128274;</div>
+            <h2 id="gateTestName" style="margin:0 0 6px;font-size:1.15rem;text-align:center">Ujian Terkunci</h2>
+            <p style="margin:0 0 18px;text-align:center;color:var(--color-text-muted);font-size:14px">
+                Ujian ini dilindungi token. Tanyakan kepada pengawas bila Anda belum menerimanya.
+            </p>
+            <form id="gateForm" autocomplete="off">
+                <input id="gatePassword" class="form-control" type="password" inputmode="text"
+                       placeholder="Ketik token ujian..." autocomplete="off" autocapitalize="none"
+                       spellcheck="false" required>
+                <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px;color:var(--color-text-muted)">
+                    <input id="gateReveal" type="checkbox" class="form-check-input"> Tampilkan token
+                </label>
+                <div id="gateError" class="alert" style="display:none;background:#f8d7da;color:#842029;margin-top:14px"></div>
+                <button id="gateSubmit" class="btn btn-primary" type="submit" style="width:100%;margin-top:16px">
+                    Mulai Ujian
+                </button>
+                <button id="gateBack" class="btn" type="button" style="width:100%;margin-top:8px">
+                    Kembali ke Daftar Ujian
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Image Lightbox Overlay -->
 <div class="image-lightbox" id="imageLightbox">
     <div class="image-lightbox-close" id="imageLightboxClose">&times;</div>
@@ -166,22 +194,86 @@
             if (window.__alpineReady) window.__alpineReady();
             return true;
         };
+        // exam/start menolak kalau token ujian salah. Server tetap yang menilai;
+        // gerbang di bawah cuma jalan untuk mengetik dan menampilkan pesannya.
+        var startAttempt = function (password) {
+            var body = 'test_id=' + encodeURIComponent(testId);
+            if (password) body += '&password=' + encodeURIComponent(password);
+            return fetch(base + '/api/exam/start', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body
+            }).then(function (r) { return r.json(); });
+        };
+
+        var showGate = function (info) {
+            var gate = document.getElementById('passwordGate');
+            var ls = document.getElementById('loading-screen');
+            var input = document.getElementById('gatePassword');
+            var errorBox = document.getElementById('gateError');
+            var submit = document.getElementById('gateSubmit');
+
+            if (ls) ls.style.display = 'none';
+            if (info && info.test_name) {
+                document.getElementById('gateTestName').textContent = info.test_name;
+            }
+            gate.style.display = 'flex';
+            setTimeout(function () { input.focus(); }, 50);
+
+            document.getElementById('gateReveal').addEventListener('change', function () {
+                input.type = this.checked ? 'text' : 'password';
+            });
+            document.getElementById('gateBack').addEventListener('click', function () {
+                window.location.href = 'dashboard.html';
+            });
+
+            return new Promise(function (resolve, reject) {
+                document.getElementById('gateForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var value = input.value.trim();
+                    if (!value) return;
+
+                    submit.disabled = true;
+                    submit.textContent = 'Memeriksa token...';
+                    errorBox.style.display = 'none';
+
+                    startAttempt(value).then(function (res) {
+                        if (res.status !== 'success') {
+                            submit.disabled = false;
+                            submit.textContent = 'Mulai Ujian';
+                            errorBox.textContent = res.message || 'Token ujian salah.';
+                            errorBox.style.display = 'block';
+                            input.select();
+                            return;
+                        }
+                        gate.style.display = 'none';
+                        if (ls) ls.style.display = 'flex';
+                        resolve(init());
+                    }).catch(function (err) {
+                        submit.disabled = false;
+                        submit.textContent = 'Mulai Ujian';
+                        errorBox.textContent = 'Tidak dapat menghubungi server. Coba lagi.';
+                        errorBox.style.display = 'block';
+                    });
+                });
+            });
+        };
+
         var init = function () {
             return fetch(base + '/api/exam/init?test_id=' + encodeURIComponent(testId), { credentials: 'include', headers: { 'Accept': 'application/json' } })
                 .then(function (r) { return r.json(); })
                 .then(function (j) {
                     if (j.status === 'need_prepare') {
+                        // Ujian bertoken: minta siswa mengetik dulu, jangan langsung
+                        // start (dulu selalu start tanpa password → selalu ditolak).
+                        if (j.password_required) return showGate(j);
+
                         // belum ada attempt → buat dulu, lalu init ulang (sekali saja)
-                        return fetch(base + '/api/exam/start', {
-                            method: 'POST',
-                            credentials: 'include',
-                            headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: 'test_id=' + encodeURIComponent(testId)
-                        }).then(function (r) { return r.json(); })
-                          .then(function (s) {
-                              if (s.status !== 'success') { throw new Error(s.message || 'Gagal memulai ujian.'); }
-                              return init();
-                          });
+                        return startAttempt('').then(function (s) {
+                            if (s.status !== 'success') { throw new Error(s.message || 'Gagal memulai ujian.'); }
+                            return init();
+                        });
                     }
                     if (j.status === 'error' && j.action === 'logout') { window.location.href = 'login.html'; return null; }
                     return ready(j);
