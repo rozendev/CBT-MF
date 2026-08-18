@@ -201,8 +201,62 @@ class StudentApiController extends BaseController
                 'correct_answers' => [],
             ];
             if ((int) $log->question_type === 3) {
-                $q['user_answers'] = trim((string) ($log->answer_text ?? '')) === '' ? [] : [['text' => $log->answer_text]];
+                // Kunci 'answer_text', sama seperti cabang lain: klien membaca
+                // satu nama field untuk semua tipe soal.
+                $q['user_answers'] = trim((string) ($log->answer_text ?? '')) === '' ? [] : [['answer_text' => $log->answer_text]];
                 if (empty($q['user_answers'])) {
+                    $summary['unanswered']++;
+                } elseif ($log->score > 0) {
+                    $summary['correct']++;
+                } else {
+                    $summary['wrong']++;
+                }
+            } elseif ((int) $log->question_type === 4 || (int) $log->question_type === 5) {
+                // Menjodohkan & Benar/Salah tidak memakai is_selected sama sekali:
+                // pilihan siswa disimpan sebagai JSON {kiri: kanan} di
+                // test_logs.answer_text (lihat ExamApiController::autosave).
+                // Membacanya lewat test_log_answers seperti tipe lain selalu
+                // menghasilkan daftar kosong -- soal yang jelas terjawab pun
+                // tampil "(tidak dijawab)" dan ikut terhitung kosong.
+                $picked = json_decode((string) ($log->answer_text ?? ''), true);
+                if (!is_array($picked)) {
+                    $picked = [];
+                }
+
+                // Baris test_log_answers menyimpan pasangan benar "kiri|::|kanan".
+                $rows = $db->table('test_log_answers')->where('test_log_id', $log->id)->orderBy('display_order', 'ASC')->get()->getResult();
+                $pairs = [];
+                $answeredPairs = 0;
+                foreach ($rows as $a) {
+                    $parts = explode('|::|', (string) $a->answer_text);
+                    if (count($parts) !== 2) {
+                        continue;
+                    }
+                    $left  = trim($parts[0]);
+                    $right = trim($parts[1]);
+                    $mine  = trim((string) ($picked[$left] ?? ''));
+                    if ($mine !== '') {
+                        $answeredPairs++;
+                    }
+                    $pairs[] = [
+                        'left'       => $left,
+                        'user'       => $mine,
+                        'correct'    => $showCorrect ? $right : null,
+                        'is_correct' => $mine !== '' && $mine === $right,
+                    ];
+                }
+
+                $q['matching'] = $pairs;
+                foreach ($pairs as $pair) {
+                    if ($pair['user'] !== '') {
+                        $q['user_answers'][] = ['answer_text' => $pair['left'] . ' → ' . $pair['user']];
+                    }
+                    if ($showCorrect) {
+                        $q['correct_answers'][] = ['answer_text' => $pair['left'] . ' → ' . $pair['correct']];
+                    }
+                }
+
+                if ($answeredPairs === 0) {
                     $summary['unanswered']++;
                 } elseif ($log->score > 0) {
                     $summary['correct']++;

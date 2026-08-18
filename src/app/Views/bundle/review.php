@@ -27,6 +27,40 @@
             wrap.appendChild(el('div', 'k-note ' + cls, msg));
         }
 
+        // Teks pasangan berasal dari bank soal (boleh mengandung apa saja), jadi
+        // seluruhnya lewat textContent — beda dari question_text yang memang
+        // markup dari editor guru.
+        function matchingBlock(pairs, showCorrect) {
+            var box = el('div');
+            box.style.cssText = 'margin-top:4px';
+
+            pairs.forEach(function (p) {
+                var answered = p.user !== '';
+                var accent = !answered ? 'var(--kiosk-border)'
+                    : (showCorrect ? (p.is_correct ? 'var(--kiosk-ok)' : 'var(--kiosk-danger)') : 'var(--kiosk-primary)');
+
+                var row = el('div');
+                row.style.cssText = 'border-left:4px solid ' + accent +
+                    ';padding:8px 0 8px 12px;margin-bottom:8px';
+
+                row.appendChild(el('div', 'k-muted', p.left));
+
+                var val = el('div', null, answered ? p.user : '(tidak dijawab)');
+                val.style.cssText = 'font-weight:600' + (answered ? '' : ';color:var(--kiosk-muted)');
+                row.appendChild(val);
+
+                // Kunci hanya ditampilkan pada pasangan yang memang salah —
+                // membocorkan semuanya membuat blok ini sulit dibaca.
+                if (showCorrect && p.correct !== null && !p.is_correct) {
+                    var key = el('div', null, 'Seharusnya: ' + p.correct);
+                    key.style.cssText = 'font-size:15px;color:var(--kiosk-ok);margin-top:2px';
+                    row.appendChild(key);
+                }
+                box.appendChild(row);
+            });
+            return box;
+        }
+
         fetch(base + '/api/student/review?test_id=' + encodeURIComponent(params.get('test_id') || ''), {
             credentials: 'include', headers: { 'Accept': 'application/json' }
         })
@@ -48,6 +82,14 @@
                     qt.style.cssText = 'margin:8px 0 14px;font-size:17px';
                     qt.innerHTML = q.question_text || '';
                     card.appendChild(qt);
+
+                    // Menjodohkan & Benar/Salah punya bentuk sendiri: satu baris per
+                    // pasangan, supaya terlihat mana yang cocok dan mana yang tidak.
+                    if (q.matching && q.matching.length) {
+                        card.appendChild(matchingBlock(q.matching, j.show_correct));
+                        wrap.appendChild(card);
+                        return;
+                    }
 
                     var userAns = (q.user_answers || []).map(function (a) { return a.answer_text; });
                     var answered = userAns.length > 0;

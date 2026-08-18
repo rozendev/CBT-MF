@@ -160,7 +160,16 @@
     .question-text img {
         max-width: 100%;
         height: auto;
+        display: block;
+        margin: 12px 0;
+        border: 1px solid rgba(0,0,0,0.18);
+        border-radius: 10px;
+        background: #fff;
     }
+    /* Tabel data pada soal (mis. hasil import Word) digulir di dalam kotaknya
+       sendiri; tanpa ini halaman ujian ikut bergeser ke samping di layar sempit. */
+    .question-text table { max-width: 100%; }
+    .question-text .table-responsive { max-width: 100%; overflow-x: auto; }
     
     /* Answer Options */
     .answer-option {
@@ -197,6 +206,11 @@
     .answer-content img {
         max-width: 100%;
         height: auto;
+        display: block;
+        margin: 8px 0;
+        border: 1px solid rgba(0,0,0,0.18);
+        border-radius: 8px;
+        background: #fff;
     }
 
     /* Bottom Navigation */
@@ -386,3 +400,4 @@
         text-shadow: 0 2px 4px rgba(0,0,0,0.5);
     }
     .question-container img { cursor: zoom-in; }
+    .question-container { overflow-wrap: anywhere; }

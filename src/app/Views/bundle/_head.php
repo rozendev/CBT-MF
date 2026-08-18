@@ -107,6 +107,20 @@
             box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
         }
 
+        /* Konten dari editor guru (soal, jawaban esai, kunci) bebas isinya:
+           gambar berukuran asli, tabel lebar, kata panjang tanpa spasi. Tanpa
+           pagar ini semuanya menembus kartu dan bikin halaman melar ke samping. */
+        .k-card { overflow-wrap: anywhere; }
+        .k-card img, .k-note img {
+            max-width: 100%; height: auto; display: block;
+            margin: 12px 0; border: 1px solid var(--kiosk-border);
+            border-radius: 10px; background: #fff;
+        }
+        /* Tabel lebar digulir di dalam kartunya sendiri, bukan menggeser halaman. */
+        .k-card table { max-width: 100%; border-collapse: collapse; }
+        .k-card .table-responsive { max-width: 100%; overflow-x: auto; }
+        .k-card pre { max-width: 100%; overflow-x: auto; }
+
         .k-row { display: flex; gap: 12px; }
         .k-row > * { flex: 1; }
         .k-stack > * + * { margin-top: 12px; }
