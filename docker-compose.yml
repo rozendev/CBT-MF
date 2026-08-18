@@ -121,7 +121,12 @@ services:
     image: mariadb:latest
     container_name: ${CONTAINER_DB}
     restart: unless-stopped
-    command: --max_connections=500
+    # innodb-buffer-pool-size default MariaDB cuma 128 MB. Begitu test_logs
+    # tumbuh (satu baris per soal per attempt), pembacaan soal mulai jatuh ke
+    # disk padahal seharusnya dilayani dari RAM. Setel lewat DB_BUFFER_POOL di
+    # .env: sekitar 25-50% RAM server. 512M cocok untuk VPS 2 GB; naikkan ke
+    # 1G-2G kalau RAM 4-8 GB, turunkan ke 256M kalau hanya 1 GB.
+    command: --max_connections=${DB_MAX_CONNECTIONS:-500} --innodb-buffer-pool-size=${DB_BUFFER_POOL:-512M}
     # ports:
     #   - "127.0.0.1:3306:3306"    # bind ke localhost aja, bukan 0.0.0.0
     volumes:

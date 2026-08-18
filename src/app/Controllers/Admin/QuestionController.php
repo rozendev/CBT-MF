@@ -108,14 +108,19 @@ class QuestionController extends BaseController
         }
 
         $type = (int) $this->request->getPost('type');
-        
+
+        // Gambar yang ditempel langsung ke editor masuk sebagai data URI base64
+        // dan ikut tersalin ke test_logs setiap attempt. Keluarkan jadi berkas
+        // sebelum menyentuh database.
+        $img = new \App\Libraries\InlineImageExtractor();
+
         // Insert Question
         $data = [
             'subject_id'     => $this->request->getPost('subject_id'),
             'topic_id'       => $this->request->getPost('topic_id') ?: null,
             'type'           => $type,
-            'description'    => $this->request->getPost('description'),
-            'explanation'    => $this->request->getPost('explanation'),
+            'description'    => $img->process($this->request->getPost('description')),
+            'explanation'    => $img->process($this->request->getPost('explanation')),
             'difficulty'     => $this->request->getPost('difficulty'),
             'is_enabled'     => $this->request->getPost('is_enabled') ? 1 : 0,
         ];
@@ -202,13 +207,14 @@ class QuestionController extends BaseController
         }
 
         $type = (int) $this->request->getPost('type');
+        $img = new \App\Libraries\InlineImageExtractor();
 
         $data = [
             'subject_id'     => $this->request->getPost('subject_id'),
             'topic_id'       => $this->request->getPost('topic_id') ?: null,
             'type'           => $type,
-            'description'    => $this->request->getPost('description'),
-            'explanation'    => $this->request->getPost('explanation'),
+            'description'    => $img->process($this->request->getPost('description')),
+            'explanation'    => $img->process($this->request->getPost('explanation')),
             'difficulty'     => $this->request->getPost('difficulty'),
             'is_enabled'     => $this->request->getPost('is_enabled') ? 1 : 0,
         ];
@@ -396,7 +402,7 @@ class QuestionController extends BaseController
 
             $this->answerModel->skipValidation(true)->insert([
                 'question_id' => $questionId,
-                'description' => $answerText,
+                'description' => (new \App\Libraries\InlineImageExtractor())->process($answerText),
                 'is_correct'  => $isCorrect,
                 'is_enabled'  => 1,
                 'position'    => $position,
