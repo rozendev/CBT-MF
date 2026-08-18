@@ -160,10 +160,45 @@ class KioskController extends BaseController
             $attempt = $db->table('test_attempts')->select('status')->where('id', $attemptId)->get()->getRow();
 
             // Hanya izinkan unlock jika ujian benar-benar SELESAI (status 3).
-            // Status 4 (dikunci karena pelanggaran) TIDAK melepas kiosk:
+            // Status 2 (dikunci karena pelanggaran) TIDAK melepas kiosk:
             // siswa menunggu pengawas membuka lewat password (verify-exit).
             if (!$attempt || (int) $attempt->status !== 3) {
                 return $this->response->setStatusCode(403)->setJSON(['status' => 'error', 'allowed' => false]);
+            }
+
+            // Token ini hanya membuktikan SATU attempt selesai. Kalau siswa masih
+            // punya ujian lain yang berjalan atau terkunci, kiosk tetap tidak
+            // boleh lepas: sekali ujian dimulai, satu-satunya jalan keluar adalah
+            // password pengawas. Tanpa cek ini, token dari ujian yang sudah
+            // selesai tetap sah selama 4 jam dan bisa dipakai membuka kunci di
+            // tengah ujian berikutnya -- termasuk lewat jalur wajar, mis. ujian
+            // kedua sudah dibuat oleh exam/start tapi halamannya gagal memuat
+            // sehingga token di sessionStorage belum tertimpa.
+            $userId  = (int) ($tokenData['user_id'] ?? 0);
+            $pending = $db->table('test_attempts')
+                ->where('user_id', $userId)
+                ->whereIn('status', [0, 1, 2])
+                ->countAllResults();
+
+            if ($pending > 0) {
+                try {
+                    (new \App\Models\ActivityLogModel())->log(
+                        'kiosk_exit_denied',
+                        $userId,
+                        'test',
+                        (int) ($tokenData['test_id'] ?? 0),
+                        "Kiosk tidak dilepas: masih ada {$pending} ujian yang belum selesai"
+                    );
+                } catch (\Throwable $e) {
+                    log_message('error', 'Kiosk canExit audit error: ' . $e->getMessage());
+                }
+
+                return $this->response->setStatusCode(403)->setJSON([
+                    'status'  => 'error',
+                    'allowed' => false,
+                    'reason'  => 'unfinished_attempt',
+                    'message' => 'Masih ada ujian yang belum selesai. Minta pengawas membuka kunci.',
+                ]);
             }
 
             try {
