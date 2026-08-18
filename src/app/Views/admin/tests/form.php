@@ -172,6 +172,18 @@
                             <div class="form-text text-danger-emphasis small mb-2" style="margin-top:-4px;">
                                 Ujian akan otomatis dikumpulkan saat curang. Saling mengunci dengan opsi "Boleh Diulang".
                             </div>
+                            <div class="form-check form-switch mb-2">
+                                <input class="form-check-input bg-dark border-dark" type="checkbox" id="requireKioskToggle" name="require_kiosk" value="1"
+                                       <?= old('require_kiosk', $test->require_kiosk ?? '0') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label fw-bold">
+                                    <i class="bi bi-phone-lock me-1"></i>Wajib Aplikasi CBT Kiosk
+                                </label>
+                            </div>
+                            <div class="form-text small mb-2" style="margin-top:-4px;">
+                                Jawaban hanya diterima selama aplikasi kiosk mengirim heartbeat. Ujian jadi
+                                tidak bisa dikerjakan lewat browser biasa &mdash; termasuk browser di komputer.
+                                Biarkan mati untuk ujian yang memang dikerjakan lewat web.
+                            </div>
                         </div>
 
                         <h6 class="fw-bold text-dark border-bottom pb-2 mb-3"><i class="bi bi-clipboard2-check me-2 text-info"></i>Setelah Ujian Selesai</h6>

@@ -52,7 +52,7 @@ class TestController extends BaseController
             'results_visible', 'report_visible', 'random_questions', 
             'random_answers', 'show_menu', 'allow_noanswer', 
             'mcma_partial_score', 'is_repeatable', 'auto_logout_on_timeout', 
-            'auto_submit_on_cheat', 'is_enabled'
+            'auto_submit_on_cheat', 'require_kiosk', 'is_enabled'
         ];
 
         foreach ($checkboxFields as $field) {
@@ -121,7 +121,7 @@ class TestController extends BaseController
             'results_visible', 'report_visible', 'random_questions', 
             'random_answers', 'show_menu', 'allow_noanswer', 
             'mcma_partial_score', 'is_repeatable', 'auto_logout_on_timeout', 
-            'auto_submit_on_cheat', 'is_enabled'
+            'auto_submit_on_cheat', 'require_kiosk', 'is_enabled'
         ];
 
         foreach ($checkboxFields as $field) {

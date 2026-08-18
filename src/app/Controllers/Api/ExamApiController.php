@@ -68,6 +68,16 @@ class ExamApiController extends BaseController
             ]);
         }
 
+        $gate = \App\Libraries\KioskPresence::check($test, $attempt, (int) $userId);
+        if (!$gate['ok']) {
+            \App\Libraries\KioskPresence::audit((int) $test->id, (int) $userId, $gate['reason'], 'exam/init');
+            return $this->response->setStatusCode(403)->setJSON([
+                'status'  => 'error',
+                'message' => \App\Libraries\KioskPresence::message(),
+                'reason'  => 'kiosk_required',
+            ]);
+        }
+
         // Load questions and answers
         $db = \Config\Database::connect();
         $cache = service('cache');
@@ -332,6 +342,14 @@ class ExamApiController extends BaseController
         $attemptIdParam = $this->request->getPost('attempt_id');
         $questionType = $this->request->getPost('question_type');
 
+        if (!$this->passesKioskGate((int) $attemptIdParam, (int) $userId, 'exam/autosave')) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'status'  => 'error',
+                'message' => \App\Libraries\KioskPresence::message(),
+                'reason'  => 'kiosk_required',
+            ]);
+        }
+
         $testLogModel = new TestLogModel();
         
         if ($logId) {
@@ -484,6 +502,14 @@ class ExamApiController extends BaseController
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
         }
 
+        if (!$this->passesKioskGate((int) $attemptId, (int) $userId, 'exam/auto-sync')) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'status'  => 'error',
+                'message' => \App\Libraries\KioskPresence::message(),
+                'reason'  => 'kiosk_required',
+            ]);
+        }
+
         $this->flushRedisAnswersToDb($attemptId);
         
         $testModel = new \App\Models\TestModel();
@@ -509,6 +535,14 @@ class ExamApiController extends BaseController
 
         $testId = $this->request->getPost('test_id');
         $attempt = $this->attemptModel->getActiveAttemptCached($testId, $userId);
+
+        if ($attempt && !$this->passesKioskGate((int) $attempt->id, (int) $userId, 'exam/finish')) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'status'  => 'error',
+                'message' => \App\Libraries\KioskPresence::message(),
+                'reason'  => 'kiosk_required',
+            ]);
+        }
 
         if ($attempt) {
             $this->flushRedisAnswersToDb($attempt->id);
@@ -580,6 +614,29 @@ class ExamApiController extends BaseController
 
 
 
+
+    /**
+     * Gerbang kiosk untuk endpoint yang hanya memegang attempt_id.
+     * Mengembalikan true bila ujian boleh ditulis dari klien ini.
+     */
+    private function passesKioskGate(int $attemptId, int $userId, string $endpoint): bool
+    {
+        if ($attemptId <= 0) {
+            return true;
+        }
+        $attempt = $this->attemptModel->find($attemptId);
+        if (!$attempt || (string) $attempt->user_id !== (string) $userId) {
+            return true; // bukan urusan gerbang ini; endpoint punya cek sendiri
+        }
+        $test = $this->testModel->findCached($attempt->test_id);
+
+        $gate = \App\Libraries\KioskPresence::check($test, $attempt, $userId);
+        if (!$gate['ok']) {
+            \App\Libraries\KioskPresence::audit((int) $attempt->test_id, $userId, $gate['reason'], $endpoint);
+            return false;
+        }
+        return true;
+    }
 
     /**
      * Flush Redis answers to DB (same as ExamController)
