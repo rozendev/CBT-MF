@@ -59,20 +59,43 @@
                     android:textColor="@color/text_secondary"
                     android:textSize="@dimen/text_body_sm" />
 
-                <!-- URL INPUT FIELD -->
-                <EditText
-                    android:id="@+id/etServerUrl"
+                <!-- URL + TOMBOL UPDATE UI
+                     Tombol update duduk di sebelah URL karena keduanya satu
+                     urusan: alamat server menentukan bundle mana yang diambil. -->
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/input_height"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/spacing_lg"
-                    android:background="@drawable/bg_input"
-                    android:hint="@string/url_hint"
-                    android:inputType="textUri"
-                    android:maxLines="1"
-                    android:paddingHorizontal="@dimen/spacing_md"
-                    android:textColor="@color/text_primary"
-                    android:textColorHint="@color/text_secondary"
-                    android:textSize="@dimen/text_body" />
+                    android:orientation="horizontal"
+                    android:baselineAligned="false">
+
+                    <EditText
+                        android:id="@+id/etServerUrl"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="@dimen/input_height"
+                        android:background="@drawable/bg_input"
+                        android:hint="@string/url_hint"
+                        android:inputType="textUri"
+                        android:maxLines="1"
+                        android:paddingHorizontal="@dimen/spacing_md"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_secondary"
+                        android:textSize="@dimen/text_body" />
+
+                    <Button
+                        android:id="@+id/btnUpdateBundle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/input_height"
+                        android:layout_marginStart="@dimen/spacing_sm"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="@dimen/spacing_md"
+                        android:text="@string/btn_update_bundle"
+                        android:textAllCaps="false"
+                        android:textColor="#2563EB"
+                        android:textSize="@dimen/text_body_sm"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
                 <!-- START BUTTON -->
                 <Button

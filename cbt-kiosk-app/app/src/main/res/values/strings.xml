@@ -24,6 +24,10 @@
     <string name="toast_page_reloaded">Halaman dimuat ulang</string>
     <string name="toast_exam_finished">Ujian selesai \u2014 Kiosk dibuka</string>
     <string name="toast_exam_not_verified">Ujian belum selesai atau tidak terverifikasi</string>
+    <string name="btn_update_bundle">Update UI</string>
+    <string name="toast_bundle_up_to_date">Bundle UI sudah versi terbaru.</string>
+    <string name="toast_bundle_need_url">Isi alamat server dulu sebelum update UI.</string>
+    <string name="toast_bundle_missing">Bundle UI belum terpasang. Tekan "Update UI" dulu.</string>
     <string name="btn_test_beep">Tes Suara Peringatan</string>
     <string name="toast_test_beep">Memutar bunyi peringatan…</string>
     <string name="toast_kiosk_locked_warning">Kiosk terkunci \u2014 Masukkan password pengawas</string>

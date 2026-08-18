@@ -20,9 +20,17 @@ class KioskController extends BaseController
         if (is_file($manifestPath)) {
             try {
                 $manifest = json_decode((string) file_get_contents($manifestPath), true);
+                $version = (string) ($manifest['version'] ?? '');
+                // ?v= wajib: nginx menyajikan zip dengan Cache-Control public
+                // max-age 14400, jadi Cloudflare boleh menahan berkas LAMA
+                // sampai 4 jam. Perangkat lalu mengunduh zip usang yang isinya
+                // konsisten dengan dirinya sendiri, versi lokalnya tidak pernah
+                // menyusul versi yang dilaporkan config, dan aplikasi mengunduh
+                // ulang selamanya tanpa pernah maju. URL unik per versi
+                // memutus lingkaran itu.
                 $bundleInfo = [
-                    'version' => (string) ($manifest['version'] ?? ''),
-                    'url'     => base_url('ui-bundle/ui-bundle.zip'),
+                    'version' => $version,
+                    'url'     => base_url('ui-bundle/ui-bundle.zip') . ($version !== '' ? '?v=' . substr($version, 0, 16) : ''),
                     'size'    => (int) (is_file(FCPATH . 'ui-bundle/ui-bundle.zip') ? filesize(FCPATH . 'ui-bundle/ui-bundle.zip') : 0),
                 ];
             } catch (\Throwable $e) {

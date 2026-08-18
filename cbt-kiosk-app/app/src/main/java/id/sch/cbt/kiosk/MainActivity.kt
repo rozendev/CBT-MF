@@ -60,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnStartExam: Button
     private lateinit var btnImportBundle: Button
     private lateinit var btnTestBeep: Button
+    private lateinit var btnUpdateBundle: Button
     private lateinit var tvBatteryStatus: TextView
     private lateinit var tvNetworkStatus: TextView
     private lateinit var tvBundleStatus: TextView
@@ -140,6 +141,7 @@ class MainActivity : AppCompatActivity() {
             btnStartExam = findViewById(R.id.btnStartExam)
             btnImportBundle = findViewById(R.id.btnImportBundle)
             btnTestBeep = findViewById(R.id.btnTestBeep)
+            btnUpdateBundle = findViewById(R.id.btnUpdateBundle)
             webView = findViewById(R.id.webView)
             tvBatteryStatus = findViewById(R.id.tvBatteryStatus)
             tvNetworkStatus = findViewById(R.id.tvNetworkStatus)
@@ -187,10 +189,33 @@ class MainActivity : AppCompatActivity() {
                 fetchServerKioskConfig(savedUrl)
             }
 
+            btnUpdateBundle.setOnClickListener {
+                val inputUrl = etServerUrl.text.toString().trim()
+                if (inputUrl.isEmpty()) {
+                    Toast.makeText(this, getString(R.string.toast_bundle_need_url), Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                checkAndUpdateBundle(normalizeServerUrl(inputUrl))
+            }
+
+            // "Mulai Ujian" mati selama alamat server kosong: menekannya tanpa
+            // URL tidak pernah bisa berhasil, jadi lebih jujur dimatikan
+            // daripada memunculkan toast galat setiap kali ditekan.
+            etServerUrl.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
+                override fun onTextChanged(c: CharSequence?, a: Int, b: Int, d: Int) {}
+                override fun afterTextChanged(e: android.text.Editable?) { syncSetupButtons() }
+            })
+            syncSetupButtons()
+
             btnStartExam.setOnClickListener {
                 val inputUrl = etServerUrl.text.toString().trim()
                 if (inputUrl.isEmpty()) {
                     Toast.makeText(this, getString(R.string.toast_url_empty), Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                if (uiBundleManager.localVersion() == null) {
+                    Toast.makeText(this, getString(R.string.toast_bundle_missing), Toast.LENGTH_LONG).show()
                     return@setOnClickListener
                 }
 
@@ -555,6 +580,133 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** HTTPS-only, sama seperti jalur "Mulai Ujian". */
+    private fun normalizeServerUrl(raw: String): String {
+        var url = raw.trim().trimEnd('/')
+        if (url.startsWith("http://")) {
+            url = "https://" + url.removePrefix("http://")
+        } else if (!url.startsWith("https://")) {
+            url = "https://$url"
+        }
+        return url
+    }
+
+    private fun syncSetupButtons() {
+        val hasUrl = etServerUrl.text.toString().trim().isNotEmpty()
+        btnStartExam.isEnabled = hasUrl
+        btnStartExam.alpha = if (hasUrl) 1f else 0.45f
+        btnUpdateBundle.isEnabled = hasUrl
+        btnUpdateBundle.alpha = if (hasUrl) 1f else 0.45f
+
+        val local = uiBundleManager.localVersion()
+        if (local == null) {
+            setBundleStatus("Bundle UI belum terpasang — tekan \"Update UI\".")
+        }
+    }
+
+    /**
+     * Pembaruan bundle atas permintaan pengguna, bukan otomatis tiap membuka
+     * aplikasi. Pendekatan lama mengunduh ulang setiap kali versi lokal tidak
+     * cocok dengan versi server, dan itu berulang tanpa henti begitu unduhan
+     * menghasilkan bundle yang bukan versi terbaru — persis yang terjadi di
+     * lapangan: mengunduh terus, versinya tidak pernah maju.
+     */
+    private fun checkAndUpdateBundle(baseUrl: String) {
+        if (bundleDownloadActive) {
+            Toast.makeText(this, "Pembaruan sedang berjalan, harap tunggu...", Toast.LENGTH_SHORT).show()
+            return
+        }
+        prefs.edit().putString("server_url", baseUrl).apply()
+        setBundleStatus("Memeriksa versi bundle...")
+        btnUpdateBundle.isEnabled = false
+
+        kotlin.concurrent.thread(start = true, isDaemon = true, name = "BundleUpdateCheck") {
+            var conn: java.net.HttpURLConnection? = null
+            try {
+                conn = (java.net.URL("$baseUrl/api/kiosk/config").openConnection() as java.net.HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                    setRequestProperty("Accept", "application/json")
+                    // Config TIDAK boleh dijawab dari cache: nomor versinya
+                    // justru yang sedang kita tanyakan.
+                    setRequestProperty("Cache-Control", "no-cache")
+                }
+                if (conn.responseCode != 200) {
+                    runOnUiThread {
+                        btnUpdateBundle.isEnabled = true
+                        setBundleStatus("Gagal memeriksa versi (HTTP ${conn?.responseCode}).")
+                    }
+                    return@thread
+                }
+
+                val json = org.json.JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
+                val info = json.optJSONObject("ui_bundle")
+                val serverVersion = info?.optString("version") ?: ""
+                if (serverVersion.isBlank()) {
+                    runOnUiThread {
+                        btnUpdateBundle.isEnabled = true
+                        setBundleStatus("Server belum menyediakan bundle UI.")
+                    }
+                    return@thread
+                }
+
+                val localVersion = uiBundleManager.localVersion()
+                if (localVersion == serverVersion) {
+                    runOnUiThread {
+                        btnUpdateBundle.isEnabled = true
+                        setBundleStatus("Bundle v${serverVersion.take(8)} — sudah terbaru.")
+                        Toast.makeText(this, getString(R.string.toast_bundle_up_to_date), Toast.LENGTH_SHORT).show()
+                    }
+                    return@thread
+                }
+
+                val zipUrl = info.optString("url").takeIf { it.isNotBlank() }
+                    ?: "$baseUrl/ui-bundle/ui-bundle.zip"
+
+                runOnUiThread {
+                    bundleDownloadActive = true
+                    setBundleStatus("Mengunduh bundle v${serverVersion.take(8)}...")
+                }
+                uiBundleManager.downloadDirect(
+                    zipUrl,
+                    serverVersion,
+                    onProgress = { done, total ->
+                        runOnUiThread { setBundleStatus("Mengunduh bundle UI... ${(done * 100 / total)}%") }
+                    },
+                    onDone = { ok, message ->
+                        bundleDownloadActive = false
+                        runOnUiThread {
+                            btnUpdateBundle.isEnabled = true
+                            val installed = uiBundleManager.localVersion()
+                            when {
+                                !ok -> setBundleStatus("Update gagal: $message")
+                                // Unduhan berhasil tapi isinya versi lain =
+                                // yang datang bukan berkas terbaru (mis. masih
+                                // tertahan cache CDN). Katakan apa adanya.
+                                installed != serverVersion ->
+                                    setBundleStatus("Server memberi v${installed?.take(8)}, bukan v${serverVersion.take(8)}. Coba lagi sebentar.")
+                                else -> {
+                                    setBundleStatus("Bundle v${serverVersion.take(8)} terpasang.")
+                                    Toast.makeText(this, "Bundle UI diperbarui.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            syncSetupButtons()
+                        }
+                    }
+                )
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "Bundle update check gagal", e)
+                runOnUiThread {
+                    btnUpdateBundle.isEnabled = true
+                    setBundleStatus("Gagal terhubung ke server.")
+                }
+            } finally {
+                try { conn?.disconnect() } catch (_: Throwable) {}
+            }
+        }
+    }
+
     fun fetchServerKioskConfig(serverUrl: String) {
         if (serverUrl.isBlank()) return
         kotlin.concurrent.thread(start = true, isDaemon = true, name = "KioskConfigFetcher") {
@@ -647,50 +799,31 @@ class MainActivity : AppCompatActivity() {
 
             Log.d("MainActivity", "Applied kiosk config: sirenEnabled=${SirenAlarmManager.isSirenEnabled}, sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}")
 
-            // ---- Bundle UI: gate load WebView pada ketersediaan bundle ----
-            val bundleInfo = json.optJSONObject("ui_bundle")
-            val serverBundleVersion = bundleInfo?.optString("version") ?: ""
-            if (serverBundleVersion.isBlank()) {
-                Toast.makeText(this, "Bundle UI belum tersedia di server.", Toast.LENGTH_LONG).show()
+            // ---- Bundle UI ----
+            // Memulai ujian TIDAK lagi mengunduh apa pun. Dulu setiap tekan
+            // "Mulai Ujian" membandingkan versi lokal dengan versi server dan
+            // mengunduh ulang bila beda — yang berulang tanpa henti kalau
+            // berkas yang datang bukan versi terbaru, sekaligus menahan siswa
+            // di layar tunggu tepat sebelum ujian. Pembaruan sekarang urusan
+            // tombol "Update UI" di layar setup, dijalankan pengawas sebelum
+            // ujian dimulai.
+            val localBundleVersion = uiBundleManager.localVersion()
+            if (localBundleVersion == null) {
+                Toast.makeText(this, getString(R.string.toast_bundle_missing), Toast.LENGTH_LONG).show()
                 showSetupScreen()
                 return
             }
-            if (uiBundleManager.canRefresh() && uiBundleManager.localVersion() != serverBundleVersion) {
-                val zipUrl = bundleInfo.optString("url")
-                    .takeIf { it.isNotBlank() } ?: "$serverBaseUrl/ui-bundle/ui-bundle.zip"
-                if (bundleDownloadActive) {
-                    Toast.makeText(this, "Bundle sedang diunduh, harap tunggu...", Toast.LENGTH_LONG).show()
-                    return
-                }
-                bundleDownloadActive = true
-                setBundleStatus("Mengunduh bundle UI...")
-                Toast.makeText(this, "Mengunduh bundle UI, harap tunggu...", Toast.LENGTH_LONG).show()
-                uiBundleManager.downloadDirect(
-                    zipUrl,
-                    serverBundleVersion,
-                    onProgress = { done, total ->
-                        runOnUiThread {
-                            if (::tvBundleStatus.isInitialized) {
-                                tvBundleStatus.text = "Mengunduh bundle UI... ${(done * 100 / total)}%"
-                            }
-                        }
-                    },
-                    onDone = { ok, message ->
-                        bundleDownloadActive = false
-                        runOnUiThread {
-                            if (ok) {
-                                setBundleStatus("Bundle v${serverBundleVersion.take(8)} terpasang.")
-                            } else {
-                                setBundleStatus("Download gagal: $message")
-                                Toast.makeText(this, "Gagal mengunduh bundle: $message", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
-                )
-                // Lanjut ke WebView lewat onReady setelah verifyAndInstall selesai.
-                return
+
+            val bundleInfo = json.optJSONObject("ui_bundle")
+            val serverBundleVersion = bundleInfo?.optString("version") ?: ""
+            if (serverBundleVersion.isNotBlank() && serverBundleVersion != localBundleVersion) {
+                // Sekadar pemberitahuan; ujian tetap boleh jalan dengan bundle
+                // yang ada supaya jaringan bermasalah tidak membatalkan ujian.
+                setBundleStatus("Bundle v${localBundleVersion.take(8)} — tersedia v${serverBundleVersion.take(8)}.")
+            } else {
+                setBundleStatus("Bundle v${localBundleVersion.take(8)} — sudah terbaru.")
             }
-            // Versi bundle cocok (atau tidak bisa refresh karena exam aktif) → lanjut.
+
             proceedToBundleExam()
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error parsing kiosk config JSON", e)
