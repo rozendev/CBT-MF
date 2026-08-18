@@ -13,13 +13,21 @@
     }
     
     /* Beautiful Desktop Drawer */
+    /* Laci desktop: SEMBUNYI di layar sempit. Sebelumnya wadah ini selalu
+       aktif -- pita selebar 40px setinggi layar penuh di tepi kanan dengan
+       z-index 1040, menutupi tepi kanan setiap halaman dan menelan sentuhan
+       di sana. Di HP navigasinya sudah lewat tombol ☰ di topbar. */
     .desktop-drawer-wrapper {
+        display: none;
         position: fixed;
         right: 0;
         top: 0;
         height: 100vh;
         width: 40px;
         z-index: 1040;
+    }
+    @media (min-width: 992px) {
+        .desktop-drawer-wrapper { display: block; }
     }
     .desktop-drawer-trigger {
         position: absolute;
@@ -74,16 +82,26 @@
     }
 
     /* Top Navigation */
-    .exam-topbar {
+    /* Topbar + progress menempel sebagai satu blok, jadi tidak ada lagi
+       offset tebakan di antara keduanya. */
+    .exam-stickyhead {
         position: sticky;
         top: 0;
         z-index: 1020;
+    }
+    .exam-topbar {
         background: var(--color-surface);
         border-bottom: 1px solid rgba(0,0,0,0.08);
-        padding: 12px 16px;
+        /* Padding atas mengikuti poni/status bar perangkat. */
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 10px;
+    }
+    .exam-topbar__logo {
+        width: 30px; height: 30px; flex: 0 0 auto;
+        object-fit: contain; border-radius: 6px;
     }
     .exam-title-area {
         display: flex;
@@ -127,9 +145,6 @@
         width: 100%;
         height: 4px;
         background: rgba(0,0,0,0.05);
-        position: sticky;
-        top: 61px;
-        z-index: 1019;
     }
     .progress-fill {
         height: 100%;
@@ -221,7 +236,9 @@
         right: 0;
         background: var(--color-surface);
         border-top: 1px solid rgba(0,0,0,0.08);
-        padding: 12px 16px;
+        /* Bilah gestur Android duduk di atas bar ini; tanpa inset, tombol
+           "Selanjutnya" separuh tertutup di perangkat tanpa tombol fisik. */
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
         display: flex;
         justify-content: space-between;
         align-items: center;

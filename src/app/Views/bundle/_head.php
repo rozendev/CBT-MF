@@ -1,15 +1,17 @@
 <?php
 /**
  * Bundle page head — kiosk-integration.js PERTAMA, lalu aset lokal bundle.
- * Variabel: $pageTitle, $assetVersion (sha256 12-char file assets), $baseUrl (server base).
+ * Variabel: $pageTitle, $assetVersion (sha256 12-char file assets), $baseUrl (server base),
+ * $school (name/tagline/logo data URI, dipanggang UiBundleBuilder saat build).
  */
+$school = ($school ?? []) + ['name' => 'CBT', 'tagline' => '', 'logo' => ''];
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title><?= esc($pageTitle) ?> — Kiosk CBT</title>
+    <title><?= esc($pageTitle) ?> — <?= esc($school['name']) ?></title>
     <script src="<?= $baseUrl ?>/js/kiosk-integration.js"></script>
     <link rel="stylesheet" href="assets/exam-app.css?v=<?= esc($assetVersion) ?>">
     <script>
@@ -27,8 +29,14 @@
             --kiosk-muted: #475569; --kiosk-primary: #1d4ed8; --kiosk-primary-ink: #ffffff;
             --kiosk-border: #cbd5e1; --kiosk-danger: #b91c1c; --kiosk-danger-bg: #fef2f2;
             --kiosk-ok: #15803d; --kiosk-ok-bg: #f0fdf4; --kiosk-warn: #a16207;
+            --kiosk-ink-soft: #334155; --kiosk-surface-2: #f8fafc;
+            --kiosk-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .06);
             /* Target sentuh minimum Android 48dp; 56px untuk aksi utama. */
             --k-tap: 56px; --k-radius: 12px; --k-gap: 16px;
+            /* Poni dan bilah gestur Android: tanpa ini header nyelip di balik
+               status bar dan tombol terakhir ketiban bilah navigasi. */
+            --k-safe-top: env(safe-area-inset-top, 0px);
+            --k-safe-bottom: env(safe-area-inset-bottom, 0px);
         }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body {
@@ -37,9 +45,32 @@
             font-size: 17px; line-height: 1.55;
             -webkit-text-size-adjust: 100%;
         }
-        .k-wrap { max-width: 560px; margin: 0 auto; padding: var(--k-gap); }
+        .k-wrap { max-width: 560px; margin: 0 auto; padding: var(--k-gap);
+                  padding-bottom: calc(var(--k-gap) + var(--k-safe-bottom)); }
         .k-card { background: var(--kiosk-card); border: 1px solid var(--kiosk-border);
-                  border-radius: var(--k-radius); padding: 20px; }
+                  border-radius: var(--k-radius); padding: 20px; box-shadow: var(--kiosk-shadow); }
+
+        /* ── App bar: identitas sekolah, sama di semua halaman ──────────────
+           Alasannya bukan hiasan. Perangkat ujian dipegang siswa yang gugup di
+           ruangan asing; layar yang tidak menyebut sekolahnya terasa seperti
+           halaman uji coba, bukan lembar ujian resmi. */
+        .k-appbar {
+            display: flex; align-items: center; gap: 12px;
+            padding: calc(10px + var(--k-safe-top)) var(--k-gap) 10px;
+            background: var(--kiosk-card); border-bottom: 1px solid var(--kiosk-border);
+        }
+        .k-appbar__logo { width: 38px; height: 38px; flex: 0 0 auto;
+                          object-fit: contain; border-radius: 8px; }
+        .k-appbar__id { flex: 1; min-width: 0; }
+        .k-appbar__school { font-weight: 700; font-size: 16px; line-height: 1.25;
+                            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .k-appbar__tagline { color: var(--kiosk-muted); font-size: 12px; letter-spacing: .02em;
+                             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* Judul halaman: konteks "saya sedang di mana" tanpa memakan satu layar. */
+        .k-pagehead { margin-bottom: var(--k-gap); }
+        .k-pagehead h1 { margin: 0 0 2px; }
+        .k-pagehead p { margin: 0; color: var(--kiosk-muted); font-size: 15px; }
         h1, h2, h3 { margin: 0 0 12px; line-height: 1.3; }
         h1 { font-size: 24px; } h2 { font-size: 20px; } h3 { font-size: 18px; }
         .k-muted { color: var(--kiosk-muted); font-size: 15px; }
@@ -87,8 +118,12 @@
 
         /* Banner status simpan — menempel di atas viewport dan TIDAK hilang
            sendiri; satu-satunya cara lenyap adalah jawaban berhasil tersimpan. */
+        /* sticky, bukan fixed: sebagai fixed banner ini menimpa bagian atas
+           soal justru ketika siswa paling perlu membacanya. Sticky tetap
+           menempel saat digulir tapi ikut memakan ruang, jadi tidak ada yang
+           tertutup. */
         .k-savebar {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+            position: sticky; top: 0; z-index: 9999;
             padding: 12px var(--k-gap); border-bottom: 3px solid;
             box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
         }

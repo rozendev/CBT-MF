@@ -1,7 +1,11 @@
-<?= view('bundle/_head', ['pageTitle' => 'Hasil', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl]) ?>
+<?= view('bundle/_head', ['pageTitle' => 'Hasil', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl, 'school' => $school]) ?>
 <body>
-<div class="k-wrap" style="padding-top:5vh">
-    <h1 id="pageTitle">Hasil Ujian</h1>
+<?= view('bundle/_appbar', ['school' => $school]) ?>
+<div class="k-wrap">
+    <div class="k-pagehead">
+        <h1 id="pageTitle">Hasil Ujian</h1>
+        <p id="pageSubtitle">Ringkasan pengerjaan Anda.</p>
+    </div>
     <div id="summary" class="k-card k-muted">Memuat hasil…</div>
     <div id="actions" class="k-stack" style="margin-top:16px"></div>
 </div>
@@ -115,6 +119,7 @@
 
             if (justFinished) {
                 document.getElementById('pageTitle').textContent = 'Ujian Selesai';
+                document.getElementById('pageSubtitle').textContent = 'Pilih tindakan sebelum keluar dari mode ujian.';
                 box.appendChild(el('p', null, 'Jawaban Anda sudah tersimpan.'));
 
                 if (!j.show_score && !j.allow_review) {

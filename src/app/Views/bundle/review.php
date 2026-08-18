@@ -1,7 +1,11 @@
-<?= view('bundle/_head', ['pageTitle' => 'Review', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl]) ?>
+<?= view('bundle/_head', ['pageTitle' => 'Review', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl, 'school' => $school]) ?>
 <body>
-<div class="k-wrap" style="padding-top:5vh">
-    <h1>Review Jawaban</h1>
+<?= view('bundle/_appbar', ['school' => $school]) ?>
+<div class="k-wrap">
+    <div class="k-pagehead">
+        <h1>Review Jawaban</h1>
+        <p>Bandingkan jawaban Anda dengan kuncinya.</p>
+    </div>
     <div id="review" class="k-stack">
         <div class="k-card k-muted">Memuat review…</div>
     </div>

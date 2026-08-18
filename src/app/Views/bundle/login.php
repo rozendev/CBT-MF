@@ -1,8 +1,11 @@
-<?= view('bundle/_head', ['pageTitle' => 'Masuk', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl]) ?>
+<?= view('bundle/_head', ['pageTitle' => 'Masuk', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl, 'school' => $school]) ?>
 <body>
-<div class="k-wrap" style="padding-top:6vh">
-    <h1>Masuk Ujian</h1>
-    <p class="k-muted" id="serverInfo" style="margin-top:-6px">&nbsp;</p>
+<?= view('bundle/_appbar', ['school' => $school]) ?>
+<div class="k-wrap" style="padding-top:5vh">
+    <div class="k-pagehead">
+        <h1>Masuk Ujian</h1>
+        <p>Gunakan akun yang diberikan sekolah.</p>
+    </div>
 
     <div class="k-card">
         <div id="err" class="k-note k-error" style="display:none;margin-bottom:16px"></div>
@@ -25,6 +28,9 @@
 
     <p class="k-muted" style="text-align:center;margin-top:20px">
         Pastikan Anda masuk dengan akun sendiri.
+    </p>
+    <p class="k-muted" style="text-align:center;margin-top:4px;font-size:13px">
+        Server: <span id="serverInfo">&nbsp;</span>
     </p>
 </div>
 

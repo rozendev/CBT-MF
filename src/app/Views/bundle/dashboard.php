@@ -1,5 +1,6 @@
-<?= view('bundle/_head', ['pageTitle' => 'Beranda', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl]) ?>
+<?= view('bundle/_head', ['pageTitle' => 'Beranda', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl, 'school' => $school]) ?>
 <body>
+<?= view('bundle/_appbar', ['school' => $school]) ?>
 <div class="k-idbar">
     <div class="k-idbar__who">
         <div class="k-idbar__name" id="whoName">&nbsp;</div>
@@ -9,7 +10,10 @@
 </div>
 
 <div class="k-wrap">
-    <h1>Daftar Ujian</h1>
+    <div class="k-pagehead">
+        <h1>Daftar Ujian</h1>
+        <p>Pilih ujian yang akan dikerjakan.</p>
+    </div>
     <div id="list" class="k-stack">
         <div class="k-card k-muted">Memuat daftar ujian…</div>
     </div>

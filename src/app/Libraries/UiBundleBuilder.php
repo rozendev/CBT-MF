@@ -25,6 +25,13 @@ class UiBundleBuilder
         $baseUrl = rtrim(base_url(), '/');
         $assetVersion = substr(hash_file('sha256', $assetsSrc . '/exam-app.js'), 0, 12);
 
+        // Identitas sekolah dipanggang ke dalam bundle, bukan diambil saat
+        // halaman dibuka: bundle harus tetap utuh saat jaringan sekolah putus,
+        // dan logo dari host server akan diblokir kalau perangkat offline.
+        // Mengubah nama/logo sekolah mengubah hash bundle, jadi perangkat
+        // otomatis menarik versi baru lewat jalur update yang sudah ada.
+        $school = $this->schoolIdentity();
+
         // 1) render halaman
         $pages = [
             'login.html'    => 'bundle/login',
@@ -33,11 +40,6 @@ class UiBundleBuilder
             'results.html'  => 'bundle/results',
             'review.html'   => 'bundle/review',
         ];
-        foreach ($pages as $file => $view) {
-            $html = view($view, ['baseUrl' => $baseUrl, 'assetVersion' => $assetVersion]);
-            file_put_contents("$outDir/$file", $html);
-        }
-
         // 2) copy assets: exam-app.js, exam-app.css, alpine.min.js, sweetalert2.min.js,
         //    kiosk-integration.js + jquery shim (di-render dari view)
         copy($assetsSrc . '/exam-app.js', "$assetsDir/exam-app.js");
@@ -46,6 +48,16 @@ class UiBundleBuilder
         copy(FCPATH . 'vendor/sweetalert2/sweetalert2.min.js', "$assetsDir/sweetalert2.min.js");
         copy(FCPATH . 'js/kiosk-integration.js', "$assetsDir/kiosk-integration.js");
         file_put_contents("$assetsDir/jquery-shim.js", view('bundle/_jquery_shim'));
+        $school['logo'] = $this->writeLogo($school['logo'], $assetsDir);
+
+        foreach ($pages as $file => $view) {
+            $html = view($view, [
+                'baseUrl'      => $baseUrl,
+                'assetVersion' => $assetVersion,
+                'school'       => $school,
+            ]);
+            file_put_contents("$outDir/$file", $html);
+        }
 
         // 3) manifest per-file sha256 + version (hash canonical manifest)
         $fileHashes = [];
@@ -57,6 +69,9 @@ class UiBundleBuilder
             'assets/kiosk-integration.js',
             'assets/jquery-shim.js',
         ]);
+        if ($school['logo'] !== '') {
+            $files[] = $school['logo'];
+        }
         sort($files);
         foreach ($files as $rel) {
             $fileHashes[$rel] = hash_file('sha256', "$outDir/$rel");
@@ -89,5 +104,94 @@ class UiBundleBuilder
         CLI::write('SIZE BUDGET OK (< 300KB).', 'green');
 
         return ['version' => $version, 'size' => $size, 'path' => $outDir];
+    }
+
+    /**
+     * Nama, tagline, dan logo sekolah untuk header bundle.
+     *
+     * 'logo' di sini masih path setelan mentah; writeLogo() yang mengubahnya
+     * jadi file di dalam bundle. Menautkan ke host server bukan pilihan:
+     * headernya rusak begitu perangkat offline.
+     *
+     * @return array{name:string, tagline:string, logo:string}
+     */
+    private function schoolIdentity(): array
+    {
+        $settings = new \App\Models\SettingModel();
+
+        return [
+            'name'    => trim((string) $settings->getValue('app_name', 'CBT')) ?: 'CBT',
+            'tagline' => trim((string) $settings->getValue('app_description', '')),
+            'logo'    => (string) $settings->getValue('app_logo', ''),
+        ];
+    }
+
+    /**
+     * Tulis logo yang sudah dikecilkan ke assets/ bundle, kembalikan path
+     * relatifnya. Sengaja BUKAN data URI: satu logo yang ditanam di lima
+     * halaman terhitung lima kali dan sendirian menaikkan zip bundle dari
+     * 83 KB ke 254 KB. Sebagai file, ia dihitung sekali dan tetap offline-safe
+     * karena disajikan dari dalam bundle itu sendiri.
+     */
+    private function writeLogo(string $relativePath, string $assetsDir): string
+    {
+        $binary = $this->renderLogoPng($relativePath);
+        if ($binary === '') {
+            return '';
+        }
+        file_put_contents($assetsDir . '/school-logo.png', $binary);
+
+        return 'assets/school-logo.png';
+    }
+
+    private function renderLogoPng(string $relativePath): string
+    {
+        $relativePath = ltrim(trim($relativePath), '/');
+        if ($relativePath === '') {
+            return '';
+        }
+        $path = FCPATH . $relativePath;
+        if (!is_file($path) || !extension_loaded('gd')) {
+            return '';
+        }
+
+        try {
+            $info = getimagesize($path);
+            if ($info === false) {
+                return '';
+            }
+            $src = match ($info[2]) {
+                IMAGETYPE_PNG  => imagecreatefrompng($path),
+                IMAGETYPE_JPEG => imagecreatefromjpeg($path),
+                IMAGETYPE_WEBP => imagecreatefromwebp($path),
+                IMAGETYPE_GIF  => imagecreatefromgif($path),
+                default        => null,
+            };
+            if (!$src) {
+                return '';
+            }
+
+            $max = 128;
+            $ratio = min($max / max(1, $info[0]), $max / max(1, $info[1]), 1.0);
+            $w = max(1, (int) round($info[0] * $ratio));
+            $h = max(1, (int) round($info[1] * $ratio));
+
+            $dst = imagecreatetruecolor($w, $h);
+            imagealphablending($dst, false);
+            imagesavealpha($dst, true);
+            imagefill($dst, 0, 0, imagecolorallocatealpha($dst, 0, 0, 0, 127));
+            imagecopyresampled($dst, $src, 0, 0, 0, 0, $w, $h, $info[0], $info[1]);
+            imagedestroy($src);
+
+            ob_start();
+            imagepng($dst, null, 9);
+            $binary = (string) ob_get_clean();
+            imagedestroy($dst);
+
+            return $binary;
+        } catch (\Throwable $e) {
+            log_message('error', 'UiBundleBuilder: logo gagal diproses: ' . $e->getMessage());
+            return '';
+        }
     }
 }

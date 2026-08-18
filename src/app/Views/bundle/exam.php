@@ -1,4 +1,4 @@
-<?= view('bundle/_head', ['pageTitle' => 'Ujian', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl]) ?>
+<?= view('bundle/_head', ['pageTitle' => 'Ujian', 'assetVersion' => $assetVersion, 'baseUrl' => $baseUrl, 'school' => $school]) ?>
 <body class="noselect">
 <style>
     :root {
@@ -8,7 +8,7 @@
     }
     body { background: var(--color-background); color: var(--color-text);
            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; padding-bottom: 80px; }
+           -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
     .noselect { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
     .loading-screen { position: fixed; inset: 0; z-index: 100001; background: var(--color-background);
            display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--color-text); }
@@ -330,8 +330,15 @@
     <div class="exam-layout">
     <div class="exam-main">
 
-        <!-- Top Navigation -->
+        <!-- Kepala menempel: topbar dan progress digabung dalam satu wadah
+             sticky. Sebelumnya progress-wrapper memakai top:61px, angka mati
+             yang menebak tinggi topbar -- begitu nama ujian membungkus dua
+             baris atau poni perangkat menambah padding, batangnya menimpa soal. -->
+        <div class="exam-stickyhead">
         <div class="exam-topbar">
+            <?php if ($school['logo'] !== ''): ?>
+                <img class="exam-topbar__logo" src="<?= esc($school['logo']) ?>" alt="">
+            <?php endif; ?>
             <div class="exam-title-area">
                 <div class="exam-title-text" x-text="testName"></div>
                 <div class="exam-student-text" x-text="studentName"></div>
@@ -352,6 +359,7 @@
         <div class="progress-wrapper">
             <div class="progress-fill" :style="'width: ' + ((countAnswered() / questions.length) * 100) + '%'"></div>
         </div>
+        </div><!-- /.exam-stickyhead -->
 
         <!-- Status simpan MENETAP: banner ini tinggal selama masih ada jawaban
              yang gagal tersimpan. Bug fatal sebelumnya lolos justru karena
