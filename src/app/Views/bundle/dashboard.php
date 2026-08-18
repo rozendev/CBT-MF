@@ -31,31 +31,93 @@
             return n;
         }
 
-        // Nama ujian berasal dari input admin/guru — selalu lewat textContent,
-        // jangan innerHTML, agar tidak bisa menyuntik markup ke halaman ujian.
-        function examCard(t, isResume) {
+        // Waktu ditampilkan apa adanya dari server; klien tidak menghitung
+        // ulang jendela ujian karena jam perangkat kiosk tidak bisa dipercaya.
+        function jam(iso) {
+            if (!iso) return '';
+            var d = new Date(String(iso).replace(' ', 'T'));
+            if (isNaN(d)) return String(iso);
+            return d.toLocaleString('id-ID', {
+                day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+            });
+        }
+
+        var BADGE = {
+            open:    ['Dapat dikerjakan', 'var(--kiosk-ok)',      'var(--kiosk-ok-bg)'],
+            resume:  ['Belum selesai',    'var(--kiosk-warn)',    '#fffbeb'],
+            done:    ['Sudah dikerjakan', 'var(--kiosk-muted)',   'var(--kiosk-surface-2)'],
+            locked:  ['Dikunci',          'var(--kiosk-danger)',  'var(--kiosk-danger-bg)'],
+            not_yet: ['Belum dibuka',     'var(--kiosk-muted)',   'var(--kiosk-surface-2)'],
+            closed:  ['Sudah berakhir',   'var(--kiosk-danger)',  'var(--kiosk-danger-bg)']
+        };
+
+        function badge(status) {
+            var b = BADGE[status] || BADGE.open;
+            var n = el('span', null, b[0]);
+            n.style.cssText = 'display:inline-block;padding:3px 10px;border-radius:999px;' +
+                'font-size:13px;font-weight:600;color:' + b[1] + ';background:' + b[2];
+            return n;
+        }
+
+        // Nama dan petunjuk ujian berasal dari input admin/guru — nama selalu
+        // lewat textContent. Petunjuk sengaja innerHTML karena memang ditulis
+        // guru lewat editor (gambar, penebalan), sama seperti di web.
+        function examCard(t) {
+            var av = t.availability || { status: 'open', message: '' };
             var card = el('div', 'k-card');
-            card.appendChild(el('h3', null, t.name));
+
+            var head = el('div');
+            head.style.cssText = 'display:flex;gap:8px;align-items:flex-start;justify-content:space-between';
+            var title = el('h3', null, t.name);
+            title.style.cssText = 'margin:0;flex:1;min-width:0';
+            head.appendChild(title);
+            head.appendChild(badge(av.status));
+            card.appendChild(head);
 
             var meta = [];
-            if (t.duration_minutes) meta.push('Durasi ' + t.duration_minutes + ' menit');
-            if (t.password_required) meta.push('Perlu token ujian');
-            if (t.attempt_status === 3) meta.push('Sudah dikerjakan');
-            else if (isResume) meta.push('Belum selesai');
-            card.appendChild(el('p', 'k-muted', meta.join(' · ')));
+            meta.push(t.duration_minutes ? 'Durasi ' + t.duration_minutes + ' menit' : 'Tanpa batas waktu');
+            if (t.max_score) meta.push('Batas lulus ' + t.passing_score + '/' + t.max_score);
+            meta.push(t.is_repeatable ? 'Boleh diulang' : 'Sekali kerjakan');
+            if (t.password_required) meta.push('Perlu token');
+            var metaEl = el('p', 'k-muted', meta.join(' · '));
+            metaEl.style.margin = '8px 0 0';
+            card.appendChild(metaEl);
+
+            if (t.begin_time || t.end_time) {
+                var jendela = 'Dibuka ' + (t.begin_time ? jam(t.begin_time) : 'kapan saja') +
+                              ' · Ditutup ' + (t.end_time ? jam(t.end_time) : 'tanpa batas');
+                var w = el('p', 'k-muted', jendela);
+                w.style.cssText = 'margin:4px 0 0;font-size:13px';
+                card.appendChild(w);
+            }
+
+            if (av.message) {
+                var note = el('p', 'k-muted', av.message);
+                note.style.cssText = 'margin:10px 0 0;font-size:14px';
+                card.appendChild(note);
+            }
 
             var btn = el('button', 'k-btn');
             btn.type = 'button';
-            if (t.attempt_status === 3) {
+            btn.style.marginTop = '14px';
+
+            if (av.status === 'resume') {
+                btn.textContent = 'Lanjutkan Ujian';
+                btn.onclick = function () { location.href = 'exam.html?test_id=' + t.id + '&resume=1'; };
+            } else if (av.status === 'done') {
                 btn.className = 'k-btn k-btn--ghost';
                 btn.textContent = 'Lihat Hasil';
                 btn.onclick = function () { location.href = 'results.html?test_id=' + t.id; };
-            } else if (isResume) {
-                btn.textContent = 'Lanjutkan Ujian';
-                btn.onclick = function () { location.href = 'exam.html?test_id=' + t.id + '&resume=1'; };
-            } else {
+            } else if (av.status === 'open') {
                 btn.textContent = 'Kerjakan';
                 btn.onclick = function () { location.href = 'exam.html?test_id=' + t.id; };
+            } else {
+                // not_yet / closed / locked: tombolnya mati sejak awal, supaya
+                // siswa tidak masuk lalu terjebak di layar galat tanpa jalan
+                // keluar -- persis keluhan yang muncul di lapangan.
+                btn.className = 'k-btn k-btn--ghost';
+                btn.textContent = av.status === 'not_yet' ? 'Belum dapat dikerjakan' : 'Tidak dapat dikerjakan';
+                btn.disabled = true;
             }
             card.appendChild(btn);
             return card;
@@ -86,9 +148,10 @@
                     ? u.username + ' · bukan Anda? tekan Keluar'
                     : 'bukan Anda? tekan Keluar';
 
-                // Attempt aktif TIDAK lagi me-redirect otomatis: siswa harus sempat
-                // memastikan dia login sebagai dirinya sendiri sebelum masuk ujian.
-                var resumeId = j.active_attempt ? j.active_attempt.test_id : null;
+                // Attempt aktif TIDAK me-redirect otomatis: siswa harus sempat
+                // memastikan dia login sebagai dirinya sendiri sebelum masuk
+                // ujian. Status "lanjutkan" kini datang dari availability
+                // bikinan server, bukan ditebak ulang di sini.
 
                 list.innerHTML = '';
                 if (!j.exams || !j.exams.length) {
@@ -96,7 +159,7 @@
                     return;
                 }
                 j.exams.forEach(function (t) {
-                    list.appendChild(examCard(t, resumeId !== null && t.id === resumeId));
+                    list.appendChild(examCard(t));
                 });
 
                 // Sesudah ujian selesai, kiosk sengaja TIDAK lepas sendiri. Siswa

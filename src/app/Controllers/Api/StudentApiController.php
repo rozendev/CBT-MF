@@ -37,9 +37,10 @@ class StudentApiController extends BaseController
         $db = \Config\Database::connect();
         $now = date('Y-m-d H:i:s');
         $sql = "
-            SELECT DISTINCT t.id, t.name, t.exam_mode, t.duration_minutes, t.begin_time, t.end_time,
+            SELECT DISTINCT t.id, t.name, t.description, t.exam_mode, t.duration_minutes,
+                   t.begin_time, t.end_time, t.passing_score, t.max_score,
                    t.password, t.is_repeatable, t.show_menu, t.allow_noanswer,
-                   t.show_score_after_exam, t.allow_review,
+                   t.auto_submit_on_cheat, t.show_score_after_exam, t.allow_review,
                    (SELECT status FROM test_attempts ta WHERE ta.test_id = t.id AND ta.user_id = ? ORDER BY ta.id DESC LIMIT 1) as attempt_status
             FROM tests t
             JOIN test_groups tg ON tg.test_id = t.id
@@ -73,17 +74,25 @@ class StudentApiController extends BaseController
             $exams[] = [
                 'id' => (int) $t->id,
                 'name' => $t->name,
+                'description' => (string) ($t->description ?? ''),
                 'exam_mode' => $t->exam_mode,
                 'duration_minutes' => (int) $t->duration_minutes,
                 'begin_time' => $t->begin_time,
                 'end_time' => $t->end_time,
+                'passing_score' => (float) ($t->passing_score ?? 0),
+                'max_score' => (float) ($t->max_score ?? 0),
                 'password_required' => !empty($t->password),
                 'is_repeatable' => (int) $t->is_repeatable,
+                'auto_submit_on_cheat' => (int) ($t->auto_submit_on_cheat ?? 0),
                 'show_menu' => (int) $t->show_menu,
                 'allow_noanswer' => (int) $t->allow_noanswer,
                 'attempt_status' => $t->attempt_status !== null ? (int) $t->attempt_status : null,
                 'can_show_score' => $canShowScore,
                 'can_allow_review' => $canAllowReview,
+                // Ketersediaan dihitung SERVER, bukan dari jam perangkat: jam
+                // tablet kiosk gampang meleset dan bisa diubah siswa, jadi
+                // klien tidak boleh jadi wasit jendela waktu ujian.
+                'availability' => $this->availability($t),
             ];
 
             if ($t->attempt_status !== null && (int) $t->attempt_status === 1 && !$activeAttempt) {
@@ -117,6 +126,9 @@ class StudentApiController extends BaseController
             ],
             'exams' => $exams,
             'active_attempt' => $activeAttempt,
+            // Jam server dikirim supaya hitung mundur di kiosk tidak memakai
+            // jam perangkat, yang bisa meleset jauh atau sengaja diubah.
+            'server_now_ms' => (int) round(microtime(true) * 1000),
         ]);
     }
 
@@ -151,6 +163,36 @@ class StudentApiController extends BaseController
         }
 
         return $this->response->setJSON(['status' => 'success', 'results' => $results]);
+    }
+
+    /**
+     * Status ketersediaan satu ujian bagi siswa ini.
+     *
+     * @return array{status:string, message:string}
+     */
+    private function availability($t): array
+    {
+        $status = $t->attempt_status !== null ? (int) $t->attempt_status : null;
+
+        if ($status === 0 || $status === 1) {
+            return ['status' => 'resume', 'message' => 'Anda punya pengerjaan yang belum selesai.'];
+        }
+        if ($status === 2) {
+            return ['status' => 'locked', 'message' => 'Ujian dikunci karena pelanggaran. Hubungi pengawas.'];
+        }
+        if ($status === 3 && empty($t->is_repeatable)) {
+            return ['status' => 'done', 'message' => 'Ujian ini sudah Anda kerjakan.'];
+        }
+
+        $now = time();
+        if (!empty($t->begin_time) && $now < strtotime((string) $t->begin_time)) {
+            return ['status' => 'not_yet', 'message' => 'Ujian belum dibuka.'];
+        }
+        if (!empty($t->end_time) && $now > strtotime((string) $t->end_time)) {
+            return ['status' => 'closed', 'message' => 'Waktu ujian sudah berakhir.'];
+        }
+
+        return ['status' => 'open', 'message' => ''];
     }
 
     public function review()
