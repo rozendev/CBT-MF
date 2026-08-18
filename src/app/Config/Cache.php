@@ -22,7 +22,7 @@ class Cache extends BaseConfig
      * The name of the preferred handler that should be used. If for some reason
      * it is not available, the $backupHandler will be used in its place.
      */
-    public string $handler = 'file';
+    public string $handler = 'redis';
 
     /**
      * --------------------------------------------------------------------------
@@ -33,7 +33,7 @@ class Cache extends BaseConfig
      * unreachable. Often, 'file' is used here since the filesystem is
      * always available, though that's not always practical for the app.
      */
-    public string $backupHandler = 'dummy';
+    public string $backupHandler = 'file';
 
     /**
      * --------------------------------------------------------------------------
@@ -200,17 +200,29 @@ class Cache extends BaseConfig
     {
         parent::__construct();
 
-        // Override Redis cache config from environment variables
-        $cacheHandler = env('cache.handler', '');
-        if ($cacheHandler === 'redis') {
-            $this->handler = 'redis';
-            $this->redis['host'] = env('cache.redis.host', 'redis');
-            $this->redis['port'] = (int) env('cache.redis.port', 6379);
-            
-            $password = env('cache.redis.password', '');
-            if (!empty($password)) {
-                $this->redis['password'] = $password;
-            }
+        // Redis jadi default, bukan file. Payload soal per attempt berukuran
+        // ratusan KB; menyimpannya sebagai berkas berarti serialize + tulis
+        // disk + baca disk untuk setiap pemuatan ujian, tepat pada ledakan
+        // awal ketika semua siswa menekan "Kerjakan" bersamaan.
+        //
+        // Ini tidak menambah titik gagal baru: sesi PHP sudah tersimpan di
+        // Redis (lihat Config\Session), jadi Redis tumbang berarti tidak ada
+        // yang bisa login sama sekali -- cache bukan yang pertama patah.
+        //
+        // Paksa kembali ke berkas dengan cache.handler=file di .env.
+        $handler = env('cache.handler', '');
+        if ($handler !== '') {
+            $this->handler = $handler;
+        }
+
+        // Nama variabel yang benar-benar ada di lingkungan container dipakai
+        // lebih dulu; cache.redis.* tetap dihormati sebagai override eksplisit.
+        $this->redis['host'] = env('cache.redis.host', env('REDIS_HOST', 'redis'));
+        $this->redis['port'] = (int) env('cache.redis.port', env('REDIS_PORT', 6379));
+
+        $password = env('cache.redis.password', env('REDIS_PASSWORD', ''));
+        if (!empty($password)) {
+            $this->redis['password'] = $password;
         }
     }
 }

@@ -36,6 +36,9 @@ services:
     networks:
       - ujian_network
     environment:
+      # Kosong = entrypoint memakai 4x jumlah core otomatis. Isi manual kalau
+      # RAM terbatas: tiap worker php-fpm memakai sekitar 30-60 MB.
+      - PHP_FPM_MAX_CHILDREN=${PHP_FPM_MAX_CHILDREN:-}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DB_DATABASE=${DB_DATABASE}
@@ -53,6 +56,13 @@ services:
     container_name: ${CONTAINER_WEBSOCKET}
     restart: unless-stopped
     command: php spark websocket:serve
+    # Tiap koneksi WebSocket memakai satu file descriptor. Bawaan container
+    # 2048 sudah di atas kapasitas nyata server, tapi plafon ini yang pertama
+    # dibentur kalau nanti jumlah siswa naik -- dan menaikkannya gratis.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     ports:
       - "127.0.0.1:8060:8060"
     volumes:
