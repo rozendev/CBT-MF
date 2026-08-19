@@ -107,3 +107,5 @@ docker/redis/data/
 src/public/uploads/
 src/writable.maintenance_manual
 src/writable/maintenance*
+# Dump database dari "cbt.sh db export" mendarat di root repo.
+*.sql
