@@ -66,11 +66,9 @@ if ! load_env "$PROJECT_DIR/.env"; then
     fi
 fi
 
-# Sementara: empat turunan ini masih dipakai perintah db dan reset.
-# Task 3 dan Task 9 mengganti pemakainya dengan MYSQL_PWD langsung dari
-# .env; hapus blok ini begitu tidak ada lagi yang merujuknya.
-DB_USER="${DB_USERNAME:-}"
-DB_PASS="${DB_PASSWORD:-}"
+# Sementara: dua turunan ini masih dipakai run_reset. Task 9 mengganti
+# pemakainya dengan MYSQL_PWD langsung dari .env; hapus blok ini begitu
+# tidak ada lagi yang merujuknya.
 DB_NAME="${DB_DATABASE:-}"
 ROOT_PASS="${MYSQL_ROOT_PASSWORD:-}"
 
@@ -97,11 +95,11 @@ Nyalakan dulu:  sudo ./scripts/cbt.sh docker up"
 # --- Helper Functions ---
 print_header() {
     clear
-    echo -e "${CYAN}${BOLD}"
+    printf '%b\n' "${CYAN}${BOLD}"
     echo "============================================================"
-    echo "                 🚀 CBT-MF CLI HELPER 🚀                    "
+    echo "                 CBT-MF CLI HELPER                          "
     echo "============================================================"
-    echo -e "${NC}"
+    printf '%b\n' "${NC}"
 }
 
 pause() {
@@ -181,30 +179,6 @@ run_entry() {
 # --- Command Functions ---
 
 # 1. Docker
-cmd_docker() {
-    while true; do
-        print_header
-        echo -e "${BLUE}=== 🐳 Docker Operations ===${NC}"
-        echo "1) Start all services (up -d --build)"
-        echo "2) Stop all services (down)"
-        echo "3) Restart all services"
-        echo "4) View logs"
-        echo "5) Container status"
-        echo "0) Back to main menu"
-        echo ""
-        read -r -p "Select an option: " d_opt
-        case $d_opt in
-            1) echo -e "${GREEN}Starting services...${NC}"; cd "$PROJECT_DIR" && $COMPOSE up -d --build; echo -e "\n✅ Services ready:\n   App:        http://localhost:8080\n   phpMyAdmin: http://localhost:8081"; pause ;;
-            2) echo -e "${YELLOW}Stopping services...${NC}"; cd "$PROJECT_DIR" && $COMPOSE down; pause ;;
-            3) echo -e "${YELLOW}Restarting services...${NC}"; cd "$PROJECT_DIR" && $COMPOSE restart; pause ;;
-            4) cd "$PROJECT_DIR" && $COMPOSE logs -f; pause ;;
-            5) cd "$PROJECT_DIR" && $COMPOSE ps; pause ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
-}
-
 do_docker_up()      { cd "$PROJECT_DIR" && $COMPOSE up -d --build; ok "Layanan siap: http://localhost:8080"; }
 do_docker_down()    { cd "$PROJECT_DIR" && $COMPOSE down; }
 do_docker_restart() { cd "$PROJECT_DIR" && $COMPOSE restart; }
@@ -212,95 +186,11 @@ do_docker_logs()    { cd "$PROJECT_DIR" && $COMPOSE logs -f; }
 do_docker_status()  { cd "$PROJECT_DIR" && $COMPOSE ps; }
 
 # 2. App Services (PHP/Composer)
-cmd_app() {
-    while true; do
-        print_header
-        echo -e "${BLUE}=== 🐘 App Services ===${NC}"
-        echo "1) Open bash shell in PHP container"
-        echo "2) Run composer command"
-        echo "3) Run php command"
-        echo "0) Back to main menu"
-        echo ""
-        read -r -p "Select an option: " a_opt
-        case $a_opt in
-            1) echo -e "${GREEN}Opening shell...${NC}"; docker exec -it "$(php_container)" bash; pause ;;
-            2) 
-                read -r -p "Enter composer arguments (e.g., install): " comp_args
-                docker exec -it "$(php_container)" composer "$comp_args"
-                pause 
-                ;;
-            3) 
-                read -r -p "Enter php arguments (e.g., -v): " php_args
-                docker exec -it "$(php_container)" php "$php_args"
-                pause 
-                ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
-}
-
 do_app_shell()    { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" bash; }
 do_app_php()      { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" php "$@"; }
 do_app_composer() { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" composer "$@"; }
 
 # 3. Database Operations
-cmd_db() {
-    while true; do
-        print_header
-        echo -e "${BLUE}=== 🗄️ Database Operations ===${NC}"
-        echo "1) Open MariaDB CLI (App User)"
-        echo "2) Open MariaDB CLI (Root)"
-        echo "3) Export Database"
-        echo "4) Import Database"
-        echo "5) Reset Superadmin Password"
-        echo "0) Back to main menu"
-        echo ""
-        read -r -p "Select an option: " db_opt
-        case $db_opt in
-            1) echo -e "${GREEN}Connecting as $DB_USER...${NC}"; docker exec -it "$(db_container)" mariadb -u "$DB_USER" -p"$DB_PASS" "$DB_NAME"; pause ;;
-            2) echo -e "${GREEN}Connecting as root...${NC}"; docker exec -it "$(db_container)" mariadb -u root -p"$ROOT_PASS"; pause ;;
-            3) 
-                FILENAME="backup_$(date +%Y%m%d_%H%M%S).sql"
-                echo -e "${YELLOW}Exporting to $PROJECT_DIR/$FILENAME...${NC}"
-                docker exec "$(db_container)" mariadb-dump -u root -p"$ROOT_PASS" "$DB_NAME" > "$PROJECT_DIR/$FILENAME"
-                echo -e "${GREEN}✅ Exported successfully!${NC}"
-                pause
-                ;;
-            4) 
-                read -r -p "Enter path to SQL file to import (relative to project root): " sql_file
-                if [ -f "$PROJECT_DIR/$sql_file" ]; then
-                    echo -e "${YELLOW}Importing $sql_file...${NC}"
-                    docker exec -i "$(db_container)" mariadb -u root -p"$ROOT_PASS" "$DB_NAME" < "$PROJECT_DIR/$sql_file"
-                    echo -e "${GREEN}✅ Import complete!${NC}"
-                else
-                    echo -e "${RED}File not found at $PROJECT_DIR/$sql_file!${NC}"
-                fi
-                pause
-                ;;
-            5)
-                read -r -p "Enter superadmin username (default: admin): " super_user
-                super_user=${super_user:-admin}
-                read -r -p "Enter new password: " super_pass
-                if [ -z "$super_pass" ]; then
-                    echo -e "${RED}Password cannot be empty!${NC}"
-                else
-                    echo -e "${YELLOW}Hashing password and updating database...${NC}"
-                    HASHED_PASS=$(docker exec -i "$(php_container)" php -r "echo password_hash('$super_pass', PASSWORD_BCRYPT);")
-                    if docker exec -i "$(db_container)" mariadb -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE users SET password = '$HASHED_PASS' WHERE username = '$super_user' AND role = 'admin';"; then
-                        echo -e "${GREEN}✅ Superadmin password reset successfully for user '$super_user'!${NC}"
-                    else
-                        echo -e "${RED}❌ Failed to reset password. Are you sure the user exists?${NC}"
-                    fi
-                fi
-                pause
-                ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
-}
-
 # Password TIDAK PERNAH lewat argumen: -p"$pass" terbaca siapa pun di
 # 'ps'. MYSQL_PWD adalah pola yang sudah dipakai run_backup di berkas ini.
 # Helper umum: "$@" sengaja disiapkan untuk pemanggil mendatang meski
@@ -373,29 +263,6 @@ do_db_reset_pw() {
 }
 
 # 4. Redis Operations
-cmd_redis() {
-     while true; do
-        print_header
-        echo -e "${BLUE}=== 📮 Redis Operations ===${NC}"
-        echo "1) Open Redis CLI"
-        echo "2) Flush all Redis data"
-        echo "0) Back to main menu"
-        echo ""
-        read -r -p "Select an option: " r_opt
-        case $r_opt in
-            1) echo -e "${GREEN}Connecting to Redis...${NC}"; docker exec -it "$(redis_container)" redis-cli; pause ;;
-            2) 
-                echo -e "${YELLOW}Flushing Redis...${NC}"
-                docker exec -it "$(redis_container)" redis-cli FLUSHALL
-                echo -e "${GREEN}✅ Redis flushed${NC}"
-                pause 
-                ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
-}
-
 do_redis_shell() {
     local c; c=$(redis_container); require_container "$c"
     if [ -n "${REDIS_PASSWORD:-}" ]; then
@@ -727,51 +594,7 @@ run_install() {
     set -euo pipefail
 }
 
-cmd_maintenance() {
-     while true; do
-        print_header
-        echo -e "${BLUE}=== 🛡️ Maintenance ===${NC}"
-        echo "1) Run Automated Backup (DB & Redis)"
-        echo "2) Rotate Application Logs"
-        echo -e "3) ${RED}Reset Installation (DANGER)${NC}"
-        echo "0) Back to main menu"
-        echo ""
-        read -r -p "Select an option: " m_opt
-        case $m_opt in
-            1) run_backup; pause ;;
-            2) run_log_rotate; pause ;;
-            3) run_reset; pause ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
-}
-
 # 6. Testing
-cmd_testing() {
-    print_header
-    echo -e "${BLUE}=== 🚀 k6 Load Testing ===${NC}"
-    read -r -p "Number of Virtual Users (default 50): " vus
-    vus=${vus:-50}
-    read -r -p "Target URL (default http://localhost:8080): " turl
-    turl=${turl:-"http://localhost:8080"}
-    read -r -p "Test ID (default 1): " tid
-    tid=${tid:-1}
-
-    echo -e "\n${CYAN}Starting CBT-MF k6 Simulation with $vus virtual students...${NC}"
-    
-    cd "$PROJECT_DIR"
-    if command -v k6 &> /dev/null; then
-        BASE_URL="$turl" TEST_ID="$tid" k6 run --vus "$vus" --duration 2m scripts/k6_exam_simulation.js
-    elif command -v docker &> /dev/null; then
-        echo -e "${YELLOW}🐳 k6 CLI not found locally. Running via Docker...${NC}"
-        docker run --rm -i --net=host -e BASE_URL="$turl" -e TEST_ID="$tid" -v "$(pwd)/scripts:/scripts" grafana/k6 run --vus "$vus" --duration 2m /scripts/k6_exam_simulation.js
-    else
-        echo -e "${RED}❌ Neither local k6 nor Docker found.${NC}"
-    fi
-    pause
-}
-
 do_test_k6() {
     local vus="${1:-50}" turl="${2:-http://localhost:8080}" tid="${3:-1}"
     cd "$PROJECT_DIR"
@@ -784,54 +607,79 @@ do_test_k6() {
 }
 
 # --- Main Interactive Menu ---
-main_menu() {
+menu_group() {
+    local group="$1" entry g n fn danger desc
     while true; do
         print_header
-        echo -e "1) 🐳 Docker Operations"
-        echo -e "2) 🐘 App Services (PHP & Composer)"
-        echo -e "3) 🗄️ Database Operations"
-        echo -e "4) 📮 Redis Operations"
-        echo -e "5) 🛡️ Maintenance (Backup, Logs, Reset)"
-        echo -e "6) 🚀 Testing (k6 Load Test)"
-        echo -e "7) 🛠️ Install / Setup CBT-MF"
-        echo -e "0) ❌ Exit"
+        printf '%b\n' "${BLUE}=== ${group} ===${NC}"
+        local -a names=() fns=() dangers=()
+        local i=1
+        for entry in "${CMD[@]}"; do
+            IFS='|' read -r g n fn danger desc <<< "$entry"
+            [ "$g" = "$group" ] || continue
+            names+=("$n"); fns+=("$fn"); dangers+=("$danger")
+            if [ "$danger" = "1" ]; then
+                printf '%b%d) %s — %s%b\n' "$RED" "$i" "$n" "$desc" "$NC"
+            else
+                printf '%d) %s — %s\n' "$i" "$n" "$desc"
+            fi
+            i=$((i + 1))
+        done
+        echo "0) Kembali"
         echo ""
-        read -r -p "Select an option [0-7]: " opt
-        case $opt in
-            1) cmd_docker ;;
-            2) cmd_app ;;
-            3) cmd_db ;;
-            4) cmd_redis ;;
-            5) cmd_maintenance ;;
-            6) cmd_testing ;;
-            7) run_install ;;
-            0) echo -e "${GREEN}Goodbye!${NC}"; exit 0 ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
+        read -r -p "Pilih: " pick
+        [ "$pick" = "0" ] && return 0
+        if [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -lt "$i" ]; then
+            local idx=$((pick - 1))
+            run_entry "${fns[$idx]}" "${dangers[$idx]}" "$group ${names[$idx]}"
+            echo ""; read -r -p "Tekan [Enter] untuk lanjut..."
+        else
+            warn "Pilihan tidak valid."; sleep 1
+        fi
+    done
+}
+
+main_menu() {
+    local entry g n fn danger desc
+    while true; do
+        print_header
+        local -a kinds=() labels=() fns=() dangers=()
+        local i=1 grp
+        while IFS= read -r grp; do
+            kinds+=("group"); labels+=("$grp"); fns+=(""); dangers+=("0")
+            printf '%d) %s\n' "$i" "$grp"
+            i=$((i + 1))
+        done < <(groups)
+        for entry in "${CMD[@]}"; do
+            IFS='|' read -r g n fn danger desc <<< "$entry"
+            [ -z "$g" ] || continue
+            kinds+=("cmd"); labels+=("$n"); fns+=("$fn"); dangers+=("$danger")
+            if [ "$danger" = "1" ]; then
+                printf '%b%d) %s — %s%b\n' "$RED" "$i" "$n" "$desc" "$NC"
+            else
+                printf '%d) %s — %s\n' "$i" "$n" "$desc"
+            fi
+            i=$((i + 1))
+        done
+        echo "0) Keluar"
+        echo ""
+        read -r -p "Pilih: " pick
+        [ "$pick" = "0" ] && { ok "Selesai."; exit 0; }
+        if [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -lt "$i" ]; then
+            local idx=$((pick - 1))
+            if [ "${kinds[$idx]}" = "group" ]; then
+                menu_group "${labels[$idx]}"
+            else
+                run_entry "${fns[$idx]}" "${dangers[$idx]}" "${labels[$idx]}"
+                echo ""; read -r -p "Tekan [Enter] untuk lanjut..."
+            fi
+        else
+            warn "Pilihan tidak valid."; sleep 1
+        fi
     done
 }
 
 # --- Argument Parser ---
-show_cli_help() {
-    echo -e "${CYAN}${BOLD}CBT-MF CLI Helper${NC}"
-    echo "Usage: ./scripts/cbt.sh [command] [args]"
-    echo ""
-    echo "If run without arguments, an interactive menu will be launched."
-    echo ""
-    echo "Commands:"
-    echo "  docker <up|down|restart|logs|status>   Docker operations"
-    echo "  php <args>                             Run PHP commands in container"
-    echo "  composer <args>                        Run Composer in container"
-    echo "  db <shell|root|export|import <file>>   Database operations"
-    echo "  redis <shell|flush>                    Redis operations"
-    echo "  backup                                 Run automated backup"
-    echo "  log-rotate                             Rotate application logs"
-    echo "  reset-install                          Reset application installation"
-    echo "  test-k6 [VUs] [URL] [TestID]           Run k6 load test"
-    echo "  install                                Run interactive installer"
-    echo "  help                                   Show this help message"
-}
-
 do_help() {
     printf '%b\n' "${CYAN}${BOLD}CBT-MF CLI Helper${NC}"
     echo "Pemakaian: sudo ./scripts/cbt.sh [grup] <perintah> [argumen]"
