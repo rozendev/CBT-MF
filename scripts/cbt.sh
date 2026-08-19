@@ -348,7 +348,10 @@ do_db_import() {
 }
 
 # Kutip nilai untuk MariaDB: gandakan kutip tunggal, bungkus.
-sql_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+# MariaDB memperlakukan backslash sebagai karakter escape di dalam string,
+# jadi menggandakan kutip saja belum cukup: nama berakhiran "\\" membuat
+# kutip penutupnya ikut ter-escape dan kuerinya rusak.
+sql_quote() { printf "'%s'" "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/''/g")"; }
 
 do_db_reset_pw() {
     local user pass hash c
