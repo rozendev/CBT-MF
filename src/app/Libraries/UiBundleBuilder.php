@@ -122,7 +122,9 @@ class UiBundleBuilder
         return [
             'name'    => trim((string) $settings->getValue('app_name', 'CBT')) ?: 'CBT',
             'tagline' => trim((string) $settings->getValue('app_description', '')),
-            'logo'    => (string) $settings->getValue('app_logo', ''),
+            // kiosk_logo menang; app_logo jadi cadangan supaya instalasi yang
+            // sudah berjalan tidak kehilangan logonya tanpa menyetel apa pun.
+            'logo'    => (string) ($settings->getValue('kiosk_logo', '') ?: $settings->getValue('app_logo', '')),
         ];
     }
 
