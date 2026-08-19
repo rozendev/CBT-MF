@@ -1,52 +1,80 @@
 #!/bin/bash
-
 # ============================================================
 # CBT-MF CLI Helper
-# Unified interactive script for managing the CBT-MF project
+# Satu perintah ditulis sekali di senarai CMD; menu dan CLI
+# sama-sama dirender dari sana.
 # ============================================================
 
-# --- Color Definitions ---
-CYAN='\033[0;36m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
-PURPLE='\033[0;35m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+set -euo pipefail
 
-# --- Security Check ---
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}Error: Script ini harus dijalankan sebagai root (gunakan sudo).${NC}"
-    echo "Contoh: sudo bash scripts/cbt.sh"
-    exit 1
-fi
+CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
+RED='\033[0;31m'; BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
 
-# --- Environment Setup ---
+die() { printf '%b\n' "${RED}Error: $*${NC}" >&2; exit 1; }
+warn() { printf '%b\n' "${YELLOW}$*${NC}" >&2; }
+info() { printf '%b\n' "${CYAN}$*${NC}"; }
+ok()   { printf '%b\n' "${GREEN}$*${NC}"; }
+
+[ "$EUID" -eq 0 ] || die "Script ini harus dijalankan sebagai root (gunakan sudo).
+Contoh: sudo bash scripts/cbt.sh"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ENV_FILE="$PROJECT_DIR/.env"
-
-if [ ! -f "$ENV_FILE" ]; then
-    ENV_FILE="$PROJECT_DIR/.env.example"
-fi
-
-if [ -f "$ENV_FILE" ]; then
-    # Export variables (ignore comments and empty lines)
-    export $(grep -v '^#' "$ENV_FILE" | grep -v '^$' | xargs)
-else
-    echo -e "${RED}Error: .env or .env.example file not found at $PROJECT_DIR${NC}"
-    exit 1
-fi
-
 COMPOSE="docker compose"
-PHP_CONTAINER="${CONTAINER_PHP:-ujian_php}"
-DB_CONTAINER="${CONTAINER_DB:-ujian_mariadb}"
-REDIS_CONTAINER="${CONTAINER_REDIS:-ujian_redis}"
-DB_USER="${DB_USERNAME:-sayasukakamu}"
-DB_PASS="${DB_PASSWORD:-sayasukakamu}"
-DB_NAME="${DB_DATABASE:-cbt-mf}"
-ROOT_PASS="${MYSQL_ROOT_PASSWORD:-root_secret}"
+
+# Pembaca .env yang tidak mengeksekusi isinya. 'source' akan menjalankan
+# backtick di dalam .env sebagai perintah; ini hanya membaca pasangan
+# key=value, melepas kutip pembungkus, dan melewati kunci yang bukan
+# identifier shell (mis. 'app.baseURL' di src/.env).
+load_env() {
+    local file="$1" line key value
+    [ -f "$file" ] || return 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|'#'*) continue ;; esac
+        case "$line" in *=*) ;; *) continue ;; esac
+        key=${line%%=*}
+        value=${line#*=}
+        key=$(printf '%s' "$key" | tr -d '[:space:]')
+        case "$key" in
+            ''|*[!A-Za-z0-9_]*) continue ;;
+        esac
+        case "$value" in
+            \"*\") value=${value#\"}; value=${value%\"} ;;
+            \'*\') value=${value#\'}; value=${value%\'} ;;
+        esac
+        export "$key=$value"
+    done < "$file"
+    return 0
+}
+
+# Instalasi baru yang bersih belum punya .env sama sekali; itu tugas
+# installer. Jadi ketiadaannya memperingatkan, bukan menghentikan.
+if ! load_env "$PROJECT_DIR/.env"; then
+    if ! load_env "$PROJECT_DIR/.env.example"; then
+        warn "Peringatan: .env maupun .env.example tidak ditemukan di $PROJECT_DIR."
+        warn "Sebagian besar perintah akan menolak jalan sampai installer dijalankan."
+    fi
+fi
+
+# Resolusi container sengaja MALAS. Kalau ini gagal-keras saat berkas
+# dimuat, 'install' ikut terkunci justru pada saat paling dibutuhkan.
+need_env() {
+    local name="$1" value="${!1:-}"
+    [ -n "$value" ] || die "$name belum ada di .env.
+Jalankan installer dulu:  sudo ./scripts/cbt.sh install"
+    printf '%s' "$value"
+}
+
+php_container()   { need_env CONTAINER_PHP; }
+db_container()    { need_env CONTAINER_DB; }
+redis_container() { need_env CONTAINER_REDIS; }
+
+require_container() {
+    local name="$1"
+    docker ps --format '{{.Names}}' | grep -qx "$name" \
+        || die "Container '$name' tidak berjalan.
+Nyalakan dulu:  sudo ./scripts/cbt.sh docker up"
+}
 
 # --- Helper Functions ---
 print_header() {
@@ -60,7 +88,7 @@ print_header() {
 
 pause() {
     echo ""
-    read -p "Press [Enter] to continue..."
+    read -r -p "Press [Enter] to continue..."
 }
 
 # --- Command Functions ---
@@ -77,7 +105,7 @@ cmd_docker() {
         echo "5) Container status"
         echo "0) Back to main menu"
         echo ""
-        read -p "Select an option: " d_opt
+        read -r -p "Select an option: " d_opt
         case $d_opt in
             1) echo -e "${GREEN}Starting services...${NC}"; cd "$PROJECT_DIR" && $COMPOSE up -d --build; echo -e "\n✅ Services ready:\n   App:        http://localhost:8080\n   phpMyAdmin: http://localhost:8081"; pause ;;
             2) echo -e "${YELLOW}Stopping services...${NC}"; cd "$PROJECT_DIR" && $COMPOSE down; pause ;;
@@ -100,17 +128,17 @@ cmd_app() {
         echo "3) Run php command"
         echo "0) Back to main menu"
         echo ""
-        read -p "Select an option: " a_opt
+        read -r -p "Select an option: " a_opt
         case $a_opt in
-            1) echo -e "${GREEN}Opening shell...${NC}"; docker exec -it $PHP_CONTAINER bash; pause ;;
+            1) echo -e "${GREEN}Opening shell...${NC}"; docker exec -it "$(php_container)" bash; pause ;;
             2) 
-                read -p "Enter composer arguments (e.g., install): " comp_args
-                docker exec -it $PHP_CONTAINER composer $comp_args
+                read -r -p "Enter composer arguments (e.g., install): " comp_args
+                docker exec -it "$(php_container)" composer "$comp_args"
                 pause 
                 ;;
             3) 
-                read -p "Enter php arguments (e.g., -v): " php_args
-                docker exec -it $PHP_CONTAINER php $php_args
+                read -r -p "Enter php arguments (e.g., -v): " php_args
+                docker exec -it "$(php_container)" php "$php_args"
                 pause 
                 ;;
             0) break ;;
@@ -131,22 +159,22 @@ cmd_db() {
         echo "5) Reset Superadmin Password"
         echo "0) Back to main menu"
         echo ""
-        read -p "Select an option: " db_opt
+        read -r -p "Select an option: " db_opt
         case $db_opt in
-            1) echo -e "${GREEN}Connecting as $DB_USER...${NC}"; docker exec -it $DB_CONTAINER mariadb -u $DB_USER -p$DB_PASS $DB_NAME; pause ;;
-            2) echo -e "${GREEN}Connecting as root...${NC}"; docker exec -it $DB_CONTAINER mariadb -u root -p$ROOT_PASS; pause ;;
+            1) echo -e "${GREEN}Connecting as $DB_USER...${NC}"; docker exec -it "$(db_container)" mariadb -u "$DB_USER" -p"$DB_PASS" "$DB_NAME"; pause ;;
+            2) echo -e "${GREEN}Connecting as root...${NC}"; docker exec -it "$(db_container)" mariadb -u root -p"$ROOT_PASS"; pause ;;
             3) 
                 FILENAME="backup_$(date +%Y%m%d_%H%M%S).sql"
                 echo -e "${YELLOW}Exporting to $PROJECT_DIR/$FILENAME...${NC}"
-                docker exec $DB_CONTAINER mariadb-dump -u root -p$ROOT_PASS $DB_NAME > "$PROJECT_DIR/$FILENAME"
+                docker exec "$(db_container)" mariadb-dump -u root -p"$ROOT_PASS" "$DB_NAME" > "$PROJECT_DIR/$FILENAME"
                 echo -e "${GREEN}✅ Exported successfully!${NC}"
                 pause
                 ;;
             4) 
-                read -p "Enter path to SQL file to import (relative to project root): " sql_file
+                read -r -p "Enter path to SQL file to import (relative to project root): " sql_file
                 if [ -f "$PROJECT_DIR/$sql_file" ]; then
                     echo -e "${YELLOW}Importing $sql_file...${NC}"
-                    docker exec -i $DB_CONTAINER mariadb -u root -p$ROOT_PASS $DB_NAME < "$PROJECT_DIR/$sql_file"
+                    docker exec -i "$(db_container)" mariadb -u root -p"$ROOT_PASS" "$DB_NAME" < "$PROJECT_DIR/$sql_file"
                     echo -e "${GREEN}✅ Import complete!${NC}"
                 else
                     echo -e "${RED}File not found at $PROJECT_DIR/$sql_file!${NC}"
@@ -154,17 +182,15 @@ cmd_db() {
                 pause
                 ;;
             5)
-                read -p "Enter superadmin username (default: admin): " super_user
+                read -r -p "Enter superadmin username (default: admin): " super_user
                 super_user=${super_user:-admin}
-                read -p "Enter new password: " super_pass
+                read -r -p "Enter new password: " super_pass
                 if [ -z "$super_pass" ]; then
                     echo -e "${RED}Password cannot be empty!${NC}"
                 else
                     echo -e "${YELLOW}Hashing password and updating database...${NC}"
-                    HASHED_PASS=$(docker exec -i $PHP_CONTAINER php -r "echo password_hash('$super_pass', PASSWORD_BCRYPT);")
-                    docker exec -i $DB_CONTAINER mariadb -u $DB_USER -p$DB_PASS $DB_NAME -e "UPDATE users SET password = '$HASHED_PASS' WHERE username = '$super_user' AND role = 'admin';"
-                    
-                    if [ $? -eq 0 ]; then
+                    HASHED_PASS=$(docker exec -i "$(php_container)" php -r "echo password_hash('$super_pass', PASSWORD_BCRYPT);")
+                    if docker exec -i "$(db_container)" mariadb -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE users SET password = '$HASHED_PASS' WHERE username = '$super_user' AND role = 'admin';"; then
                         echo -e "${GREEN}✅ Superadmin password reset successfully for user '$super_user'!${NC}"
                     else
                         echo -e "${RED}❌ Failed to reset password. Are you sure the user exists?${NC}"
@@ -187,12 +213,12 @@ cmd_redis() {
         echo "2) Flush all Redis data"
         echo "0) Back to main menu"
         echo ""
-        read -p "Select an option: " r_opt
+        read -r -p "Select an option: " r_opt
         case $r_opt in
-            1) echo -e "${GREEN}Connecting to Redis...${NC}"; docker exec -it $REDIS_CONTAINER redis-cli; pause ;;
+            1) echo -e "${GREEN}Connecting to Redis...${NC}"; docker exec -it "$(redis_container)" redis-cli; pause ;;
             2) 
                 echo -e "${YELLOW}Flushing Redis...${NC}"
-                docker exec -it $REDIS_CONTAINER redis-cli FLUSHALL
+                docker exec -it "$(redis_container)" redis-cli FLUSHALL
                 echo -e "${GREEN}✅ Redis flushed${NC}"
                 pause 
                 ;;
@@ -212,11 +238,9 @@ run_backup() {
     mkdir -p "$BACKUP_DIR"
     echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] Starting automated backup...${NC}"
 
-    docker exec -e MYSQL_PWD="$DB_PASSWORD" "$CONTAINER_DB" \
+    if docker exec -e MYSQL_PWD="$DB_PASSWORD" "$CONTAINER_DB" \
         mariadb-dump -u"$DB_USERNAME" --single-transaction --routines --triggers --databases "$DB_DATABASE" \
-        | gzip > "$DB_BACKUP"
-
-    if [ $? -eq 0 ] && [ -s "$DB_BACKUP" ]; then
+        | gzip > "$DB_BACKUP" && [ -s "$DB_BACKUP" ]; then
         size=$(du -h "$DB_BACKUP" | cut -f1)
         echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] Database backup complete: $DB_BACKUP ($size)${NC}"
     else
@@ -278,7 +302,7 @@ run_log_rotate() {
 
 run_reset() {
     echo -e "${RED}🛑 PERINGATAN: Semua data akan dihapus!${NC}"
-    read -p "Ketik 'YES' untuk melanjutkan reset instalasi: " CONFIRM
+    read -r -p "Ketik 'YES' untuk melanjutkan reset instalasi: " CONFIRM
 
     if [ "$CONFIRM" != "YES" ]; then
         echo -e "${YELLOW}❌ Reset dibatalkan.${NC}"
@@ -292,10 +316,10 @@ run_reset() {
     fi
 
     echo "🗄️ Menghapus dan membuat ulang database..."
-    docker exec $DB_CONTAINER mariadb -u root -p$ROOT_PASS -e "DROP DATABASE IF EXISTS $DB_NAME; CREATE DATABASE $DB_NAME;"
+    docker exec "$(db_container)" mariadb -u root -p"$ROOT_PASS" -e "DROP DATABASE IF EXISTS $DB_NAME; CREATE DATABASE $DB_NAME;"
 
     echo "📮 Membersihkan memori Redis..."
-    docker exec $REDIS_CONTAINER redis-cli FLUSHALL > /dev/null
+    docker exec "$(redis_container)" redis-cli FLUSHALL > /dev/null
 
     echo "🧹 Membersihkan file unggahan dan cache..."
     rm -rf "$PROJECT_DIR/src/public/uploads/questions/"* 2>/dev/null || true
@@ -307,6 +331,11 @@ run_reset() {
 }
 
 run_install() {
+    # Installer berjalan dengan aturan lama: isinya belum diaudit untuk
+    # mode ketat, dan satu-satunya cara mengujinya adalah instalasi dari
+    # nol. Hapus dua baris ini bila nanti sudah diaudit.
+    set +e +u +o pipefail
+
     print_header
     echo -e "${CYAN}=== 🛠️ CBT-MF Interactive Installer ===${NC}"
     echo "Installer ini akan memandu Anda untuk mengatur kredensial database,"
@@ -507,6 +536,7 @@ run_install() {
         fi
     fi
     pause
+    set -euo pipefail
 }
 
 cmd_maintenance() {
@@ -518,7 +548,7 @@ cmd_maintenance() {
         echo -e "3) ${RED}Reset Installation (DANGER)${NC}"
         echo "0) Back to main menu"
         echo ""
-        read -p "Select an option: " m_opt
+        read -r -p "Select an option: " m_opt
         case $m_opt in
             1) run_backup; pause ;;
             2) run_log_rotate; pause ;;
@@ -533,11 +563,11 @@ cmd_maintenance() {
 cmd_testing() {
     print_header
     echo -e "${BLUE}=== 🚀 k6 Load Testing ===${NC}"
-    read -p "Number of Virtual Users (default 50): " vus
+    read -r -p "Number of Virtual Users (default 50): " vus
     vus=${vus:-50}
-    read -p "Target URL (default http://localhost:8080): " turl
+    read -r -p "Target URL (default http://localhost:8080): " turl
     turl=${turl:-"http://localhost:8080"}
-    read -p "Test ID (default 1): " tid
+    read -r -p "Test ID (default 1): " tid
     tid=${tid:-1}
 
     echo -e "\n${CYAN}Starting CBT-MF k6 Simulation with $vus virtual students...${NC}"
@@ -567,7 +597,7 @@ main_menu() {
         echo -e "7) 🛠️ Install / Setup CBT-MF"
         echo -e "0) ❌ Exit"
         echo ""
-        read -p "Select an option [0-7]: " opt
+        read -r -p "Select an option [0-7]: " opt
         case $opt in
             1) cmd_docker ;;
             2) cmd_app ;;
@@ -618,23 +648,23 @@ if [ $# -gt 0 ]; then
                 *) echo "Usage: ./scripts/cbt.sh docker <up|down|restart|logs|status>" ;;
             esac
             ;;
-        php) shift; docker exec -it $PHP_CONTAINER php "$@" ;;
-        composer) shift; docker exec -it $PHP_CONTAINER composer "$@" ;;
+        php) shift; docker exec -it "$(php_container)" php "$@" ;;
+        composer) shift; docker exec -it "$(php_container)" composer "$@" ;;
         db)
             shift
             subcmd=${1:-}
             case "$subcmd" in
-                shell) docker exec -it $DB_CONTAINER mariadb -u $DB_USER -p$DB_PASS $DB_NAME ;;
-                root) docker exec -it $DB_CONTAINER mariadb -u root -p$ROOT_PASS ;;
+                shell) docker exec -it "$(db_container)" mariadb -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" ;;
+                root) docker exec -it "$(db_container)" mariadb -u root -p"$ROOT_PASS" ;;
                 export) 
                     FILENAME=${2:-"backup_$(date +%Y%m%d_%H%M%S).sql"}
-                    docker exec $DB_CONTAINER mariadb-dump -u root -p$ROOT_PASS $DB_NAME > "$PROJECT_DIR/$FILENAME"
+                    docker exec "$(db_container)" mariadb-dump -u root -p"$ROOT_PASS" "$DB_NAME" > "$PROJECT_DIR/$FILENAME"
                     echo "Exported to $FILENAME"
                     ;;
                 import)
                     if [ -z "${2:-}" ]; then echo "Missing SQL file. Usage: ./scripts/cbt.sh db import <file>"; exit 1; fi
                     if [ -f "$PROJECT_DIR/$2" ]; then
-                        docker exec -i $DB_CONTAINER mariadb -u root -p$ROOT_PASS $DB_NAME < "$PROJECT_DIR/$2"
+                        docker exec -i "$(db_container)" mariadb -u root -p"$ROOT_PASS" "$DB_NAME" < "$PROJECT_DIR/$2"
                         echo "Imported $2"
                     else
                          echo "File not found at $PROJECT_DIR/$2"
@@ -647,8 +677,8 @@ if [ $# -gt 0 ]; then
             shift
             subcmd=${1:-}
             case "$subcmd" in
-                shell) docker exec -it $REDIS_CONTAINER redis-cli ;;
-                flush) docker exec -it $REDIS_CONTAINER redis-cli FLUSHALL; echo "Redis flushed" ;;
+                shell) docker exec -it "$(redis_container)" redis-cli ;;
+                flush) docker exec -it "$(redis_container)" redis-cli FLUSHALL; echo "Redis flushed" ;;
                 *) echo "Usage: ./scripts/cbt.sh redis <shell|flush>" ;;
             esac
             ;;
