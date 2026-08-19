@@ -133,6 +133,9 @@ reg db      reset-password do_db_reset_pw   0 "Setel ulang password admin"
 reg redis   shell       do_redis_shell      0 "Buka redis-cli"
 reg redis   flush       do_redis_flush      1 "Hapus seluruh isi Redis"
 
+reg bundle  build       do_bundle_build     0 "Bangun ulang bundle UI kiosk"
+reg bundle  status      do_bundle_status    0 "Bandingkan versi bundle lokal, server, dan zip publik"
+
 reg ""      backup      run_backup          0 "Backup database dan Redis"
 reg ""      log-rotate  run_log_rotate      0 "Rotasi log aplikasi"
 reg ""      reset-install run_reset         1 "Reset instalasi (hapus semua data)"
@@ -281,6 +284,100 @@ do_redis_flush() {
     fi
     ok "Redis dikosongkan."
     warn "Sesi login ikut terhapus — semua orang harus login ulang."
+}
+
+# 4b. Bundle UI Kiosk
+app_base_url() {
+    local f="$PROJECT_DIR/src/.env" line
+    [ -f "$f" ] || return 1
+    line=$(grep -E "^[# ]*app\.baseURL" "$f" | grep -v '^#' | head -1) || return 1
+    printf '%s' "$line" | sed -E "s/^[^=]*=[[:space:]]*['\"]?([^'\"]*)['\"]?.*/\1/" | sed 's:/*$::'
+}
+
+do_bundle_build() {
+    local logo="" c
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --logo) logo="${2:-}"; [ -n "$logo" ] || die "--logo butuh path berkas."; shift 2 ;;
+            *) die "Opsi tidak dikenal: $1" ;;
+        esac
+    done
+
+    c=$(php_container); require_container "$c"
+
+    if [ -z "$logo" ]; then
+        docker exec "$c" php spark cbt:build-ui-bundle
+        return
+    fi
+
+    # Path yang diketik ada di host; spark jalan di container. Berkasnya
+    # harus masuk repo dulu supaya terlihat dari dalam.
+    [ -f "$logo" ] || die "Berkas logo tidak ditemukan: $logo"
+    local mime ext hash dest bytes
+    mime=$(file -b --mime-type "$logo")
+    case "$mime" in
+        image/png)  ext=png ;;
+        image/jpeg) ext=jpg ;;
+        image/webp) ext=webp ;;
+        image/gif)  ext=gif ;;
+        *) die "Bukan gambar yang didukung (terbaca: $mime). Pakai PNG, JPG, WebP, atau GIF." ;;
+    esac
+    bytes=$(stat -c%s "$logo")
+    [ "$bytes" -le 5242880 ] || die "Logo lebih dari 5 MB ($bytes byte)."
+
+    hash=$(sha256sum "$logo" | cut -c1-32)
+    dest="uploads/kiosk/logo_${hash}.${ext}"
+    mkdir -p "$PROJECT_DIR/src/public/uploads/kiosk"
+    cp "$logo" "$PROJECT_DIR/src/public/$dest"
+    chmod 644 "$PROJECT_DIR/src/public/$dest"
+    ok "Logo disalin ke src/public/$dest"
+
+    docker exec "$c" php spark cbt:build-ui-bundle --logo "$dest"
+}
+
+do_bundle_status() {
+    local c base localVer serverVer zipVer zipUrl tmp
+    c=$(php_container); require_container "$c"
+
+    localVer=$(docker exec "$c" php -r \
+        '$m = @json_decode(@file_get_contents("public/ui-bundle/manifest.json"), true); echo $m["version"] ?? "";')
+    printf 'Bundle lokal di server : %s\n' "${localVer:-(tidak ada)}"
+
+    base=$(app_base_url || true)
+    if [ -z "$base" ]; then
+        warn "app.baseURL tidak terbaca dari src/.env — pemeriksaan publik dilewati."
+        return 0
+    fi
+
+    local cfg
+    if ! cfg=$(curl -fsS --max-time 15 "$base/api/kiosk/config" 2>/dev/null); then
+        warn "Server publik tidak terjangkau ($base) — dua pemeriksaan berikutnya dilewati."
+        return 0
+    fi
+    serverVer=$(printf '%s' "$cfg" | grep -o '"version":"[a-f0-9]*"' | head -1 | cut -d'"' -f4)
+    zipUrl=$(printf '%s' "$cfg" | grep -o '"url":"[^"]*"' | head -1 | cut -d'"' -f4)
+    printf 'Dilaporkan config      : %s\n' "${serverVer:-(kosong)}"
+
+    if ! command -v unzip >/dev/null 2>&1; then
+        warn "unzip tidak terpasang — isi zip publik tidak diperiksa."
+        return 0
+    fi
+    tmp=$(mktemp -d)
+    if curl -fsS --max-time 60 "$zipUrl" -o "$tmp/b.zip" 2>/dev/null; then
+        zipVer=$(unzip -p "$tmp/b.zip" manifest.json 2>/dev/null \
+            | grep -o '"version": *"[a-f0-9]*"' | head -1 | cut -d'"' -f4)
+        printf 'Isi zip yang diunduh   : %s\n' "${zipVer:-(gagal dibaca)}"
+    else
+        warn "Zip publik tidak dapat diunduh."
+    fi
+    rm -rf "$tmp"
+
+    if [ -n "${zipVer:-}" ] && [ "$zipVer" != "$serverVer" ]; then
+        warn "Zip publik BEDA dengan versi yang dilaporkan config."
+        warn "Cache CDN kemungkinan masih menahan berkas lama."
+    elif [ -n "$localVer" ] && [ "$localVer" = "$serverVer" ]; then
+        ok "Ketiganya cocok."
+    fi
 }
 
 # 5. Maintenance (Backup, Log rotate, Reset)
