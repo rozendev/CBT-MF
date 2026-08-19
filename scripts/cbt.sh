@@ -136,6 +136,12 @@ reg redis   flush       do_redis_flush      1 "Hapus seluruh isi Redis"
 reg bundle  build       do_bundle_build     0 "Bangun ulang bundle UI kiosk"
 reg bundle  status      do_bundle_status    0 "Bandingkan versi bundle lokal, server, dan zip publik"
 
+reg data    images      do_data_images      0 "Keluarkan gambar base64 dari teks soal"
+reg data    optimize    do_data_optimize    1 "OPTIMIZE TABLE (mengunci tabel)"
+reg data    cache-clear do_data_cache_clear 0 "Bersihkan cache aplikasi"
+reg data    finalize    do_data_finalize    0 "Tutup attempt yang lewat batas waktu"
+reg data    prune-kiosk do_data_prune_kiosk 0 "Bersihkan kunci kiosk_live basi"
+
 reg ""      backup      run_backup          0 "Backup database dan Redis"
 reg ""      log-rotate  run_log_rotate      0 "Rotasi log aplikasi"
 reg ""      reset-install run_reset         1 "Reset instalasi (hapus semua data)"
@@ -378,6 +384,41 @@ do_bundle_status() {
     elif [ -n "$localVer" ] && [ "$localVer" = "$serverVer" ]; then
         ok "Ketiganya cocok."
     fi
+}
+
+# 4c. Data Maintenance
+do_data_images() {
+    local c; c=$(php_container); require_container "$c"
+    if [ "${1:-}" = "--commit" ]; then
+        confirm_typed "data images --commit" || { warn "Dibatalkan."; return 0; }
+        docker exec "$c" php spark cbt:extract-inline-images --commit
+        docker exec "$c" php spark cache:clear
+        warn "Jalankan 'data optimize' untuk mengembalikan ruang disk."
+    else
+        docker exec "$c" php spark cbt:extract-inline-images
+        info "Ini modus laporan. Tambahkan --commit untuk menerapkan."
+    fi
+}
+
+do_data_optimize() {
+    warn "OPTIMIZE mengunci tabel selama berjalan. Jangan lakukan saat ujian berlangsung."
+    db_exec_root "${DB_DATABASE:-}" -e \
+        "OPTIMIZE TABLE test_logs, test_log_answers, questions, answers"
+}
+
+do_data_cache_clear() {
+    local c; c=$(php_container); require_container "$c"
+    docker exec "$c" php spark cache:clear
+}
+
+do_data_finalize() {
+    local c; c=$(php_container); require_container "$c"
+    docker exec "$c" php spark finalize:expired
+}
+
+do_data_prune_kiosk() {
+    local c; c=$(php_container); require_container "$c"
+    docker exec "$c" php spark kiosk:prune
 }
 
 # 5. Maintenance (Backup, Log rotate, Reset)
