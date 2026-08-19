@@ -17,7 +17,7 @@ class QuestionModel extends Model
     protected $deletedField     = 'deleted_at';
 
     protected $allowedFields = [
-        'subject_id', 'topic_id', 'description', 'explanation', 'type', 
+        'subject_id', 'topic_id', 'description', 'explanation', 'type', 'answer_mode',
         'difficulty', 'is_enabled', 'position', 'timer', 
         'is_fullscreen', 'inline_answers', 'auto_next'
     ];

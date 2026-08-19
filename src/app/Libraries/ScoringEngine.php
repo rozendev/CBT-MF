@@ -41,8 +41,10 @@ class ScoringEngine
 
         // Fetch all test logs for this attempt in a single query
         $sqlLogs = "
-            SELECT tl.id as log_id, tl.question_id, tl.answer_text, tl.question_type
+            SELECT tl.id as log_id, tl.question_id, tl.answer_text, tl.question_type,
+                   COALESCE(q.answer_mode, 'exact') AS answer_mode
             FROM test_logs tl
+            LEFT JOIN questions q ON q.id = tl.question_id
             WHERE tl.test_attempt_id = ?
         ";
         $logs = $db->query($sqlLogs, [$attemptId])->getResult();
@@ -81,7 +83,16 @@ class ScoringEngine
                 $maxPossiblePoints += $test->score_right;
 
             } elseif ($log->question_type == 3) {
-                // Essay string matching
+                if ($log->answer_mode === 'manual') {
+                    // Esai: mesin tidak menilai. Skornya NULL, bukan 0, supaya
+                    // "belum dikoreksi" tidak tertukar dengan "dijawab salah".
+                    // Ikut dikeluarkan dari pembagi agar nilai sementara tidak
+                    // tertekan turun oleh soal yang memang belum dinilai.
+                    $logsUpdateBatch[] = ['id' => $log->log_id, 'score' => null];
+                    continue;
+                }
+
+                // Isian singkat: dicocokkan persis.
                 $questionScore = $this->evaluateEssay($logAnswers, $log->answer_text, $test);
                 $maxPossiblePoints += $test->score_right;
 
@@ -160,8 +171,10 @@ class ScoringEngine
         if (!$test) return 0;
 
         $sqlLogs = "
-            SELECT tl.id as log_id, tl.question_id, tl.answer_text, tl.question_type
+            SELECT tl.id as log_id, tl.question_id, tl.answer_text, tl.question_type,
+                   COALESCE(q.answer_mode, 'exact') AS answer_mode
             FROM test_logs tl
+            LEFT JOIN questions q ON q.id = tl.question_id
             WHERE tl.test_attempt_id = ?
         ";
         $logs = $db->query($sqlLogs, [$attemptId])->getResult();
@@ -197,6 +210,9 @@ class ScoringEngine
                 $maxPossiblePoints += $test->score_right;
 
             } elseif ($log->question_type == 3) {
+                if ($log->answer_mode === 'manual') {
+                    continue; // Esai menunggu koreksi guru; lihat calculateAndSaveScore().
+                }
                 $questionScore = $this->evaluateEssay($logAnswers, $log->answer_text, $test);
                 $maxPossiblePoints += $test->score_right;
 

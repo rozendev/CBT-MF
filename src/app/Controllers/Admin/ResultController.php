@@ -146,11 +146,14 @@ class ResultController extends BaseController
         $attempt = $this->attemptModel->find($attemptId);
         $test = $this->testModel->find($attempt->test_id);
         
-        // Calculate Max Possible Points (Assuming each question is worth score_right)
-        $sqlMax = "SELECT COUNT(*) as num_questions FROM test_logs WHERE test_attempt_id = ?";
+        // Hanya soal yang sudah dinilai yang ikut jadi pembagi. Esai yang
+        // menunggu koreksi bernilai NULL; kalau ikut dihitung, nilai siswa
+        // tertekan turun hanya karena gurunya belum sempat mengoreksi.
+        $sqlMax = "SELECT COUNT(*) as num_questions FROM test_logs
+                   WHERE test_attempt_id = ? AND score IS NOT NULL";
         $resultMax = $db->query($sqlMax, [$attemptId])->getRow();
         $numQuestions = $resultMax->num_questions ?? 0;
-        
+
         $maxPossiblePoints = $numQuestions * $test->score_right;
         
         $finalScore = 0;

@@ -14,7 +14,7 @@ class WordQuestionParser
     private const QUESTION_NUMBER_RE = '/^\d+\s*[.\-):]+\s*(.*)$/';
     private const OPTION_LETTER_RE   = '/^(\*?)([A-Za-z])\s*[.\-):]+\s*(.*)$/';
     private const JAWABAN_RE         = '/^Jawaban\s*:\s*(.*)$/i';
-    private const TIPE_RE            = '/^Tipe\s*:\s*(Menjodohkan|Benar\s*\/?\s*Salah)/i';
+    private const TIPE_RE            = '/^Tipe\s*:\s*(Menjodohkan|Benar\s*\/?\s*Salah|Esai|Essay|Uraian)/i';
 
     /** @return array<int, array<string, mixed>> */
     public function parse(array $blocks): array
@@ -38,7 +38,13 @@ class WordQuestionParser
 
             if (preg_match(self::TIPE_RE, $text, $m)) {
                 if ($current !== null) {
-                    $current['declared_pair_type'] = stripos($m[1], 'Menjodohkan') !== false ? 'MENJODOHKAN' : 'BENARSALAH';
+                    if (preg_match('/Esai|Essay|Uraian/i', $m[1])) {
+                        // Esai tetap tipe 3; yang membedakannya dari isian
+                        // singkat hanya cara menilainya.
+                        $current['declared_answer_mode'] = 'manual';
+                    } else {
+                        $current['declared_pair_type'] = stripos($m[1], 'Menjodohkan') !== false ? 'MENJODOHKAN' : 'BENARSALAH';
+                    }
                 }
                 $section = 'none';
                 continue;
@@ -184,6 +190,7 @@ class WordQuestionParser
             'answer_key'         => '',
             'matches'            => null,
             'declared_pair_type' => null,
+            'declared_answer_mode' => null,
         ];
     }
 
@@ -197,7 +204,8 @@ class WordQuestionParser
         } else {
             $q['type'] = 3; // Esai: tidak ada opsi berlabel.
         }
-        unset($q['declared_pair_type']);
+        $q['answer_mode'] = ($q['type'] === 3 && $q['declared_answer_mode'] === 'manual') ? 'manual' : 'exact';
+        unset($q['declared_pair_type'], $q['declared_answer_mode']);
         return $q;
     }
 }

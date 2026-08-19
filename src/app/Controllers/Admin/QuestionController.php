@@ -99,6 +99,7 @@ class QuestionController extends BaseController
             'subject_id'  => 'required|is_natural_no_zero',
             'topic_id'    => 'permit_empty|is_natural_no_zero',
             'type'        => 'required|in_list[1,2,3,4,5]',
+            'answer_mode' => 'permit_empty|in_list[exact,manual]',
             'description' => 'required',
             'difficulty'  => 'required|is_natural_no_zero',
         ];
@@ -119,6 +120,11 @@ class QuestionController extends BaseController
             'subject_id'     => $this->request->getPost('subject_id'),
             'topic_id'       => $this->request->getPost('topic_id') ?: null,
             'type'           => $type,
+            // Hanya bermakna untuk tipe 3. Tipe lain dikunci ke 'exact' supaya
+            // nilainya tidak menyesatkan kalau tipenya diubah belakangan.
+            'answer_mode'    => $type === 3
+                ? ($this->request->getPost('answer_mode') === 'manual' ? 'manual' : 'exact')
+                : 'exact',
             'description'    => $img->process($this->request->getPost('description')),
             'explanation'    => $img->process($this->request->getPost('explanation')),
             'difficulty'     => $this->request->getPost('difficulty'),
@@ -198,6 +204,7 @@ class QuestionController extends BaseController
             'subject_id'  => 'required|is_natural_no_zero',
             'topic_id'    => 'permit_empty|is_natural_no_zero',
             'type'        => 'required|in_list[1,2,3,4,5]',
+            'answer_mode' => 'permit_empty|in_list[exact,manual]',
             'description' => 'required',
             'difficulty'  => 'required|is_natural_no_zero',
         ];
@@ -213,6 +220,11 @@ class QuestionController extends BaseController
             'subject_id'     => $this->request->getPost('subject_id'),
             'topic_id'       => $this->request->getPost('topic_id') ?: null,
             'type'           => $type,
+            // Hanya bermakna untuk tipe 3. Tipe lain dikunci ke 'exact' supaya
+            // nilainya tidak menyesatkan kalau tipenya diubah belakangan.
+            'answer_mode'    => $type === 3
+                ? ($this->request->getPost('answer_mode') === 'manual' ? 'manual' : 'exact')
+                : 'exact',
             'description'    => $img->process($this->request->getPost('description')),
             'explanation'    => $img->process($this->request->getPost('explanation')),
             'difficulty'     => $this->request->getPost('difficulty'),

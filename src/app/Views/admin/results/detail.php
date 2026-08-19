@@ -11,10 +11,16 @@
                 <p class="text-muted mb-0">Ujian: <?= esc($test->name) ?> | Waktu Selesai: <?= date('d/m/Y H:i', strtotime($attempt->finished_at)) ?></p>
             </div>
             <div class="col-md-4 text-end">
-                <div class="display-6 fw-bold <?= $attempt->score >= $test->passing_score ? 'text-success' : 'text-danger' ?>">
+                <?php $belumDinilai = 0; foreach ($logs as $l) { if ($l->score === null) $belumDinilai++; } ?>
+                <div class="display-6 fw-bold <?= $belumDinilai > 0 ? 'text-primary' : ($attempt->score >= $test->passing_score ? 'text-success' : 'text-danger') ?>">
                     <?= number_format($attempt->score, 2) ?>
                 </div>
-                <div class="small text-muted">Skor Akhir</div>
+                <?php if ($belumDinilai > 0): ?>
+                    <div class="small text-primary fw-semibold">Skor Sementara</div>
+                    <div class="small text-muted"><?= $belumDinilai ?> soal esai belum dikoreksi</div>
+                <?php else: ?>
+                    <div class="small text-muted">Skor Akhir</div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -29,9 +35,13 @@
                 <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
                     <h6 class="m-0 fw-bold">Soal No. <?= $no++ ?> <span class="badge bg-secondary ms-2">Level <?= $log->difficulty ?></span></h6>
                     <div>
-                        <span class="badge <?= $log->score > 0 ? 'bg-success' : ($log->score < 0 ? 'bg-danger' : 'bg-warning text-dark') ?>">
-                            Poin Didapat: <?= $log->score ?>
-                        </span>
+                        <?php if ($log->score === null): ?>
+                            <span class="badge bg-primary">Menunggu koreksi Anda</span>
+                        <?php else: ?>
+                            <span class="badge <?= $log->score > 0 ? 'bg-success' : ($log->score < 0 ? 'bg-danger' : 'bg-warning text-dark') ?>">
+                                Poin Didapat: <?= $log->score ?>
+                            </span>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="card-body p-4 fs-5" style="line-height: 1.6;">

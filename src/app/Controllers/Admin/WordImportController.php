@@ -128,6 +128,7 @@ class WordImportController extends BaseController
                 $questionId = $this->questionModel->insert([
                     'subject_id'  => $subjectId,
                     'type'        => $q['type'],
+                    'answer_mode' => $q['answer_mode'] ?? 'exact',
                     'description' => $q['question'],
                     'difficulty'  => 1,
                     'is_enabled'  => 1
