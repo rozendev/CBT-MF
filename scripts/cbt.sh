@@ -142,6 +142,10 @@ reg data    cache-clear do_data_cache_clear 0 "Bersihkan cache aplikasi"
 reg data    finalize    do_data_finalize    0 "Tutup attempt yang lewat batas waktu"
 reg data    prune-kiosk do_data_prune_kiosk 0 "Bersihkan kunci kiosk_live basi"
 
+reg migrate up          do_migrate_up       0 "Jalankan migrasi yang belum diterapkan"
+reg migrate status      do_migrate_status   0 "Daftar migrasi dan statusnya"
+reg migrate rollback    do_migrate_rollback 1 "Mundurkan batch migrasi terakhir"
+
 reg ""      backup      run_backup          0 "Backup database dan Redis"
 reg ""      log-rotate  run_log_rotate      0 "Rotasi log aplikasi"
 reg ""      reset-install run_reset         1 "Reset instalasi (hapus semua data)"
@@ -420,6 +424,11 @@ do_data_prune_kiosk() {
     local c; c=$(php_container); require_container "$c"
     docker exec "$c" php spark kiosk:prune
 }
+
+# 4d. Migrate
+do_migrate_up()       { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate; }
+do_migrate_status()   { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate:status; }
+do_migrate_rollback() { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate:rollback; }
 
 # 5. Maintenance (Backup, Log rotate, Reset)
 run_backup() {
