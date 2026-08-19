@@ -301,6 +301,74 @@ cmd_db() {
     done
 }
 
+# Password TIDAK PERNAH lewat argumen: -p"$pass" terbaca siapa pun di
+# 'ps'. MYSQL_PWD adalah pola yang sudah dipakai run_backup di berkas ini.
+# Helper umum: "$@" sengaja disiapkan untuk pemanggil mendatang meski
+# do_db_reset_pw belum memakainya.
+# shellcheck disable=SC2119,SC2120
+db_exec() {
+    local c; c=$(db_container); require_container "$c"
+    docker exec -i -e MYSQL_PWD="${DB_PASSWORD:-}" "$c" \
+        mariadb -u"${DB_USERNAME:-}" "${DB_DATABASE:-}" "$@"
+}
+
+db_exec_root() {
+    local c; c=$(db_container); require_container "$c"
+    docker exec -i -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}" "$c" mariadb -uroot "$@"
+}
+
+do_db_shell() {
+    local c; c=$(db_container); require_container "$c"
+    docker exec -it -e MYSQL_PWD="${DB_PASSWORD:-}" "$c" \
+        mariadb -u"${DB_USERNAME:-}" "${DB_DATABASE:-}"
+}
+
+do_db_root() {
+    local c; c=$(db_container); require_container "$c"
+    docker exec -it -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}" "$c" mariadb -uroot
+}
+
+do_db_export() {
+    local c file
+    c=$(db_container); require_container "$c"
+    file="${1:-backup_$(date +%Y%m%d_%H%M%S).sql}"
+    docker exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}" "$c" \
+        mariadb-dump -uroot --single-transaction "${DB_DATABASE:-}" > "$PROJECT_DIR/$file"
+    ok "Diekspor ke $PROJECT_DIR/$file"
+}
+
+do_db_import() {
+    local c file="${1:-}"
+    [ -n "$file" ] || die "Berkas SQL belum disebut. Contoh: ./scripts/cbt.sh db import dump.sql"
+    [ -f "$PROJECT_DIR/$file" ] || die "Berkas tidak ditemukan: $PROJECT_DIR/$file"
+    c=$(db_container); require_container "$c"
+    docker exec -i -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}" "$c" \
+        mariadb -uroot "${DB_DATABASE:-}" < "$PROJECT_DIR/$file"
+    ok "Impor $file selesai."
+}
+
+# Kutip nilai untuk MariaDB: gandakan kutip tunggal, bungkus.
+sql_quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+
+do_db_reset_pw() {
+    local user pass hash c
+    read -r -p "Username admin [admin]: " user
+    user=${user:-admin}
+    read -r -s -p "Password baru: " pass; echo ""
+    [ -n "$pass" ] || die "Password tidak boleh kosong."
+
+    c=$(php_container); require_container "$c"
+    hash=$(printf '%s' "$pass" | docker exec -i "$c" \
+        php -r 'echo password_hash(stream_get_contents(STDIN), PASSWORD_BCRYPT);')
+    [ -n "$hash" ] || die "Gagal membuat hash password."
+
+    # Nilai dikirim lewat variabel sesi MariaDB, bukan disisipkan ke teks
+    # SQL: username atau hash yang mengandung kutip tidak lagi bisa
+    # merusak kuerinya.
+    printf "SET @u := %s; SET @h := %s;\nUPDATE users SET password = @h WHERE username = @u AND role = 'admin';\nSELECT ROW_COUNT() AS diubah;\n" \
+        "$(sql_quote "$user")" "$(sql_quote "$hash")" | db_exec
+}
+
 # 4. Redis Operations
 cmd_redis() {
      while true; do
@@ -323,6 +391,26 @@ cmd_redis() {
             *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
         esac
     done
+}
+
+do_redis_shell() {
+    local c; c=$(redis_container); require_container "$c"
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+        docker exec -it "$c" redis-cli -a "$REDIS_PASSWORD" --no-auth-warning
+    else
+        docker exec -it "$c" redis-cli
+    fi
+}
+
+do_redis_flush() {
+    local c; c=$(redis_container); require_container "$c"
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+        docker exec -i "$c" redis-cli -a "$REDIS_PASSWORD" --no-auth-warning FLUSHALL
+    else
+        docker exec -i "$c" redis-cli FLUSHALL
+    fi
+    ok "Redis dikosongkan."
+    warn "Sesi login ikut terhapus — semua orang harus login ulang."
 }
 
 # 5. Maintenance (Backup, Log rotate, Reset)
