@@ -771,7 +771,7 @@ run_install() {
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
     else
         echo -e "\n${CYAN}🔒 Memastikan folder sistem ada dan mengamankan permissions (tanpa 777)...${NC}"
-        if ! (mkdir -p "$PROJECT_DIR/src/writable/cache" "$PROJECT_DIR/src/writable/session" "$PROJECT_DIR/src/writable/debugbar" "$PROJECT_DIR/src/writable/uploads" "$PROJECT_DIR/src/writable/logs" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && chown -R :33 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && chmod -R 775 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static"); then
+        if ! (mkdir -p "$PROJECT_DIR/src/writable/cache" "$PROJECT_DIR/src/writable/session" "$PROJECT_DIR/src/writable/debugbar" "$PROJECT_DIR/src/writable/uploads" "$PROJECT_DIR/src/writable/logs" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && chown -R :33 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && find "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" -type d -exec chmod 775 {} + && find "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" -type f -exec chmod 664 {} +); then
             echo -e "${RED}Error: Gagal mengatur permission folder pada host!${NC}"
             exit 1
         fi
