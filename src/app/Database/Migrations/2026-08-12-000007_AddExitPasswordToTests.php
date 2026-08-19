@@ -14,7 +14,8 @@ class AddExitPasswordToTests extends Migration
                 'constraint' => 100,
                 'null'       => true,
                 'default'    => '123456',
-                'after'      => 'title',
+                // Tanpa 'after': tabel tests tidak pernah punya kolom 'title',
+                // jadi penempatan relatif itu selalu gagal di instalasi baru.
             ],
         ];
 
