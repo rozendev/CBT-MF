@@ -608,6 +608,12 @@ run_install() {
     # nol. Hapus dua baris ini bila nanti sudah diaudit.
     set +e +u +o pipefail
 
+    # Installer sengaja tidak berhenti di kegagalan pertama supaya sisa
+    # langkahnya tetap jalan dan pesannya terkumpul. Konsekuensinya status
+    # keluar harus dilacak sendiri, kalau tidak instalasi yang gagal separuh
+    # tetap terbaca "berhasil" oleh pemanggilnya.
+    local install_failed=0
+
     print_header
     echo -e "${CYAN}=== 🛠️ CBT-MF Interactive Installer ===${NC}"
     echo "Installer ini akan memandu Anda untuk mengatur kredensial database,"
@@ -760,6 +766,7 @@ run_install() {
     cd "$PROJECT_DIR"
     if ! $COMPOSE up -d --build --remove-orphans; then
         echo -e "${RED}Error: Docker Compose gagal berjalan! Cek log di atas untuk detailnya.${NC}"
+        install_failed=1
         exit 1
     fi
     
@@ -769,26 +776,36 @@ run_install() {
     echo -e "\n${YELLOW}Memulai Migrasi Database...${NC}"
     if ! docker ps | grep -q "$PHP_CONTAINER"; then
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
+        install_failed=1
     else
         echo -e "\n${CYAN}🔒 Memastikan folder sistem ada dan mengamankan permissions (tanpa 777)...${NC}"
         if ! (mkdir -p "$PROJECT_DIR/src/writable/cache" "$PROJECT_DIR/src/writable/session" "$PROJECT_DIR/src/writable/debugbar" "$PROJECT_DIR/src/writable/uploads" "$PROJECT_DIR/src/writable/logs" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && chown -R :33 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && find "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" -type d -exec chmod 775 {} + && find "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" -type f -exec chmod 664 {} +); then
             echo -e "${RED}Error: Gagal mengatur permission folder pada host!${NC}"
+            install_failed=1
             exit 1
         fi
 
         echo -e "${CYAN}Mengupdate dan Menginstall dependensi Composer...${NC}"
-        docker exec -i $PHP_CONTAINER composer update --no-dev --optimize-autoloader
-        docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader
+        if ! docker exec -i $PHP_CONTAINER composer update --no-dev --optimize-autoloader; then
+            echo -e "${RED}Error: composer update gagal!${NC}"
+            install_failed=1
+        fi
+        if ! docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader; then
+            echo -e "${RED}Error: composer install gagal!${NC}"
+            install_failed=1
+        fi
         
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
         if ! docker exec -i -e CI_ENVIRONMENT=development --user 33:33 $PHP_CONTAINER php spark migrate; then
             echo -e "${RED}Error: Migrasi database gagal!${NC}"
+            install_failed=1
         else
             echo -e "${CYAN}Membuat akun Admin awal...${NC}"
             HASHED_ADMIN_PASS=$(echo -n "$input_admin_pass" | docker exec -i $PHP_CONTAINER php -r "echo password_hash(file_get_contents('php://stdin'), PASSWORD_BCRYPT);")
             
             if [ -z "$HASHED_ADMIN_PASS" ]; then
                 echo -e "${RED}Error: Gagal melakukan hash password Admin!${NC}"
+                install_failed=1
             else
                 SAFE_ADMIN_USER=$(echo -n "$input_admin_user" | docker exec -i $PHP_CONTAINER php -r "echo addslashes(file_get_contents('php://stdin'));")
                 
@@ -803,12 +820,17 @@ run_install() {
                     echo -e "Username: $input_admin_user"
                 else
                     echo -e "${RED}Error: Gagal membuat akun Admin di database!${NC}"
+                    install_failed=1
                 fi
             fi
         fi
     fi
+    if [ "$install_failed" -ne 0 ]; then
+        echo -e "\n${RED}${BOLD}INSTALASI TIDAK SELESAI.${NC} ${RED}Baca pesan galat di atas sebelum memakai sistem ini.${NC}"
+    fi
     pause
     set -euo pipefail
+    return "$install_failed"
 }
 
 # 6. Testing
@@ -887,7 +909,10 @@ main_menu() {
             if [ "${kinds[$idx]}" = "group" ]; then
                 menu_group "${labels[$idx]}"
             else
-                run_entry "${fns[$idx]}" "${dangers[$idx]}" "${labels[$idx]}"
+                # Kegagalan satu perintah tidak boleh menutup menu; status
+                # sebenarnya tetap diteruskan lewat jalur CLI (dispatch).
+                run_entry "${fns[$idx]}" "${dangers[$idx]}" "${labels[$idx]}" \
+                    || warn "Perintah berakhir dengan galat."
                 echo ""; read -r -p "Tekan [Enter] untuk lanjut..."
             fi
         else
