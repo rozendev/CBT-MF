@@ -66,12 +66,6 @@ if ! load_env "$PROJECT_DIR/.env"; then
     fi
 fi
 
-# Sementara: dua turunan ini masih dipakai run_reset. Task 9 mengganti
-# pemakainya dengan MYSQL_PWD langsung dari .env; hapus blok ini begitu
-# tidak ada lagi yang merujuknya.
-DB_NAME="${DB_DATABASE:-}"
-ROOT_PASS="${MYSQL_ROOT_PASSWORD:-}"
-
 # Resolusi container sengaja MALAS. Kalau ini gagal-keras saat berkas
 # dimuat, 'install' ikut terkunci justru pada saat paling dibutuhkan.
 need_env() {
@@ -310,13 +304,22 @@ do_redis_shell() {
     fi
 }
 
-do_redis_flush() {
-    local c; c=$(redis_container); require_container "$c"
+# redis-cli menjawab "NOAUTH Authentication required." lalu tetap keluar
+# dengan status 0, jadi status keluar tidak bisa dipercaya. Balasannya yang
+# harus diperiksa: FLUSHALL yang berhasil selalu menjawab "OK".
+redis_flushall() {
+    local c="$1"
     if [ -n "${REDIS_PASSWORD:-}" ]; then
-        docker exec -i "$c" redis-cli -a "$REDIS_PASSWORD" --no-auth-warning FLUSHALL
+        docker exec -i "$c" redis-cli -a "$REDIS_PASSWORD" --no-auth-warning FLUSHALL 2>&1
     else
-        docker exec -i "$c" redis-cli FLUSHALL
+        docker exec -i "$c" redis-cli FLUSHALL 2>&1
     fi
+}
+
+do_redis_flush() {
+    local c out; c=$(redis_container); require_container "$c"
+    out=$(redis_flushall "$c")
+    [ "$out" = "OK" ] || die "Redis gagal dikosongkan: $out"
     ok "Redis dikosongkan."
     warn "Sesi login ikut terhapus — semua orang harus login ulang."
 }
@@ -570,33 +573,33 @@ run_log_rotate() {
 }
 
 run_reset() {
-    echo -e "${RED}🛑 PERINGATAN: Semua data akan dihapus!${NC}"
-    read -r -p "Ketik 'YES' untuk melanjutkan reset instalasi: " CONFIRM
+    # run_entry sudah meminta ketik ulang "reset-install", jadi tidak ada
+    # konfirmasi kedua di sini.
+    local d r out db
+    d=$(db_container); require_container "$d"
+    r=$(redis_container); require_container "$r"
+    db="${DB_DATABASE:-}"
+    [ -n "$db" ] || die "DB_DATABASE belum ada di .env; menolak menebak nama database."
 
-    if [ "$CONFIRM" != "YES" ]; then
-        echo -e "${YELLOW}❌ Reset dibatalkan.${NC}"
-        return
-    fi
-
-    echo -e "${CYAN}🔄 Memulai proses reset...${NC}"
+    info "Memulai proses reset..."
     if [ -f "$PROJECT_DIR/src/.env" ]; then
-        echo "🗑️ Menghapus file src/.env..."
+        echo "Menghapus src/.env..."
         rm -f "$PROJECT_DIR/src/.env"
     fi
 
-    echo "🗄️ Menghapus dan membuat ulang database..."
-    docker exec "$(db_container)" mariadb -u root -p"$ROOT_PASS" -e "DROP DATABASE IF EXISTS $DB_NAME; CREATE DATABASE $DB_NAME;"
+    echo "Menghapus dan membuat ulang database..."
+    db_exec_root -e "DROP DATABASE IF EXISTS \`$db\`; CREATE DATABASE \`$db\`;"
 
-    echo "📮 Membersihkan memori Redis..."
-    docker exec "$(redis_container)" redis-cli FLUSHALL > /dev/null
+    echo "Mengosongkan Redis..."
+    out=$(redis_flushall "$r")
+    [ "$out" = "OK" ] || die "Redis gagal dikosongkan: $out"
 
-    echo "🧹 Membersihkan file unggahan dan cache..."
+    echo "Membersihkan unggahan dan cache..."
     rm -rf "$PROJECT_DIR/src/public/uploads/questions/"* 2>/dev/null || true
     rm -rf "$PROJECT_DIR/src/writable/session/"* 2>/dev/null || true
     rm -rf "$PROJECT_DIR/src/writable/cache/"* 2>/dev/null || true
 
-    echo -e "\n${GREEN}✅ RESET SELESAI!${NC}"
-    echo "Sistem sekarang dalam kondisi awal (belum diinstall)."
+    ok "RESET SELESAI. Sistem kembali ke kondisi belum diinstall."
 }
 
 run_install() {
