@@ -42,6 +42,16 @@ class FinalizeExams extends BaseCommand
 
         // Find active attempts where (started_at + duration + grace) < NOW.
         // Only considers tests with a positive duration (timed exams).
+        //
+        // Jangan pakai NOW(): started_at ditulis CI4 dalam zona aplikasi
+        // (Asia/Jakarta), sedangkan NOW() mengikuti zona server MariaDB yang
+        // di sini UTC. Selisih tujuh jam itu membuat ujian baru dianggap
+        // kedaluwarsa tujuh jam setelah waktunya benar-benar habis. Dengan
+        // "sekarang" dikirim sebagai teks dari PHP, kedua sisi ditafsirkan
+        // MariaDB memakai zona yang sama, jadi selisihnya saling meniadakan
+        // berapa pun zona servernya.
+        $now = \CodeIgniter\I18n\Time::now()->format('Y-m-d H:i:s');
+
         $sql = "
             SELECT ta.id AS attempt_id, ta.user_id, ta.test_id, ta.started_at,
                    t.duration_minutes, t.name AS test_name
@@ -50,11 +60,11 @@ class FinalizeExams extends BaseCommand
             WHERE ta.status = 1
               AND t.duration_minutes > 0
               AND ta.started_at IS NOT NULL
-              AND (UNIX_TIMESTAMP(ta.started_at) + (t.duration_minutes * 60) + ?) < UNIX_TIMESTAMP(NOW())
+              AND (UNIX_TIMESTAMP(ta.started_at) + (t.duration_minutes * 60) + ?) < UNIX_TIMESTAMP(?)
             ORDER BY ta.started_at ASC
         ";
 
-        $expiredAttempts = $db->query($sql, [$graceSeconds])->getResult();
+        $expiredAttempts = $db->query($sql, [$graceSeconds, $now])->getResult();
 
         $count = count($expiredAttempts);
 
