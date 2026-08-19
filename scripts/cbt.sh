@@ -10,7 +10,17 @@ set -euo pipefail
 CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
 RED='\033[0;31m'; BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
 
-die() { printf '%b\n' "${RED}Error: $*${NC}" >&2; exit 1; }
+# die() sering dipanggil dari dalam $( ), dan 'exit' di sana hanya
+# mematikan subshell-nya: skrip induk jalan terus dengan nilai kosong.
+# Sinyal ke $$ (PID skrip, tetap sama di dalam subshell) yang membuat
+# induknya benar-benar berhenti; trap-nya menjaga agar berhenti rapi
+# dengan status 1, bukan 143 plus "Terminated".
+trap 'exit 1' TERM
+die() {
+    printf '%b\n' "${RED}Error: $*${NC}" >&2
+    kill -TERM $$ 2>/dev/null
+    exit 1
+}
 warn() { printf '%b\n' "${YELLOW}$*${NC}" >&2; }
 info() { printf '%b\n' "${CYAN}$*${NC}"; }
 ok()   { printf '%b\n' "${GREEN}$*${NC}"; }
@@ -55,6 +65,14 @@ if ! load_env "$PROJECT_DIR/.env"; then
         warn "Sebagian besar perintah akan menolak jalan sampai installer dijalankan."
     fi
 fi
+
+# Sementara: empat turunan ini masih dipakai perintah db dan reset.
+# Task 3 dan Task 9 mengganti pemakainya dengan MYSQL_PWD langsung dari
+# .env; hapus blok ini begitu tidak ada lagi yang merujuknya.
+DB_USER="${DB_USERNAME:-}"
+DB_PASS="${DB_PASSWORD:-}"
+DB_NAME="${DB_DATABASE:-}"
+ROOT_PASS="${MYSQL_ROOT_PASSWORD:-}"
 
 # Resolusi container sengaja MALAS. Kalau ini gagal-keras saat berkas
 # dimuat, 'install' ikut terkunci justru pada saat paling dibutuhkan.
