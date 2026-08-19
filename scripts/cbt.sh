@@ -146,6 +146,9 @@ reg migrate up          do_migrate_up       0 "Jalankan migrasi yang belum diter
 reg migrate status      do_migrate_status   0 "Daftar migrasi dan statusnya"
 reg migrate rollback    do_migrate_rollback 1 "Mundurkan batch migrasi terakhir"
 
+reg tune    show        do_tune_show        0 "Tampilkan setelan kapasitas yang berlaku"
+reg tune    set         do_tune_set         0 "Setel PHP_FPM_MAX_CHILDREN atau DB_BUFFER_POOL"
+
 reg ""      backup      run_backup          0 "Backup database dan Redis"
 reg ""      log-rotate  run_log_rotate      0 "Rotasi log aplikasi"
 reg ""      reset-install run_reset         1 "Reset instalasi (hapus semua data)"
@@ -255,6 +258,28 @@ do_db_import() {
 # jadi menggandakan kutip saja belum cukup: nama berakhiran "\\" membuat
 # kutip penutupnya ikut ter-escape dan kuerinya rusak.
 sql_quote() { printf "'%s'" "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/''/g")"; }
+
+# Penulis key=value yang tidak memakai sed. Delimiter sed di installer
+# adalah '|', jadi nilai yang memuat '|' merusak berkasnya; ini menulis
+# nilai apa adanya. 'cat >' dipakai, bukan 'mv', agar kepemilikan dan
+# izin berkas .env tidak berubah.
+env_set() {
+    local key="$1" value="$2" file="$PROJECT_DIR/.env" tmp line found=0
+    tmp=$(mktemp)
+    if [ -f "$file" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            if [ "${line%%=*}" = "$key" ] && [ "$line" != "${line%%=*}" ]; then
+                printf '%s=%s\n' "$key" "$value" >> "$tmp"
+                found=1
+            else
+                printf '%s\n' "$line" >> "$tmp"
+            fi
+        done < "$file"
+    fi
+    [ "$found" = "1" ] || printf '%s=%s\n' "$key" "$value" >> "$tmp"
+    cat "$tmp" > "$file"
+    rm -f "$tmp"
+}
 
 do_db_reset_pw() {
     local user pass hash c
@@ -429,6 +454,48 @@ do_data_prune_kiosk() {
 do_migrate_up()       { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate; }
 do_migrate_status()   { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate:status; }
 do_migrate_rollback() { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate:rollback; }
+
+# 4e. Tune
+do_tune_show() {
+    local p d
+    p=$(php_container); d=$(db_container)
+    require_container "$p"; require_container "$d"
+
+    printf '%b\n' "${BOLD}Nilai yang benar-benar berlaku${NC}"
+    printf 'Core CPU             : %s\n' "$(nproc)"
+    docker exec "$p" sh -c 'php-fpm -tt 2>&1 | grep -E "pm\.(max_children|start_servers)" | sed "s/^.*NOTICE:[[:space:]]*/php-fpm : /"'
+    db_exec_root -N -B -e "SELECT CONCAT('buffer pool         : ', @@innodb_buffer_pool_size/1024/1024, ' MB')"
+    # Tanpa 'sh -c': lapisan escaping ganda (bash lalu sh) meluruhkan '\$'
+    # jadi '$' polos, dan grep -P membaca '$' sebagai jangkar akhir-baris
+    # sehingga polanya tidak pernah cocok. Panggil grep langsung saja.
+    printf 'Handler cache        : %s\n' "$(docker exec "$p" grep -oP 'public string \$handler = .\K[a-z]+' app/Config/Cache.php)"
+
+    printf '\n%b\n' "${BOLD}Nilai di .env${NC}"
+    printf 'PHP_FPM_MAX_CHILDREN : %s\n' "${PHP_FPM_MAX_CHILDREN:-(kosong, otomatis 4x core)}"
+    printf 'DB_BUFFER_POOL       : %s\n' "${DB_BUFFER_POOL:-(kosong, default 512M)}"
+}
+
+do_tune_set() {
+    local key="${1:-}" value="${2:-}"
+    case "$key" in
+        PHP_FPM_MAX_CHILDREN|DB_BUFFER_POOL) ;;
+        *) die "Kunci yang didukung: PHP_FPM_MAX_CHILDREN, DB_BUFFER_POOL
+Contoh: ./scripts/cbt.sh tune set DB_BUFFER_POOL 1G" ;;
+    esac
+    [ -n "$value" ] || die "Nilai belum disebut. Contoh: tune set $key 1G"
+
+    env_set "$key" "$value"
+    ok "$key=$value disimpan ke .env"
+
+    # Sengaja tidak diterapkan sendiri: menyalakan ulang layanan di tengah
+    # ujian harus keputusan sadar.
+    case "$key" in
+        PHP_FPM_MAX_CHILDREN)
+            info "Terapkan dengan:  cd $PROJECT_DIR && docker compose build php && docker compose up -d php" ;;
+        DB_BUFFER_POOL)
+            info "Terapkan dengan:  cd $PROJECT_DIR && docker compose up -d mariadb" ;;
+    esac
+}
 
 # 5. Maintenance (Backup, Log rotate, Reset)
 run_backup() {
