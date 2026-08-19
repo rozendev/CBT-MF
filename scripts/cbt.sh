@@ -109,6 +109,75 @@ pause() {
     read -r -p "Press [Enter] to continue..."
 }
 
+# ── Senarai perintah ────────────────────────────────────────
+# Format: grup|nama|fungsi|bahaya|deskripsi
+# grup kosong = perintah tingkat atas (tanpa subperintah).
+# bahaya=1 memaksa ketik ulang nama perintah sebelum jalan.
+declare -a CMD=()
+reg() { CMD+=("$1|$2|$3|$4|$5"); }
+
+reg docker  up          do_docker_up        0 "Nyalakan semua layanan"
+reg docker  down        do_docker_down      0 "Matikan semua layanan"
+reg docker  restart     do_docker_restart   0 "Nyalakan ulang semua layanan"
+reg docker  logs        do_docker_logs      0 "Ikuti log semua layanan"
+reg docker  status      do_docker_status    0 "Status container"
+
+reg app     shell       do_app_shell        0 "Buka bash di container PHP"
+reg app     php         do_app_php          0 "Jalankan perintah php di container"
+reg app     composer    do_app_composer     0 "Jalankan composer di container"
+
+reg db      shell       do_db_shell         0 "Buka MariaDB sebagai user aplikasi"
+reg db      root        do_db_root          0 "Buka MariaDB sebagai root"
+reg db      export      do_db_export        0 "Ekspor database ke berkas .sql"
+reg db      import      do_db_import        1 "Impor berkas .sql (menimpa data)"
+reg db      reset-password do_db_reset_pw   0 "Setel ulang password admin"
+
+reg redis   shell       do_redis_shell      0 "Buka redis-cli"
+reg redis   flush       do_redis_flush      1 "Hapus seluruh isi Redis"
+
+reg ""      backup      run_backup          0 "Backup database dan Redis"
+reg ""      log-rotate  run_log_rotate      0 "Rotasi log aplikasi"
+reg ""      reset-install run_reset         1 "Reset instalasi (hapus semua data)"
+reg ""      test-k6     do_test_k6          0 "Uji beban k6"
+reg ""      install     run_install         0 "Installer interaktif"
+reg ""      help        do_help             0 "Tampilkan bantuan"
+
+find_cmd() {
+    local entry g n fn danger desc
+    for entry in "${CMD[@]}"; do
+        IFS='|' read -r g n fn danger desc <<< "$entry"
+        if [ "$g" = "$1" ] && [ "$n" = "$2" ]; then
+            printf '%s|%s' "$fn" "$danger"
+            return 0
+        fi
+    done
+    return 1
+}
+
+groups() {
+    local entry g rest
+    for entry in "${CMD[@]}"; do
+        g=${entry%%|*}
+        [ -n "$g" ] && printf '%s\n' "$g"
+    done | awk '!seen[$0]++'
+}
+
+confirm_typed() {
+    local label="$1" answer
+    printf '%b\n' "${RED}${BOLD}BAHAYA:${NC} ${RED}perintah ini merusak data.${NC}"
+    printf 'Ketik ulang persis "%s" untuk melanjutkan: ' "$label"
+    read -r answer
+    [ "$answer" = "$label" ]
+}
+
+run_entry() {
+    local fn="$1" danger="$2" label="$3"; shift 3
+    if [ "$danger" = "1" ]; then
+        confirm_typed "$label" || { warn "Dibatalkan."; return 0; }
+    fi
+    "$fn" "$@"
+}
+
 # --- Command Functions ---
 
 # 1. Docker
@@ -135,6 +204,12 @@ cmd_docker() {
         esac
     done
 }
+
+do_docker_up()      { cd "$PROJECT_DIR" && $COMPOSE up -d --build; ok "Layanan siap: http://localhost:8080"; }
+do_docker_down()    { cd "$PROJECT_DIR" && $COMPOSE down; }
+do_docker_restart() { cd "$PROJECT_DIR" && $COMPOSE restart; }
+do_docker_logs()    { cd "$PROJECT_DIR" && $COMPOSE logs -f; }
+do_docker_status()  { cd "$PROJECT_DIR" && $COMPOSE ps; }
 
 # 2. App Services (PHP/Composer)
 cmd_app() {
@@ -164,6 +239,10 @@ cmd_app() {
         esac
     done
 }
+
+do_app_shell()    { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" bash; }
+do_app_php()      { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" php "$@"; }
+do_app_composer() { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" composer "$@"; }
 
 # 3. Database Operations
 cmd_db() {
@@ -602,6 +681,17 @@ cmd_testing() {
     pause
 }
 
+do_test_k6() {
+    local vus="${1:-50}" turl="${2:-http://localhost:8080}" tid="${3:-1}"
+    cd "$PROJECT_DIR"
+    if command -v k6 >/dev/null 2>&1; then
+        BASE_URL="$turl" TEST_ID="$tid" k6 run --vus "$vus" --duration 2m scripts/k6_exam_simulation.js
+    else
+        docker run --rm -i --net=host -e BASE_URL="$turl" -e TEST_ID="$tid" \
+            -v "$PROJECT_DIR/scripts:/scripts" grafana/k6 run --vus "$vus" --duration 2m /scripts/k6_exam_simulation.js
+    fi
+}
+
 # --- Main Interactive Menu ---
 main_menu() {
     while true; do
@@ -651,75 +741,51 @@ show_cli_help() {
     echo "  help                                   Show this help message"
 }
 
-if [ $# -gt 0 ]; then
-    case "$1" in
-        docker)
-            shift
-            subcmd=${1:-}
-            cd "$PROJECT_DIR"
-            case "$subcmd" in
-                up) $COMPOSE up -d --build ;;
-                down) $COMPOSE down ;;
-                restart) $COMPOSE restart ;;
-                logs) $COMPOSE logs -f ;;
-                status) $COMPOSE ps ;;
-                *) echo "Usage: ./scripts/cbt.sh docker <up|down|restart|logs|status>" ;;
-            esac
-            ;;
-        php) shift; docker exec -it "$(php_container)" php "$@" ;;
-        composer) shift; docker exec -it "$(php_container)" composer "$@" ;;
-        db)
-            shift
-            subcmd=${1:-}
-            case "$subcmd" in
-                shell) docker exec -it "$(db_container)" mariadb -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" ;;
-                root) docker exec -it "$(db_container)" mariadb -u root -p"$ROOT_PASS" ;;
-                export) 
-                    FILENAME=${2:-"backup_$(date +%Y%m%d_%H%M%S).sql"}
-                    docker exec "$(db_container)" mariadb-dump -u root -p"$ROOT_PASS" "$DB_NAME" > "$PROJECT_DIR/$FILENAME"
-                    echo "Exported to $FILENAME"
-                    ;;
-                import)
-                    if [ -z "${2:-}" ]; then echo "Missing SQL file. Usage: ./scripts/cbt.sh db import <file>"; exit 1; fi
-                    if [ -f "$PROJECT_DIR/$2" ]; then
-                        docker exec -i "$(db_container)" mariadb -u root -p"$ROOT_PASS" "$DB_NAME" < "$PROJECT_DIR/$2"
-                        echo "Imported $2"
-                    else
-                         echo "File not found at $PROJECT_DIR/$2"
-                    fi
-                    ;;
-                *) echo "Usage: ./scripts/cbt.sh db <shell|root|export|import>" ;;
-            esac
-            ;;
-        redis)
-            shift
-            subcmd=${1:-}
-            case "$subcmd" in
-                shell) docker exec -it "$(redis_container)" redis-cli ;;
-                flush) docker exec -it "$(redis_container)" redis-cli FLUSHALL; echo "Redis flushed" ;;
-                *) echo "Usage: ./scripts/cbt.sh redis <shell|flush>" ;;
-            esac
-            ;;
-        backup) run_backup ;;
-        log-rotate) run_log_rotate ;;
-        reset-install) run_reset ;;
-        test-k6) 
-            VUS=${2:-50}
-            TURL=${3:-"http://localhost:8080"}
-            TID=${4:-1}
-            cd "$PROJECT_DIR"
-            if command -v k6 &> /dev/null; then
-                BASE_URL="$TURL" TEST_ID="$TID" k6 run --vus "$VUS" --duration 2m scripts/k6_exam_simulation.js
-            elif command -v docker &> /dev/null; then
-                docker run --rm -i --net=host -e BASE_URL="$TURL" -e TEST_ID="$TID" -v "$(pwd)/scripts:/scripts" grafana/k6 run --vus "$VUS" --duration 2m /scripts/k6_exam_simulation.js
-            else
-                echo "k6 or Docker required."
-            fi
-            ;;
-        install) run_install ;;
-        help) show_cli_help ;;
-        *) echo "Unknown command. Run './scripts/cbt.sh help' for usage." ;;
-    esac
-else
-    main_menu
-fi
+do_help() {
+    printf '%b\n' "${CYAN}${BOLD}CBT-MF CLI Helper${NC}"
+    echo "Pemakaian: sudo ./scripts/cbt.sh [grup] <perintah> [argumen]"
+    echo "Tanpa argumen, menu interaktif akan terbuka."
+    echo ""
+    local entry g n fn danger desc last=""
+    for entry in "${CMD[@]}"; do
+        IFS='|' read -r g n fn danger desc <<< "$entry"
+        if [ "$g" != "$last" ]; then
+            echo ""
+            [ -n "$g" ] && printf '%b\n' "${BOLD}${g}${NC}" || printf '%b\n' "${BOLD}umum${NC}"
+            last="$g"
+        fi
+        if [ "$danger" = "1" ]; then
+            printf '  %b%-24s%b %s\n' "$RED" "$n" "$NC" "$desc"
+        else
+            printf '  %-24s %s\n' "$n" "$desc"
+        fi
+    done
+}
+
+dispatch() {
+    local entry fn danger
+    if [ $# -eq 0 ]; then main_menu; return; fi
+
+    if entry=$(find_cmd "" "$1"); then
+        IFS='|' read -r fn danger <<< "$entry"
+        local label="$1"; shift
+        run_entry "$fn" "$danger" "$label" "$@"
+        return
+    fi
+
+    if [ $# -lt 2 ]; then
+        die "Perintah '$1' butuh subperintah. Lihat: ./scripts/cbt.sh help"
+    fi
+
+    if entry=$(find_cmd "$1" "$2"); then
+        IFS='|' read -r fn danger <<< "$entry"
+        local label="$1 $2"; shift 2
+        run_entry "$fn" "$danger" "$label" "$@"
+        return
+    fi
+
+    die "Perintah tidak dikenal: $1 $2
+Lihat daftar lengkap: ./scripts/cbt.sh help"
+}
+
+dispatch "$@"
