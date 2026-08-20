@@ -8,14 +8,32 @@ use CodeIgniter\HTTP\ResponseInterface;
 class CorsApiFilter implements FilterInterface
 {
     /**
+     * Origin tetap WebView aplikasi kiosk. WebViewAssetLoader selalu
+     * menyajikan bundle dari domain ini (lihat MainActivity.setDomain), jadi
+     * nilainya properti aplikasi, bukan pilihan pemasangan. Sempat harus
+     * diisi manual di src/.env, dan instalasi ulang menghapusnya diam-diam:
+     * bundle tetap terbuka, login-nya yang mati.
+     *
+     * Mengizinkannya tidak menambah permukaan serangan: CORS ditegakkan
+     * browser, bukan server. Penyerang yang memanggil API langsung tidak
+     * pernah melewati pemeriksaan ini sejak awal.
+     */
+    private const KIOSK_ORIGIN = 'https://appassets.androidplatform.net';
+
+    /**
      * Get the list of allowed origins from environment configuration.
      *
      * @return array<string>
      */
     private function getAllowedOrigins(): array
     {
-        $raw = env('CORS_ALLOWED_ORIGINS', rtrim(config('App')->baseURL, '/'));
-        return array_map('trim', explode(',', $raw));
+        $raw  = (string) env('CORS_ALLOWED_ORIGINS', '');
+        $list = $raw === '' ? [] : array_map('trim', explode(',', $raw));
+
+        $list[] = rtrim((string) config('App')->baseURL, '/');
+        $list[] = self::KIOSK_ORIGIN;
+
+        return array_values(array_unique(array_filter($list)));
     }
 
     /**
