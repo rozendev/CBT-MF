@@ -22,10 +22,57 @@
 
 # app.baseURL = ''
 
+#--------------------------------------------------------------------
+# KUNCI TAMBAHAN YANG DIBACA APLIKASI INI
+#--------------------------------------------------------------------
+# Daftar ini ada karena pernah menggigit: CORS_ALLOWED_ORIGINS dulu wajib
+# diisi manual, tidak tercatat di mana pun, lalu hilang saat instalasi
+# ulang. Gejalanya menyesatkan — aplikasi kiosk tetap membuka halaman
+# login, tapi setiap panggilan API gagal.
+#
+# Semuanya OPSIONAL. Biarkan berkomentar untuk pemakaian normal.
+
 # Origin tambahan yang boleh memanggil API lintas-origin, dipisah koma.
-# Kosongkan saja untuk pemakaian normal: baseURL dan origin WebView aplikasi
-# kiosk (https://appassets.androidplatform.net) sudah selalu diizinkan.
+# baseURL dan origin WebView kiosk (https://appassets.androidplatform.net)
+# sudah selalu diizinkan dari kode, jadi biasanya tidak perlu diisi.
 # CORS_ALLOWED_ORIGINS = ''
+
+# Menimpa origin WebView kiosk pada pemeriksaan CSRF. Hanya perlu diubah
+# kalau aplikasi Android memakai setDomain() yang berbeda.
+# KIOSK_CORS_ORIGIN = 'https://appassets.androidplatform.net'
+
+# Rahasia bersama antara aplikasi kiosk dan server, lapisan pertahanan
+# tambahan saat memverifikasi password keluar. Kosong = pemeriksaan ini
+# dilewati (bukan galat). Kalau diisi, aplikasi harus mengirim nilai yang
+# sama pada field app_secret.
+# KIOSK_APP_SECRET = ''
+
+# Token untuk endpoint laporan penyusup. PERHATIAN: kalau kosong, kode
+# memakai nilai bawaan yang tertulis di dalam repositori
+# (IntruderReportController::DEFAULT_TOKEN), sehingga semua pemasangan
+# memakai token yang sama. Isi sendiri sebelum dipakai sungguhan.
+# INTRUDER_TOKEN = ''
+
+# Statistik Cloudflare di halaman analitik. Kosong = panel itu tidak aktif.
+# CLOUDFLARE_API_TOKEN = ''
+# CLOUDFLARE_ZONE_ID = ''
+
+# Menandai installer sudah dikunci; hanya memengaruhi peringatan di
+# halaman setelan.
+# INSTALLER_LOCKED = false
+
+# Penyimpanan cache. Kosong = mengikuti Config/Cache.php (redis).
+# cache.handler = 'redis'
+
+# Alamat Redis. Nilai bawaannya sudah benar untuk stack docker ini, dan
+# REDIS_HOST / REDIS_PORT / REDIS_PASSWORD sudah disuntikkan ke container
+# oleh docker-compose dari .env di akar repositori. JANGAN menyalinnya ke
+# sini: dua sumber untuk nilai yang sama akan menyimpang diam-diam.
+# cache.redis.host = 'redis'
+# cache.redis.port = 6379
+# cache.redis.password = ''
+# redis.host = 'redis'
+# redis.port = 6379
 # If you have trouble with `.`, you could also use `_`.
 # app_baseURL = ''
 # app.forceGlobalSecureRequests = false
