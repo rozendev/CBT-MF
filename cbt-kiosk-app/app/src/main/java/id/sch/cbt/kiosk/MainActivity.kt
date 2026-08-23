@@ -179,9 +179,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            // Side-load: bundle zip dibuka dari file manager / share intent.
-            handleBundleIntent(intent)
-
             // Load saved URL from preferences
             val savedUrl = prefs.getString("server_url", "")
             if (!savedUrl.isNullOrBlank()) {
@@ -664,6 +661,18 @@ class MainActivity : AppCompatActivity() {
                 val zipUrl = info.optString("url").takeIf { it.isNotBlank() }
                     ?: "$baseUrl/ui-bundle/ui-bundle.zip"
 
+                // Sidik jari zip resmi, datang lewat HTTPS di luar zip itu sendiri.
+                // Dipin supaya side-load manual (offline) tetap punya pembanding.
+                val serverSha = info.optString("sha256").takeIf { it.isNotBlank() }
+                if (serverSha == null) {
+                    runOnUiThread {
+                        btnUpdateBundle.isEnabled = true
+                        setBundleStatus("Server belum mengirim sidik jari bundle — perbarui server.")
+                    }
+                    return@thread
+                }
+                uiBundleManager.expectedZipSha = serverSha
+
                 runOnUiThread {
                     bundleDownloadActive = true
                     setBundleStatus("Mengunduh bundle v${serverVersion.take(8)}...")
@@ -671,6 +680,7 @@ class MainActivity : AppCompatActivity() {
                 uiBundleManager.downloadDirect(
                     zipUrl,
                     serverVersion,
+                    serverSha,
                     onProgress = { done, total ->
                         runOnUiThread { setBundleStatus("Mengunduh bundle UI... ${(done * 100 / total)}%") }
                     },
@@ -815,6 +825,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             val bundleInfo = json.optJSONObject("ui_bundle")
+            // Pin sidik jari resmi setiap kali config dibaca: inilah satu-satunya
+            // kesempatan perangkat mendapat pembanding tepercaya sebelum offline.
+            bundleInfo?.optString("sha256")?.takeIf { it.isNotBlank() }?.let {
+                uiBundleManager.expectedZipSha = it
+            }
             val serverBundleVersion = bundleInfo?.optString("version") ?: ""
             if (serverBundleVersion.isNotBlank() && serverBundleVersion != localBundleVersion) {
                 // Sekadar pemberitahuan; ujian tetap boleh jalan dengan bundle
@@ -851,21 +866,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Bundle zip dibuka dari luar app (file manager / share) → import lalu lanjut exam flow.
-     */
-    private fun handleBundleIntent(intent: Intent?) {
-        if (intent == null) return
-        val data = intent.data ?: return
-        val isZipMime = intent.type == "application/zip"
-        val isZipPath = data.lastPathSegment?.endsWith(".zip") == true
-        if ((isZipMime || isZipPath) && data != null) {
-            if (uiBundleManager.importBundle(data)) {
-                continueExamFlowAfterImport()
-            }
-        }
-    }
-
     private fun continueExamFlowAfterImport() {
         val savedUrl = prefs.getString("server_url", "") ?: ""
         if (savedUrl.isNullOrBlank()) {
@@ -878,7 +878,9 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleBundleIntent(intent)
+        // Tidak ada lagi impor bundle dari intent luar: lihat catatan di
+        // AndroidManifest.xml. Bundle hanya masuk lewat tombol Impor (pilihan
+        // sadar operator) atau unduhan terverifikasi dari server.
     }
 
     @Suppress("DEPRECATION")

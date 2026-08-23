@@ -15,8 +15,9 @@ class KioskController extends BaseController
     {
         $settingModel = new SettingModel();
 
-        $bundleInfo = ['version' => '', 'url' => '', 'size' => 0];
+        $bundleInfo = ['version' => '', 'url' => '', 'size' => 0, 'sha256' => ''];
         $manifestPath = FCPATH . 'ui-bundle/manifest.json';
+        $zipPath      = FCPATH . 'ui-bundle/ui-bundle.zip';
         if (is_file($manifestPath)) {
             try {
                 $manifest = json_decode((string) file_get_contents($manifestPath), true);
@@ -28,10 +29,16 @@ class KioskController extends BaseController
                 // menyusul versi yang dilaporkan config, dan aplikasi mengunduh
                 // ulang selamanya tanpa pernah maju. URL unik per versi
                 // memutus lingkaran itu.
+                // sha256 zip UTUH adalah satu-satunya jangkar kepercayaan yang
+                // dimiliki perangkat. manifest.json ikut terbungkus di dalam zip,
+                // jadi mencocokkan 'version' saja tak membuktikan apa pun:
+                // penyusun zip palsu tinggal menyalin nomor versi yang sah.
+                // Nilai ini datang lewat HTTPS dari server, di luar zip.
                 $bundleInfo = [
                     'version' => $version,
                     'url'     => base_url('ui-bundle/ui-bundle.zip') . ($version !== '' ? '?v=' . substr($version, 0, 16) : ''),
-                    'size'    => (int) (is_file(FCPATH . 'ui-bundle/ui-bundle.zip') ? filesize(FCPATH . 'ui-bundle/ui-bundle.zip') : 0),
+                    'size'    => (int) (is_file($zipPath) ? filesize($zipPath) : 0),
+                    'sha256'  => is_file($zipPath) ? hash_file('sha256', $zipPath) : '',
                 ];
             } catch (\Throwable $e) {
                 log_message('error', 'Kiosk config bundle manifest error: ' . $e->getMessage());

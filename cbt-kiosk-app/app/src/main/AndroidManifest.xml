@@ -28,13 +28,18 @@
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-            <!-- Side-load UI bundle zip: file manager / share apps open this app -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:mimeType="application/zip" />
-            </intent-filter>
+            <!--
+                DIHAPUS dengan sengaja: intent-filter VIEW/application/zip.
+                Filter itu membuat aplikasi apa pun di perangkat (file manager,
+                share sheet, browser) bisa menyerahkan zip dan memicu pemasangan
+                bundle tanpa autentikasi sama sekali. Bundle yang terpasang
+                disajikan di origin tepercaya appassets.androidplatform.net yang
+                punya CommsBridge, jadi zip buatan siswa = kendali penuh atas UI
+                ujian, dan penyebarannya cukup lewat share sheet ke teman.
+                Side-load yang sah tetap ada lewat tombol "Impor Bundle" di layar
+                setup (ACTION_OPEN_DOCUMENT), yang merupakan tindakan sadar
+                operator, bukan intent dari luar.
+            -->
         </activity>
         
         <service 

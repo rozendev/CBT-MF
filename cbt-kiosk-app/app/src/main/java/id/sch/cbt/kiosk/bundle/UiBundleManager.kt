@@ -25,6 +25,8 @@ class UiBundleManager(
         private const val TAG = "UiBundleManager"
         private const val PREFS_VERSION = "ui_bundle_version"
         private const val PREFS_EXAM_ACTIVE = "ui_exam_active"
+        /** sha256 zip resmi terakhir yang diumumkan server lewat /api/kiosk/config. */
+        private const val PREFS_EXPECTED_SHA = "ui_bundle_expected_sha256"
         const val BUNDLE_DIR = "ui-bundle"
         const val STAGING_DIR = "ui-bundle.staging"
     }
@@ -44,6 +46,17 @@ class UiBundleManager(
 
     fun bundleVersion(): String? = prefs.getString(PREFS_VERSION, null)
 
+    /**
+     * sha256 zip resmi yang terakhir diumumkan server. Dipin saat config diambil
+     * lewat HTTPS, lalu dipakai sebagai jangkar untuk side-load offline.
+     */
+    var expectedZipSha: String?
+        get() = prefs.getString(PREFS_EXPECTED_SHA, null)?.takeIf { it.isNotBlank() }
+        set(v) {
+            if (v.isNullOrBlank()) return
+            prefs.edit().putString(PREFS_EXPECTED_SHA, v.lowercase()).apply()
+        }
+
     /** Baca manifest lokal untuk bandingkan versi. */
     fun localVersion(): String? {
         return try {
@@ -61,6 +74,7 @@ class UiBundleManager(
     fun downloadDirect(
         zipUrl: String,
         expectedVersion: String,
+        expectedZipSha256: String?,
         onProgress: (Long, Long) -> Unit,
         onDone: (Boolean, String?) -> Unit
     ) {
@@ -98,7 +112,7 @@ class UiBundleManager(
                 output.close()
                 input.close()
                 Log.i(TAG, "Download selesai: ${target.length()} byte (v$expectedVersion)")
-                val ok = verifyAndInstall(target)
+                val ok = verifyAndInstall(target, expectedZipSha256)
                 onDone(ok, if (ok) null else "Verifikasi bundle gagal.")
             } catch (e: Throwable) {
                 Log.e(TAG, "Download bundle gagal", e)
@@ -113,12 +127,38 @@ class UiBundleManager(
         }
     }
 
-    /** Pipeline verify+extract untuk download/import. Return true bila berhasil. */
+    /**
+     * Pipeline verify+extract untuk download/import. Return true bila berhasil.
+     *
+     * [expectedZipSha256] WAJIB dan harus berasal dari luar zip (config server
+     * lewat HTTPS). Tanpa itu verifikasi tidak membuktikan apa pun: manifest.json
+     * ikut terbungkus di dalam zip yang sama, sehingga penyusun zip palsu
+     * mengendalikan payload sekaligus tabel hash pembandingnya dan selalu lolos.
+     * Bundle yang lolos dipasang ke origin appassets.androidplatform.net yang
+     * memegang CommsBridge, jadi kegagalan di sini berarti kendali penuh atas
+     * klien ujian.
+     */
     @Synchronized
-    fun verifyAndInstall(zipFile: File): Boolean {
+    fun verifyAndInstall(zipFile: File, expectedZipSha256: String?): Boolean {
         return try {
             if (!zipFile.exists()) { fail("File bundle tidak ditemukan."); return false }
             Log.d(TAG, "verifyAndInstall: mulai, zip=${zipFile.length()} byte")
+
+            // Jangkar luar dulu, sebelum sebutir byte pun diekstrak.
+            val anchor = expectedZipSha256?.trim()?.lowercase()
+            if (anchor.isNullOrBlank()) {
+                fail("Bundle ditolak: belum ada sidik jari resmi dari server. " +
+                    "Hubungkan perangkat ke server sekali (isi URL lalu Periksa Pembaruan) sebelum impor manual.")
+                zipFile.delete()
+                return false
+            }
+            val actualZipSha = sha256(zipFile.readBytes())
+            if (!constantTimeEquals(actualZipSha, anchor)) {
+                fail("Bundle ditolak: sidik jari tidak cocok dengan yang diumumkan server.")
+                Log.w(TAG, "verifyAndInstall: sha zip=$actualZipSha, diharapkan=$anchor")
+                zipFile.delete()
+                return false
+            }
             // ekstrak ke staging (hapus staging lama dulu)
             stagingDir.deleteRecursively()
             stagingDir.mkdirs()
@@ -189,6 +229,11 @@ class UiBundleManager(
     private fun sha256(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
+    /**
+     * Side-load manual dari file picker. Tetap diverifikasi terhadap sidik jari
+     * resmi yang sudah dipin dari server — zip yang dipilih operator tidak lebih
+     * tepercaya daripada zip yang datang dari mana pun.
+     */
     fun importBundle(uri: Uri): Boolean {
         return try {
             val tmp = File(context.cacheDir, "import-ui-bundle.zip")
@@ -196,10 +241,18 @@ class UiBundleManager(
             context.contentResolver.openInputStream(uri)?.use { input ->
                 tmp.outputStream().use { output -> input.copyTo(output) }
             } ?: run { onError("Gagal membaca file bundle."); return false }
-            verifyAndInstall(tmp)
+            verifyAndInstall(tmp, expectedZipSha)
         } catch (e: Throwable) {
             onError("Gagal import bundle: ${e.message}")
             false
         }
+    }
+
+    /** Perbandingan hash tanpa short-circuit; murah dan menghilangkan satu kelas keraguan. */
+    private fun constantTimeEquals(a: String, b: String): Boolean {
+        if (a.length != b.length) return false
+        var diff = 0
+        for (i in a.indices) diff = diff or (a[i].code xor b[i].code)
+        return diff == 0
     }
 }
