@@ -66,6 +66,6 @@ class KioskSettingsController extends BaseController
 
         $this->activityLog->log('update', session('user_id'), 'setting', 0, 'Memperbarui pengaturan Aplikasi Kiosk Android');
 
-        return redirect()->to('/admin/kiosk')->with('success', 'Pengaturan Aplikasi Kiosk Android berhasil disimpan.');
+        return redirect()->to('/admin/kiosk')->with('success', 'Pengaturan Integrasi EXAMBRO berhasil disimpan.');
     }
 }

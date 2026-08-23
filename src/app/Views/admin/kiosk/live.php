@@ -1,5 +1,5 @@
 <?= $this->extend('layouts/admin') ?>
-<?= $this->section('page_title') ?>Monitoring Kiosk Real-Time<?= $this->endSection() ?>
+<?= $this->section('page_title') ?>Monitoring EXAMBRO Real-Time<?= $this->endSection() ?>
 <?= $this->section('styles') ?>
 <style>
     .status-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
@@ -14,8 +14,8 @@
 <div x-data="kioskLive()" class="pb-5">
     <div class="row mb-4 align-items-center">
         <div class="col-md-8">
-            <h3 class="fw-bold mb-1"><i class="bi bi-phone me-2 text-primary"></i>Monitoring Kiosk Real-Time</h3>
-            <p class="text-muted mb-0">Status perangkat kiosk siswa per ujian. Data diperbarui otomatis tiap 10 detik.</p>
+            <h3 class="fw-bold mb-1"><i class="bi bi-phone me-2 text-primary"></i>Monitoring EXAMBRO Real-Time</h3>
+            <p class="text-muted mb-0">Status perangkat EXAMBRO siswa per ujian. Data diperbarui otomatis tiap 10 detik.</p>
         </div>
         <div class="col-md-4 text-end">
             <select x-model="selectedTest" @change="loadData()" class="form-select d-inline-block w-auto">

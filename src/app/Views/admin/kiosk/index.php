@@ -1,6 +1,6 @@
 <?= $this->extend('layouts/admin') ?>
 
-<?= $this->section('title') ?>Aplikasi Kiosk Android<?= $this->endSection() ?>
+<?= $this->section('title') ?>Integrasi EXAMBRO<?= $this->endSection() ?>
 
 <?php
 if (!function_exists('kioskSettingVal')) {
@@ -24,7 +24,7 @@ if (!function_exists('kioskSettingChecked')) {
         <div class="pane-kicker text-primary fw-bold text-uppercase fs-7 tracking-wider mb-1">
             <i class="bi bi-phone me-1"></i> Client Encapsulation &amp; Anti-Cheat
         </div>
-        <h3 class="mb-1 fw-extrabold text-dark">Aplikasi Kiosk Android</h3>
+        <h3 class="mb-1 fw-extrabold text-dark">Integrasi EXAMBRO</h3>
         <p class="text-muted mb-0">Manajemen konfigurasi enkapsulasi, sirine alarm, dan kata sandi pengawas untuk aplikasi pengunci layar HP siswa (BYOD).</p>
     </div>
 </div>
@@ -57,13 +57,13 @@ if (!function_exists('kioskSettingChecked')) {
                     <div class="row g-4">
                         <div class="col-md-6">
                             <label class="form-label fw-bold text-dark" for="kioskExitPassword">
-                                Password Keluar Kiosk App <span class="text-danger">*</span>
+                                Password Keluar EXAMBRO <span class="text-danger">*</span>
                             </label>
                             <input type="text" class="form-control form-control-lg" id="kioskExitPassword" 
                                    name="settings[kiosk_exit_password]" 
                                    value="<?= esc(kioskSettingVal($kioskSettings, 'kiosk_exit_password', '123456')) ?>" 
                                    maxlength="32" required placeholder="Contoh: 123456">
-                            <div class="form-text mt-2">Password rahasia bagi pengawas/proctor untuk melepaskan Kiosk Mode pada HP siswa.</div>
+                            <div class="form-text mt-2">Password rahasia bagi pengawas/proctor untuk melepaskan Integrasi EXAMBRO pada HP siswa.</div>
                         </div>
 
                         <div class="col-md-6">
@@ -193,7 +193,7 @@ if (!function_exists('kioskSettingChecked')) {
     <!-- ACTION BUTTON -->
     <div class="d-flex justify-content-end mt-4">
         <button type="submit" class="btn btn-primary btn-lg px-5 shadow-sm fw-bold">
-            <i class="bi bi-check2 me-2"></i> Simpan Perubahan Kiosk
+            <i class="bi bi-check2 me-2"></i> Simpan Perubahan EXAMBRO
         </button>
     </div>
 </form>

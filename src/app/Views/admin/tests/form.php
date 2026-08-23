@@ -183,9 +183,9 @@
                             <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" id="requireKioskToggle" name="require_kiosk" value="1"
                                        <?= old('require_kiosk', $test->require_kiosk ?? '0') == '1' ? 'checked' : '' ?>>
-                                <label class="form-check-label" for="requireKioskToggle">Wajib Aplikasi CBT Kiosk</label>
+                                <label class="form-check-label" for="requireKioskToggle">Wajib Integrasi EXAMBRO</label>
                                 <div class="form-text small mt-1">
-                                    Jawaban hanya diterima selama aplikasi kiosk mengirim heartbeat. Ujian jadi
+                                    Jawaban hanya diterima selama aplikasi EXAMBRO mengirim heartbeat. Ujian jadi
                                     tidak bisa dikerjakan lewat browser biasa, termasuk browser di komputer.
                                 </div>
                             </div>

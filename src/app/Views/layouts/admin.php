@@ -926,13 +926,13 @@ $faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? 
                 <i class="bi bi-shield-lock"></i>
                 <span class="nav-text"><?= lang('App.menu_security') ?></span>
             </a>
-            <a href="<?= base_url('/admin/kiosk') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/kiosk') && !str_contains($currentUrl, '/admin/kiosk/live') ? 'active' : '' ?>" title="App Kiosk Android">
+            <a href="<?= base_url('/admin/kiosk') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/kiosk') && !str_contains($currentUrl, '/admin/kiosk/live') ? 'active' : '' ?>" title="Integrasi EXAMBRO">
                 <i class="bi bi-phone"></i>
-                <span class="nav-text">App Kiosk Android</span>
+                <span class="nav-text">Integrasi EXAMBRO</span>
             </a>
-            <a href="<?= base_url('/admin/kiosk/live') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/kiosk/live') ? 'active' : '' ?>" title="Monitoring Kiosk Real-Time">
+            <a href="<?= base_url('/admin/kiosk/live') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/kiosk/live') ? 'active' : '' ?>" title="Monitoring EXAMBRO Real-Time">
                 <i class="bi bi-broadcast-pin"></i>
-                <span class="nav-text">Kiosk Live</span>
+                <span class="nav-text">EXAMBRO Live</span>
             </a>
             <a href="<?= base_url('/admin/settings') ?>" class="nav-item <?= str_contains($currentUrl, '/admin/settings') ? 'active' : '' ?>" title="<?= esc(lang('App.menu_settings')) ?>">
                 <i class="bi bi-gear"></i>
