@@ -210,7 +210,15 @@ class WordQuestionParser
         } else {
             $q['type'] = 3; // Esai: tidak ada opsi berlabel.
         }
-        $q['answer_mode'] = ($q['type'] === 3 && $q['declared_answer_mode'] === 'manual') ? 'manual' : 'exact';
+        $q['answer_mode'] = 'exact';
+        if ($q['type'] === 3) {
+            // Sejajar dengan penanda "Tipe: Esai": tanpa kunci yang benar-benar
+            // berisi, satu-satunya penilaian yang jujur adalah koreksi guru.
+            // Mengizinkan exact berkunci kosong berarti mesin mencocokkan
+            // persis dengan "tidak ada apa-apa" dan selalu menghasilkan 0.
+            $hasKey = trim($q['answer_key']) !== '';
+            $q['answer_mode'] = ($q['declared_answer_mode'] === 'manual' || !$hasKey) ? 'manual' : 'exact';
+        }
         unset($q['declared_pair_type'], $q['declared_answer_mode']);
         return $q;
     }

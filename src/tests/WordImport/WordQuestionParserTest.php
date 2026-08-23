@@ -191,6 +191,7 @@ class WordQuestionParserTest extends TestCase
 
         $this->assertSame(3, $questions[0]['type']);
         $this->assertSame('', $questions[0]['answer_key']);
+        $this->assertSame('manual', $questions[0]['answer_mode']);
     }
 
     public function testMultiLineQuestionAndOptionTextIsJoinedWithBr(): void
@@ -251,6 +252,20 @@ class WordQuestionParserTest extends TestCase
         $this->assertSame(3, $questions[0]['type']);
         $this->assertSame('Ir. Soekarno', $questions[0]['answer_key']);
         $this->assertSame([], $questions[0]['options']);
+        $this->assertSame('exact', $questions[0]['answer_mode']);
+    }
+
+    public function testDeclaredEsaiMarkerStaysManualEvenWithEmptyKey(): void
+    {
+        $blocks = [
+            $this->line('5. Jelaskan pendapatmu tentang pentingnya menjaga kelestarian hutan.'),
+            $this->line('Tipe: Esai'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame(3, $questions[0]['type']);
+        $this->assertSame('manual', $questions[0]['answer_mode']);
     }
 
     public function testMatchingTypeConsumesTableAsPairsSkippingHeaderRow(): void
