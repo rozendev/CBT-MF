@@ -139,7 +139,12 @@ class WordQuestionParser
         if (preg_match(self::QUESTION_NUMBER_RE, $text, $m)) {
             return trim($m[1]);
         }
-        if ($block['is_list_item'] && $block['list_depth'] === 0) {
+        // Bullet tidak membawa nomor urut, jadi tidak pernah menandai soal baru.
+        // Di dokumen Word asli, opsi sering ditulis sebagai bullet tanpa
+        // diindentasi, sehingga mendarat di depth 0 -- sejajar dengan soal.
+        if ($block['is_list_item']
+            && $block['list_depth'] === 0
+            && ($block['list_format'] ?? null) !== 'bullet') {
             return $text;
         }
         return null;
@@ -155,6 +160,7 @@ class WordQuestionParser
     private function matchOptionBoundary(array $block, string $text): ?array
     {
         $isLetterList = $block['is_list_item'] && ($block['list_format'] ?? null) === 'letter';
+        $isBulletList = $block['is_list_item'] && ($block['list_format'] ?? null) === 'bullet';
 
         if (preg_match(self::OPTION_LETTER_RE, $text, $m)) {
             return [
@@ -164,7 +170,7 @@ class WordQuestionParser
                 'explicit'   => true,
             ];
         }
-        if ($block['is_list_item'] && ($block['list_depth'] >= 1 || $isLetterList)) {
+        if ($block['is_list_item'] && ($block['list_depth'] >= 1 || $isLetterList || $isBulletList)) {
             $isCorrect = str_starts_with($text, '*');
             return [
                 'letter'     => null,
