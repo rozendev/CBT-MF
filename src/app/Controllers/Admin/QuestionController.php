@@ -122,8 +122,10 @@ class QuestionController extends BaseController
             'type'           => $type,
             // Hanya bermakna untuk tipe 3. Tipe lain dikunci ke 'exact' supaya
             // nilainya tidak menyesatkan kalau tipenya diubah belakangan.
+            // Dropdown default 'exact'; bila guru tidak mengisi teks kunci,
+            // paksa 'manual' agar soalnya antre koreksi, bukan dinilai 0.
             'answer_mode'    => $type === 3
-                ? ($this->request->getPost('answer_mode') === 'manual' ? 'manual' : 'exact')
+                ? (($this->request->getPost('answer_mode') === 'manual' || !$this->_postHasAnswerKey()) ? 'manual' : 'exact')
                 : 'exact',
             'description'    => $img->process($this->request->getPost('description')),
             'explanation'    => $img->process($this->request->getPost('explanation')),
@@ -222,8 +224,10 @@ class QuestionController extends BaseController
             'type'           => $type,
             // Hanya bermakna untuk tipe 3. Tipe lain dikunci ke 'exact' supaya
             // nilainya tidak menyesatkan kalau tipenya diubah belakangan.
+            // Dropdown default 'exact'; bila guru tidak mengisi teks kunci,
+            // paksa 'manual' agar soalnya antre koreksi, bukan dinilai 0.
             'answer_mode'    => $type === 3
-                ? ($this->request->getPost('answer_mode') === 'manual' ? 'manual' : 'exact')
+                ? (($this->request->getPost('answer_mode') === 'manual' || !$this->_postHasAnswerKey()) ? 'manual' : 'exact')
                 : 'exact',
             'description'    => $img->process($this->request->getPost('description')),
             'explanation'    => $img->process($this->request->getPost('explanation')),
@@ -421,5 +425,27 @@ class QuestionController extends BaseController
             ]);
             $position++;
         }
+    }
+
+    /**
+     * True bila POST answers memuat minimal satu teks kunci non-kosong —
+     * kriteria yang sama dengan _saveAnswers() saat memutuskan baris mana
+     * yang ditulis. Bentuk field: array teks ber-key huruf/indeks.
+     */
+    private function _postHasAnswerKey(): bool
+    {
+        $answers = $this->request->getPost('answers') ?? [];
+
+        if (!is_array($answers)) {
+            return trim((string) $answers) !== '';
+        }
+
+        foreach ($answers as $text) {
+            if (trim((string) $text) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
