@@ -213,7 +213,7 @@
                         <img id="m-photo" src="" alt="Foto intruder" class="img-fluid rounded-3 w-100" style="max-height: 420px; object-fit: contain; background: var(--bg-soft); border: 1px solid var(--border-color);">
                         <div class="mt-3 d-flex flex-wrap gap-2">
                             <a id="m-maps" href="#" target="_blank" rel="noopener" class="btn btn-ghost btn-sm"><i class="bi bi-geo-alt me-1"></i>Lokasi di Google Maps</a>
-                            <span class="chip info" id="m-screen"><i class="bi bi-display"></i> -</span>
+                            <span class="chip info" id="m-screen"><i class="bi bi-display"></i> <span id="m-screen-text">-</span></span>
                         </div>
                     </div>
                     <div class="col-md-5">
@@ -251,7 +251,9 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById('m-ip').textContent = el.dataset.ip || '-';
         document.getElementById('m-ua').textContent = el.dataset.ua || '-';
         document.getElementById('m-uri').textContent = el.dataset.uri || '-';
-        document.getElementById('m-screen').innerHTML = '<i class="bi bi-display"></i> ' + (el.dataset.screen || '-');
+        // textContent, bukan innerHTML: dataset mengembalikan nilai yang sudah
+        // di-decode dari HTML entity, jadi esc() di atribut tidak menolong di sini.
+        document.getElementById('m-screen-text').textContent = el.dataset.screen || '-';
         var lat = el.dataset.lat, lng = el.dataset.lng;
         var coordEl = document.getElementById('m-coord');
         var mapsEl = document.getElementById('m-maps');

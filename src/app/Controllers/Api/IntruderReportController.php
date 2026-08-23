@@ -49,7 +49,7 @@ class IntruderReportController extends BaseController
                 'user_agent'   => mb_substr((string) ($body['ua'] ?? $this->request->getUserAgent()), 0, 2000),
                 'requested_uri'=> mb_substr((string) ($body['uri'] ?? ''), 0, 500),
                 'referer'      => mb_substr((string) ($body['referer'] ?? ''), 0, 500),
-                'screen'       => mb_substr((string) ($body['screen'] ?? ''), 0, 50),
+                'screen'       => $this->validScreen($body['screen'] ?? null),
                 'platform'     => mb_substr((string) ($body['platform'] ?? ''), 0, 100),
             ]);
 
@@ -123,6 +123,19 @@ class IntruderReportController extends BaseController
     private function validDecimal($value): ?float
     {
         return is_numeric($value) ? (float) $value : null;
+    }
+
+    /**
+     * Resolusi layar hanya boleh berbentuk "LEBARxTINGGI" (lihat halaman
+     * honeypot: window.screen.width + 'x' + window.screen.height). Apa pun
+     * selain itu dibuang, bukan disimpan apa adanya — nilai ini berasal dari
+     * request tanpa autentikasi dan ditampilkan di halaman admin.
+     */
+    private function validScreen($value): string
+    {
+        $value = (string) $value;
+
+        return preg_match('/^\d{1,5}x\d{1,5}$/D', $value) === 1 ? $value : '';
     }
 
     private function withinPhotoQuota(): bool
