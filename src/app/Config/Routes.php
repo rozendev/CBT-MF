@@ -178,6 +178,12 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->post('results/update-score', 'Admin\ResultController::updateManualScore');
     $routes->post('results/delete-attempt/(:num)', 'Admin\ResultController::deleteAttempt/$1');
 
+    // Koreksi cepat: satu soal esai dinilai lintas siswa dalam satu layar.
+    $routes->get('results/grade/(:num)', 'Admin\ResultController::gradeRedirect/$1');
+    $routes->get('results/grade/(:num)/(:num)', 'Admin\ResultController::grade/$1/$2');
+    $routes->get('results/grade-data/(:num)/(:num)', 'Admin\ResultController::gradeData/$1/$2');
+    $routes->post('results/grade-save', 'Admin\ResultController::gradeSave');
+
     // Proctor Report Notifications (polling)
     $routes->get('notifications/proctor-reports', 'Admin\NotificationController::proctorReports');
 });
