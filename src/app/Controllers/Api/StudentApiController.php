@@ -224,6 +224,17 @@ class StudentApiController extends BaseController
         $showCorrect = $test->show_correct_answers !== null ? (bool) $test->show_correct_answers : (bool) (new SettingModel())->getValue('show_correct_answers', false);
         $allowReview = $test->allow_review !== null ? (bool) $test->allow_review : (bool) (new SettingModel())->getValue('allow_review', true);
 
+        // Tegakkan di server, bukan di klien. Sebelum ini $allowReview hanya ikut
+        // terkirim sebagai field lalu diperiksa review.php setelah fetch selesai —
+        // artinya seluruh isi jawaban sudah telanjur sampai ke pemanggil. Cocokkan
+        // dengan ResultController::review() yang memang memblokir lebih dulu.
+        if (!$allowReview) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'status'  => 'error',
+                'message' => 'Review tidak diizinkan untuk ujian ini.',
+            ]);
+        }
+
         // Copy struktur ResultController::view + review() ke JSON (lihat file referensi,
         // baris 30-210): summary counts, per-question data, kunci jawaban hanya bila $showCorrect.
         // --- referensi data ---
@@ -284,7 +295,9 @@ class StudentApiController extends BaseController
                         'left'       => $left,
                         'user'       => $mine,
                         'correct'    => $showCorrect ? $right : null,
-                        'is_correct' => $mine !== '' && $mine === $right,
+                        // Ikut $showCorrect seperti cabang tipe soal lain: tanpa ini
+                        // benar/salah tiap pasangan tetap bocor walau kunci disembunyikan.
+                        'is_correct' => $showCorrect ? ($mine !== '' && $mine === $right) : null,
                     ];
                 }
 
