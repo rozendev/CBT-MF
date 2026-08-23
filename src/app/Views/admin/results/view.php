@@ -11,6 +11,11 @@
                 <p class="text-muted mb-0">Batas Lulus: <?= $test->passing_score ?> / <?= $test->max_score ?></p>
             </div>
             <div class="col-md-4 text-end">
+                <?php if (!empty($hasManualGrading)): ?>
+                    <a href="<?= base_url('/admin/results/grade/' . $test->id) ?>" class="btn btn-primary me-1">
+                        <i class="bi bi-lightning-charge me-1"></i>Koreksi Cepat
+                    </a>
+                <?php endif; ?>
                 <a href="<?= base_url('/admin/results') ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i> Kembali</a>
             </div>
         </div>

@@ -66,9 +66,20 @@ class ResultController extends BaseController
         
         $attempts = $db->query($sql, [$testId])->getResult();
 
+        // Tombol Koreksi Cepat hanya bermakna bila ada jawaban soal esai
+        // manual yang sudah masuk lewat attempt selesai.
+        $hasManualGrading = (bool) $db->query("
+            SELECT COUNT(*) AS c
+            FROM test_logs tl
+            JOIN test_attempts ta ON ta.id = tl.test_attempt_id
+            JOIN questions q ON q.id = tl.question_id
+            WHERE ta.test_id = ? AND ta.status = 3 AND q.type = 3 AND q.answer_mode = 'manual'
+        ", [$testId])->getRow()->c;
+
         return view('admin/results/view', [
-            'test' => $test,
-            'attempts' => $attempts
+            'test'             => $test,
+            'attempts'         => $attempts,
+            'hasManualGrading' => $hasManualGrading,
         ]);
     }
 
