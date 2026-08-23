@@ -129,6 +129,30 @@ class WordQuestionParserTest extends TestCase
         $this->assertSame(['B'], $questions[0]['correct']);
     }
 
+    public function testBulletFormattedTopLevelListItemsBecomeOptions(): void
+    {
+        // Dokumen Word asli: soal ditulis sebagai list bernomor, opsinya sebagai
+        // list ber-bullet yang tidak diindentasi -- keduanya berakhir di depth 0.
+        // Bullet tidak pernah membawa nomor urut, jadi tidak mungkin jadi soal.
+        $blocks = [
+            $this->line('Ibukota provinsi Jawa Barat adalah?', true, 0, 'number'),
+            $this->line('Cirebon', true, 0, 'bullet'),
+            $this->line('*Bandung', true, 0, 'bullet'),
+            $this->line('Bekasi', true, 0, 'bullet'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertCount(1, $questions);
+        $this->assertSame('Ibukota provinsi Jawa Barat adalah?', $questions[0]['question']);
+        $this->assertSame(
+            ['A' => 'Cirebon', 'B' => 'Bandung', 'C' => 'Bekasi'],
+            $questions[0]['options']
+        );
+        $this->assertSame(['B'], $questions[0]['correct']);
+        $this->assertSame(1, $questions[0]['type']);
+    }
+
     public function testNumberPrefixIsStrippedFromListItemQuestion(): void
     {
         $blocks = [
