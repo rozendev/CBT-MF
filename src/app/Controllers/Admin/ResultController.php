@@ -130,42 +130,52 @@ class ResultController extends BaseController
         $log = $this->testLogModel->find($logId);
         if (!$log) return redirect()->back()->with('error', 'Data tidak valid.');
 
-        // Update the log score
         $this->testLogModel->update($logId, ['score' => $score]);
 
-        // Recalculate total score for the attempt
-        $attemptId = $log->test_attempt_id;
+        $this->recalcAttemptScore((int) $log->test_attempt_id);
+
+        return redirect()->back()->with('success', 'Nilai soal berhasil diperbarui dan skor akhir telah dikalkulasi ulang.');
+    }
+
+    /**
+     * Hitung ulang dan simpan skor akhir satu attempt dari nilai test_logs.
+     * Dipakai bersama oleh updateManualScore() dan gradeSave().
+     *
+     * Hanya soal yang sudah dinilai yang ikut jadi pembagi. Esai yang
+     * menunggu koreksi bernilai NULL; kalau ikut dihitung, nilai siswa
+     * tertekan turun hanya karena gurunya belum sempat mengoreksi.
+     */
+    private function recalcAttemptScore(int $attemptId): float
+    {
         $db = \Config\Database::connect();
-        
-        $sql = "SELECT SUM(score) as total FROM test_logs WHERE test_attempt_id = ?";
-        $result = $db->query($sql, [$attemptId])->getRow();
-        
+
+        $attempt = $this->attemptModel->find($attemptId);
+        if (!$attempt) return 0.0;
+
+        $test = $this->testModel->find($attempt->test_id);
+        if (!$test) return 0.0;
+
+        $result = $db->query("SELECT SUM(score) as total FROM test_logs WHERE test_attempt_id = ?", [$attemptId])->getRow();
         $rawScore = $result->total ?? 0;
 
-        // Apply scale (Max Score)
-        $attempt = $this->attemptModel->find($attemptId);
-        $test = $this->testModel->find($attempt->test_id);
-        
-        // Hanya soal yang sudah dinilai yang ikut jadi pembagi. Esai yang
-        // menunggu koreksi bernilai NULL; kalau ikut dihitung, nilai siswa
-        // tertekan turun hanya karena gurunya belum sempat mengoreksi.
-        $sqlMax = "SELECT COUNT(*) as num_questions FROM test_logs
-                   WHERE test_attempt_id = ? AND score IS NOT NULL";
-        $resultMax = $db->query($sqlMax, [$attemptId])->getRow();
+        $resultMax = $db->query(
+            "SELECT COUNT(*) as num_questions FROM test_logs WHERE test_attempt_id = ? AND score IS NOT NULL",
+            [$attemptId]
+        )->getRow();
         $numQuestions = $resultMax->num_questions ?? 0;
 
         $maxPossiblePoints = $numQuestions * $test->score_right;
-        
+
         $finalScore = 0;
         if ($maxPossiblePoints > 0) {
             $finalScore = ($rawScore / $maxPossiblePoints) * $test->max_score;
         }
-
         if ($finalScore < 0) $finalScore = 0;
 
-        $this->attemptModel->update($attemptId, ['score' => round($finalScore, 3)]);
+        $finalScore = round($finalScore, 3);
+        $this->attemptModel->update($attemptId, ['score' => $finalScore]);
 
-        return redirect()->back()->with('success', 'Nilai soal berhasil diperbarui dan skor akhir telah dikalkulasi ulang.');
+        return (float) $finalScore;
     }
 
     /**
