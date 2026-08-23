@@ -83,11 +83,13 @@ class ScoringEngine
                 $maxPossiblePoints += $test->score_right;
 
             } elseif ($log->question_type == 3) {
-                if ($log->answer_mode === 'manual') {
+                if ($log->answer_mode === 'manual' || !$this->hasUsableKey($logAnswers)) {
                     // Esai: mesin tidak menilai. Skornya NULL, bukan 0, supaya
                     // "belum dikoreksi" tidak tertukar dengan "dijawab salah".
                     // Ikut dikeluarkan dari pembagi agar nilai sementara tidak
                     // tertekan turun oleh soal yang memang belum dinilai.
+                    // Tanpa kunci terpakai pun diperlakukan sama — pagar ini
+                    // menyembuhkan data lama berkunci kosong tanpa migration.
                     $logsUpdateBatch[] = ['id' => $log->log_id, 'score' => null];
                     continue;
                 }
@@ -210,8 +212,8 @@ class ScoringEngine
                 $maxPossiblePoints += $test->score_right;
 
             } elseif ($log->question_type == 3) {
-                if ($log->answer_mode === 'manual') {
-                    continue; // Esai menunggu koreksi guru; lihat calculateAndSaveScore().
+                if ($log->answer_mode === 'manual' || !$this->hasUsableKey($logAnswers)) {
+                    continue; // Esai/kunci kosong menunggu koreksi guru; lihat calculateAndSaveScore().
                 }
                 $questionScore = $this->evaluateEssay($logAnswers, $log->answer_text, $test);
                 $maxPossiblePoints += $test->score_right;
@@ -318,6 +320,20 @@ class ScoringEngine
         }
 
         return $test->score_wrong;
+    }
+
+    /**
+     * Kunci jawaban tipe 3 layak dinilai mesin hanya bila benar-benar berisi.
+     * Dua jejak data harus tertangani: form manual tidak menyimpan baris
+     * jawaban sama sekali (reset() == false), impor Word menyimpan baris
+     * ber-teks kosong (trim()). `exact` tanpa kunci adalah keadaan yang tidak
+     * masuk akal — mesin diminta mencocokkan persis dengan "tidak ada apa-apa".
+     */
+    private function hasUsableKey(array $answers): bool
+    {
+        $key = reset($answers);
+
+        return $key && trim((string) ($key->answer_text ?? '')) !== '';
     }
 
     /**
