@@ -1046,18 +1046,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                  * Automatically reconnects on connection loss.
                  */
                 initWebSocket() {
-                    let wsUrl = '<?= esc($wsUrl ?? '') ?>';
-                    if (!wsUrl) wsUrl = APP_CFG.websocket_url || '';
-                    if (!wsUrl || wsUrl.includes('localhost')) {
-                        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                        const wsHost = window.location.host;
-                        if (wsHost.includes(':8080')) {
-                            wsUrl = `${protocol}//${wsHost.replace(':8080', ':8060')}`;
-                        } else {
-                            wsUrl = `${protocol}//${wsHost}/ws`;
-                        }
+                    // URL ditentukan server (App\Libraries\WebSocketUrl).
+                    const wsBase = '<?= esc($wsUrl ?? '') ?>' || APP_CFG.websocket_url || '';
+                    if (!wsBase) {
+                        console.error('URL WebSocket tidak tersedia dari server');
+                        return;
                     }
-                    wsUrl = wsUrl.replace(/\/+$/, '') + '/?ws_token=<?= esc($wsToken) ?>';
+                    const wsUrl = wsBase.replace(/\/+$/, '') + '/?ws_token=<?= esc($wsToken) ?>';
                     
                     this.connectWebSocket(wsUrl);
                 },

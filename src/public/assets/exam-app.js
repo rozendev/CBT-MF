@@ -482,19 +482,15 @@
                     return;
                 }
                 
-                let wsUrl = EXAM_CONFIG.wsUrl;
-                if (!wsUrl) wsUrl = APP_CFG.websocket_url || '';
-                if (!wsUrl || wsUrl.includes('localhost')) {
-                    const urlObj = new URL(API);
-                    const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
-                    const wsHost = urlObj.host;
-                    if (wsHost.includes(':8080')) {
-                        wsUrl = `${protocol}//${wsHost.replace(':8080', ':8060')}`;
-                    } else {
-                        wsUrl = `${protocol}//${wsHost}/ws`;
-                    }
+                // URL ditentukan server (App\Libraries\WebSocketUrl). Klien tidak
+                // lagi menurunkannya sendiri: dulu logika yang sama hidup di lima
+                // tempat dan sudah saling menyimpang.
+                const wsBase = EXAM_CONFIG.wsUrl || APP_CFG.websocket_url || window.KIOSK_WS_URL || '';
+                if (!wsBase) {
+                    console.error('URL WebSocket tidak tersedia dari server');
+                    return;
                 }
-                wsUrl = wsUrl.replace(/\/+$/, '') + `/?ws_token=${wsToken}`;
+                const wsUrl = wsBase.replace(/\/+$/, '') + `/?ws_token=${wsToken}`;
                 
                 this.connectWebSocket(wsUrl);
             },

@@ -188,7 +188,7 @@
                 appBaseUrl: base,
                 questionsData: j.questions || [],
                 answersData: j.answers || {},
-                wsUrl: '',
+                wsUrl: j.ws_url || window.KIOSK_WS_URL || '',
                 csrfName: j.csrf_name,
                 csrfToken: j.csrf_token,
                 attemptId: j.attempt_id,

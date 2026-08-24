@@ -55,6 +55,10 @@ class UiBundleBuilder
                 'baseUrl'      => $baseUrl,
                 'assetVersion' => $assetVersion,
                 'school'       => $school,
+                // Default saat perangkat offline. Saat online, /api/exam/init
+                // mengirim ws_url yang menang atas nilai panggangan ini, sehingga
+                // bundle lama tetap ikut perubahan setting tanpa rebuild.
+                'wsUrl'        => \App\Libraries\WebSocketUrl::resolve(),
             ]);
             file_put_contents("$outDir/$file", $html);
         }

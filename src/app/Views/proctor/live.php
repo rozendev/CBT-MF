@@ -164,14 +164,9 @@ const APP_CFG = window.APP_CONFIG || {};
 function proctorLiveDashboard() {
     return {
         get wsUrl() {
-            let url = '<?= esc($wsUrl ?? '') ?>';
-            if (!url) url = APP_CFG.websocket_url || '';
-            if (!url || url.includes('localhost')) {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.host;
-                url = `${protocol}//${host}/ws`;
-            }
-            return url.replace(/\/+$/, '') + '/?proctor_token=<?= esc($proctorToken) ?>';
+            // URL ditentukan server (App\Libraries\WebSocketUrl).
+            const base = '<?= esc($wsUrl ?? '') ?>' || APP_CFG.websocket_url || '';
+            return base.replace(/\/+$/, '') + '/?proctor_token=<?= esc($proctorToken) ?>';
         },
         ws: null,
         isConnected: false,

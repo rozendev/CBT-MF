@@ -18,6 +18,7 @@ $school = ($school ?? []) + ['name' => 'CBT', 'tagline' => '', 'logo' => ''];
         window.KIOSK_BUNDLE = true;
         window.__KIOSK_BUNDLE__ = true;
         window.KIOSK_BASE_URL = <?= json_encode($baseUrl) ?>;
+        window.KIOSK_WS_URL = <?= json_encode($wsUrl ?? '') ?>;
     </script>
     <style>
         /* Design system kiosk — kontras tinggi, target sentuh besar.

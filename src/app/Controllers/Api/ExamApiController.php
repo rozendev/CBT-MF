@@ -247,6 +247,7 @@ class ExamApiController extends BaseController
             'status' => 'success',
             'attempt_id' => (int)$attempt->id,
             'ws_token' => $wsToken,
+            'ws_url' => \App\Libraries\WebSocketUrl::resolve(),
             'user' => [
                 'id' => (int)$userId,
                 'username' => session('username'),
