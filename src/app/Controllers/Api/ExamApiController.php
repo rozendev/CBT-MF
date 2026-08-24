@@ -48,6 +48,16 @@ class ExamApiController extends BaseController
         // Check for active attempt
         $attempt = $this->attemptModel->getActiveAttemptCached($testId, $userId);
 
+        // Attempt terkunci: jangan kirim soal. Bundle memakai reason ini untuk
+        // menampilkan layar "dikeluarkan" alih-alih halaman ujian.
+        if ($attempt && (int) $attempt->status === 2) {
+            return $this->response->setJSON([
+                'status'  => 'error',
+                'reason'  => 'ejected',
+                'message' => 'Ujian Anda dihentikan oleh pengawas. Serahkan perangkat kepada pengawas.',
+            ]);
+        }
+
         // Jendela waktu hanya membatasi MEMULAI ujian. Sebelumnya dicek lebih
         // dulu, sehingga siswa yang sedang mengerjakan ikut terkunci begitu
         // end_time lewat -- attempt-nya masih berjalan tapi soalnya tidak bisa
@@ -407,6 +417,17 @@ class ExamApiController extends BaseController
             return $this->response->setJSON(['status' => 'error', 'message' => 'Unauthorized']);
         }
 
+        // Status 2 = attempt dikunci (pelanggaran atau tindakan pengawas).
+        // Sebelumnya hanya 3 dan 4 yang ditolak, sehingga siswa yang sudah
+        // dikunci -- termasuk lewat ban -- tetap bisa menyimpan jawaban.
+        if ((int) $attempt->status === 2) {
+            return $this->response->setJSON([
+                'status'  => 'kicked',
+                'reason'  => 'locked',
+                'message' => 'Ujian Anda dihentikan oleh pengawas.',
+            ]);
+        }
+
         if ($attempt->status == 3) {
             return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian telah diselesaikan.']);
         }
@@ -524,6 +545,17 @@ class ExamApiController extends BaseController
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
         }
 
+        // Status 2 = attempt dikunci (pelanggaran atau tindakan pengawas).
+        // Sebelumnya hanya 3 dan 4 yang ditolak, sehingga siswa yang sudah
+        // dikunci -- termasuk lewat ban -- tetap bisa menyimpan jawaban.
+        if ((int) $attempt->status === 2) {
+            return $this->response->setJSON([
+                'status'  => 'kicked',
+                'reason'  => 'locked',
+                'message' => 'Ujian Anda dihentikan oleh pengawas.',
+            ]);
+        }
+
         if (!$this->passesKioskGate((int) $attemptId, (int) $userId, 'exam/auto-sync')) {
             return $this->response->setStatusCode(403)->setJSON([
                 'status'  => 'error',
@@ -566,6 +598,14 @@ class ExamApiController extends BaseController
             ]);
         }
 
+        if ($attempt && (int) $attempt->status === 2) {
+            return $this->response->setJSON([
+                'status'  => 'kicked',
+                'reason'  => 'locked',
+                'message' => 'Ujian Anda dihentikan oleh pengawas.',
+            ]);
+        }
+
         if ($attempt) {
             $this->flushRedisAnswersToDb($attempt->id);
             $scorer = new \App\Libraries\ScoringEngine();
@@ -596,6 +636,17 @@ class ExamApiController extends BaseController
         $attempt = $this->attemptModel->find($attemptId);
         if (!$attempt || (string)$attempt->user_id !== (string)$userId) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
+        }
+
+        // Status 2 = attempt dikunci (pelanggaran atau tindakan pengawas).
+        // Sebelumnya hanya 3 dan 4 yang ditolak, sehingga siswa yang sudah
+        // dikunci -- termasuk lewat ban -- tetap bisa menyimpan jawaban.
+        if ((int) $attempt->status === 2) {
+            return $this->response->setJSON([
+                'status'  => 'kicked',
+                'reason'  => 'locked',
+                'message' => 'Ujian Anda dihentikan oleh pengawas.',
+            ]);
         }
 
         $this->flushRedisAnswersToDb($attemptId);

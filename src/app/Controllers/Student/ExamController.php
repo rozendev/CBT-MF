@@ -309,6 +309,13 @@ class ExamController extends BaseController
         }
 
         // Check if student was kicked/banned/finished
+        if ((int) $attempt->status === 2) {
+            return $this->response->setJSON([
+                'status'  => 'kicked',
+                'reason'  => 'locked',
+                'message' => 'Ujian Anda dihentikan oleh pengawas.',
+            ]);
+        }
         if ($attempt->status == 3) {
             return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian Anda telah diselesaikan (waktu habis/dikumpulkan).']);
         }
