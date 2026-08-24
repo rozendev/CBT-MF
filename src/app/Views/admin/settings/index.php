@@ -1139,6 +1139,33 @@
 
                 <div class="s-panel">
                     <div class="s-panel-head">
+                        <div class="ph-icon"><i class="bi bi-broadcast"></i></div>
+                        <div>
+                            <h6>Real-Time</h6>
+                            <p>Kanal WebSocket untuk halaman ujian, EXAMBRO, dan dashboard pengawas.</p>
+                        </div>
+                    </div>
+                    <div class="s-row">
+                        <div class="s-main">
+                            <label class="s-label" for="websocket_url">URL WebSocket</label>
+                            <p class="s-desc">
+                                <strong>Kosongkan</strong> agar diturunkan otomatis dari alamat aplikasi.
+                                Isi hanya kalau server WebSocket berada di host atau path yang berbeda.
+                                Nilai yang dipakai saat ini:
+                                <code><?= esc(\App\Libraries\WebSocketUrl::resolve()) ?></code>
+                            </p>
+                        </div>
+                        <div class="s-ctrl">
+                            <input type="text" class="form-control" id="websocket_url" name="settings[websocket_url]"
+                                   value="<?= esc(settingVal($groupedSettings, 'system', 'websocket_url', '')) ?>"
+                                   placeholder="<?= esc(\App\Libraries\WebSocketUrl::derive((string) base_url())) ?>"
+                                   maxlength="255">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="s-panel">
+                    <div class="s-panel-head">
                         <div class="ph-icon"><i class="bi bi-speedometer2"></i></div>
                         <div>
                             <h6>Status Layanan</h6>

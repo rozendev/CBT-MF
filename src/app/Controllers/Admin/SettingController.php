@@ -71,6 +71,7 @@ class SettingController extends BaseController
         'kiosk_overlay_guard_enabled' => ['group' => 'kiosk',  'type' => 'boolean'],
         'kiosk_min_app_version'       => ['group' => 'kiosk',  'type' => 'string'],
         'kiosk_root_strictness'        => ['group' => 'kiosk',  'type' => 'string'],
+        'websocket_url'               => ['group' => 'system', 'type' => 'string'],
     ];
 
     public function __construct()
@@ -82,7 +83,7 @@ class SettingController extends BaseController
     {
         $groupedSettings = $this->settingModel->getGroupedSettings();
 
-        foreach (['general', 'logo', 'security', 'exam', 'kiosk'] as $g) {
+        foreach (['general', 'logo', 'security', 'exam', 'kiosk', 'system'] as $g) {
             if (!isset($groupedSettings[$g])) {
                 $groupedSettings[$g] = [];
             }
