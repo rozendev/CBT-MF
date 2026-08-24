@@ -10,10 +10,14 @@ use App\Models\AnswerModel;
 use App\Libraries\WordImport\WordBlockExtractor;
 use App\Libraries\WordImport\WordQuestionParser;
 use App\Libraries\WordImport\WordImportValidator;
+use App\Libraries\WordImport\WordImportException;
 use PhpOffice\PhpWord\IOFactory;
 
 class WordImportController extends BaseController
 {
+    /** Sepanjang kolom name di tabel modules maupun subjects. */
+    private const MAX_NAME_LENGTH = 255;
+
     protected $moduleModel;
     protected $subjectModel;
     protected $questionModel;
@@ -45,163 +49,238 @@ class WordImportController extends BaseController
         ];
 
         if (!$this->validate($rules)) {
-            $errs = array_values($this->validator->getErrors());
-            return $this->response->setJSON([
-                'status' => 'validation_error',
-                'errors' => $errs
-            ]);
+            return $this->validationError($this->validator->getErrors());
         }
 
-        $moduleId = $this->request->getPost('module_id');
-        if ($moduleId == 'new') {
-            $newModuleName = trim($this->request->getPost('new_module_name') ?? '');
-            if (empty($newModuleName)) {
-                return $this->response->setJSON([
-                    'status' => 'validation_error',
-                    'errors' => ['Nama modul baru harus diisi.']
-                ]);
-            }
-            
-            $existsMod = $this->moduleModel->withDeleted()->where('name', $newModuleName)->first();
-            if ($existsMod) {
-                if ($existsMod->deleted_at !== null) {
-                    $this->moduleModel->reuseDeletedModule($existsMod->id, [
-                        'user_id'    => session('user_id'),
-                        'is_enabled' => 1
-                    ]);
-                }
-                $moduleId = $existsMod->id;
-            } else {
-                $moduleId = $this->moduleModel->insert([
-                    'name'       => $newModuleName,
-                    'is_enabled' => 1,
-                    'user_id'    => session('user_id')
-                ]);
-            }
+        $moduleId      = $this->request->getPost('module_id');
+        $newModuleName = trim((string) ($this->request->getPost('new_module_name') ?? ''));
+        $subjectName   = trim((string) ($this->request->getPost('subject_name') ?? ''));
+
+        // Modul/subjek tujuan diperiksa lebih dulu tapi belum ditulis: dokumen
+        // yang gagal dibaca atau gagal divalidasi tidak boleh meninggalkan modul
+        // dan subjek kosong, apalagi menghidupkan lagi yang sudah dihapus guru.
+        $targetErrors = $this->validateTarget($moduleId, $newModuleName, $subjectName);
+        if ($targetErrors !== []) {
+            return $this->validationError($targetErrors);
         }
 
-        $subjectName = trim($this->request->getPost('subject_name') ?? '');
-        
-        $existsSub = $this->subjectModel->withDeleted()->where('module_id', $moduleId)->where('name', $subjectName)->first();
-        if ($existsSub) {
-            if ($existsSub->deleted_at !== null) {
-                // Restore soft-deleted subject
-                $this->subjectModel->reuseDeletedSubject($existsSub->id, [
+        try {
+            $parsedQuestions = $this->readQuestions($this->request->getFile('word_file'));
+        } catch (\Throwable $e) {
+            log_message('critical', 'WordImportController::process gagal membaca dokumen: {exception}', ['exception' => $e]);
+            return $this->failure('File Word tidak bisa dibaca. Pastikan file benar-benar berformat .docx dan tidak rusak.');
+        }
+
+        // ─── DRY-RUN VALIDATION ───
+        $validationErrors = (new WordImportValidator())->validate($parsedQuestions);
+        if (!empty($validationErrors)) {
+            return $this->validationError($validationErrors);
+        }
+
+        $db = \Config\Database::connect();
+        $db->transBegin();
+
+        try {
+            $moduleId  = $moduleId === 'new' ? $this->resolveNewModule($newModuleName) : (int) $moduleId;
+            $subjectId = $this->resolveSubject($moduleId, $subjectName);
+
+            $insertedCount = $this->insertQuestions($subjectId, $parsedQuestions);
+
+            $db->transCommit();
+        } catch (WordImportException $e) {
+            $db->transRollback();
+            return $this->failure($e->getMessage());
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('critical', 'WordImportController::process gagal menyimpan: {exception}', ['exception' => $e]);
+            return $this->failure('Terjadi kesalahan saat menyimpan ke database. Tidak ada data yang tersimpan.');
+        }
+
+        return $this->response->setJSON([
+            'status'  => 'success',
+            'message' => "$insertedCount soal berhasil diimport ke Subjek '$subjectName'."
+        ]);
+    }
+
+    /**
+     * Memeriksa modul/subjek tujuan tanpa menulis apa pun ke database.
+     *
+     * @return string[]
+     */
+    private function validateTarget($moduleId, string $newModuleName, string $subjectName): array
+    {
+        if (mb_strlen($subjectName) > self::MAX_NAME_LENGTH) {
+            return ['Nama subjek maksimal ' . self::MAX_NAME_LENGTH . ' karakter.'];
+        }
+
+        if ($moduleId === 'new') {
+            if ($newModuleName === '') {
+                return ['Nama modul baru harus diisi.'];
+            }
+            if (mb_strlen($newModuleName) > self::MAX_NAME_LENGTH) {
+                return ['Nama modul baru maksimal ' . self::MAX_NAME_LENGTH . ' karakter.'];
+            }
+            return [];
+        }
+
+        if (!is_string($moduleId) || !ctype_digit($moduleId) || (int) $moduleId < 1) {
+            return ['Modul yang dipilih tidak valid.'];
+        }
+        if ($this->moduleModel->find((int) $moduleId) === null) {
+            return ['Modul yang dipilih tidak ditemukan atau sudah dihapus.'];
+        }
+
+        return [];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function readQuestions($file): array
+    {
+        $filepath = $file->getTempName();
+        $phpWord = IOFactory::load($filepath);
+
+        $blocks = (new WordBlockExtractor())->extract($phpWord, $filepath);
+
+        return (new WordQuestionParser())->parse($blocks);
+    }
+
+    private function resolveNewModule(string $name): int
+    {
+        $existing = $this->moduleModel->withDeleted()->where('name', $name)->first();
+        if ($existing) {
+            if ($existing->deleted_at !== null) {
+                $this->moduleModel->reuseDeletedModule($existing->id, [
                     'user_id'    => session('user_id'),
                     'is_enabled' => 1
                 ]);
             }
-            $subjectId = $existsSub->id;
-        } else {
-            // Insert new subject
-            $subjectId = $this->subjectModel->insert([
-                'module_id'  => $moduleId,
-                'name'       => $subjectName,
-                'is_enabled' => 1,
-                'user_id'    => session('user_id')
-            ]);
+            return (int) $existing->id;
         }
 
-        $file = $this->request->getFile('word_file');
-        $filepath = $file->getTempName();
+        $id = $this->moduleModel->insert([
+            'name'       => $name,
+            'is_enabled' => 1,
+            'user_id'    => session('user_id')
+        ]);
 
-        try {
-            $phpWord = IOFactory::load($filepath);
+        if ($id === false) {
+            throw new WordImportException('Gagal membuat modul baru: ' . implode(', ', $this->moduleModel->errors()));
+        }
 
-            $blocks = (new WordBlockExtractor())->extract($phpWord, $filepath);
-            $parsedQuestions = (new WordQuestionParser())->parse($blocks);
+        return (int) $id;
+    }
 
-            // ─── DRY-RUN VALIDATION ───
-            $validationErrors = (new WordImportValidator())->validate($parsedQuestions);
-            if (!empty($validationErrors)) {
-                return $this->response->setJSON([
-                    'status' => 'validation_error',
-                    'errors' => $validationErrors
+    private function resolveSubject(int $moduleId, string $name): int
+    {
+        $existing = $this->subjectModel->withDeleted()->where('module_id', $moduleId)->where('name', $name)->first();
+        if ($existing) {
+            if ($existing->deleted_at !== null) {
+                // Restore soft-deleted subject
+                $this->subjectModel->reuseDeletedSubject($existing->id, [
+                    'user_id'    => session('user_id'),
+                    'is_enabled' => 1
                 ]);
             }
+            return (int) $existing->id;
+        }
 
-            $db = \Config\Database::connect();
-            $db->transStart();
+        $id = $this->subjectModel->insert([
+            'module_id'  => $moduleId,
+            'name'       => $name,
+            'is_enabled' => 1,
+            'user_id'    => session('user_id')
+        ]);
 
-            $insertedCount = 0;
-            foreach ($parsedQuestions as $q) {
-                $questionId = $this->questionModel->insert([
-                    'subject_id'  => $subjectId,
-                    'type'        => $q['type'],
-                    'answer_mode' => $q['answer_mode'] ?? 'exact',
-                    'description' => $q['question'],
-                    'difficulty'  => 1,
-                    'is_enabled'  => 1
-                ]);
+        if ($id === false) {
+            throw new WordImportException('Gagal membuat subjek: ' . implode(', ', $this->subjectModel->errors()));
+        }
 
-                if ($questionId === false) {
-                    $db->transRollback();
-                    $errors = implode(', ', $this->questionModel->errors());
-                    return $this->response->setJSON([
-                        'status'  => 'error',
-                        'message' => 'Gagal menyimpan soal ke database: ' . $errors
-                    ]);
-                }
+        return (int) $id;
+    }
 
-                $position = 1;
+    /** @param array<int, array<string, mixed>> $questions */
+    private function insertQuestions(int $subjectId, array $questions): int
+    {
+        $insertedCount = 0;
 
-                if ($q['type'] == 1 || $q['type'] == 2) {
-                    foreach ($q['options'] as $letter => $text) {
-                        $isCorrect = in_array($letter, $q['correct'], true) ? 1 : 0;
-                        $this->answerModel->skipValidation(true)->insert([
-                            'question_id' => $questionId,
-                            'description' => $text,
-                            'is_correct'  => $isCorrect,
-                            'is_enabled'  => 1,
-                            'position'    => $position
-                        ]);
-                        $position++;
-                    }
-                } elseif ($q['type'] == 3) {
-                    $this->answerModel->skipValidation(true)->insert([
+        foreach ($questions as $q) {
+            $questionId = $this->questionModel->insert([
+                'subject_id'  => $subjectId,
+                'type'        => $q['type'],
+                'answer_mode' => $q['answer_mode'] ?? 'exact',
+                'description' => $q['question'],
+                'difficulty'  => 1,
+                'is_enabled'  => 1
+            ]);
+
+            if ($questionId === false) {
+                throw new WordImportException(
+                    'Gagal menyimpan soal ke database: ' . implode(', ', $this->questionModel->errors())
+                );
+            }
+
+            $position = 1;
+
+            if ($q['type'] == 1 || $q['type'] == 2) {
+                foreach ($q['options'] as $letter => $text) {
+                    $this->insertAnswer([
                         'question_id' => $questionId,
-                        'description' => $q['answer_key'],
+                        'description' => $text,
+                        'is_correct'  => in_array($letter, $q['correct'], true) ? 1 : 0,
+                        'is_enabled'  => 1,
+                        'position'    => $position
+                    ]);
+                    $position++;
+                }
+            } elseif ($q['type'] == 3) {
+                $this->insertAnswer([
+                    'question_id' => $questionId,
+                    'description' => $q['answer_key'],
+                    'is_correct'  => 1,
+                    'is_enabled'  => 1,
+                    'position'    => 1
+                ]);
+            } elseif ($q['type'] == 4 || $q['type'] == 5) {
+                foreach ($q['matches'] as $pair) {
+                    $this->insertAnswer([
+                        'question_id' => $questionId,
+                        'description' => $pair['left'] . '|::|' . $pair['right'],
                         'is_correct'  => 1,
                         'is_enabled'  => 1,
-                        'position'    => 1
+                        'position'    => $position
                     ]);
-                } elseif ($q['type'] == 4 || $q['type'] == 5) {
-                    foreach ($q['matches'] as $pair) {
-                        $this->answerModel->skipValidation(true)->insert([
-                            'question_id' => $questionId,
-                            'description' => $pair['left'] . '|::|' . $pair['right'],
-                            'is_correct'  => 1,
-                            'is_enabled'  => 1,
-                            'position'    => $position
-                        ]);
-                        $position++;
-                    }
+                    $position++;
                 }
-
-                $insertedCount++;
             }
 
-            $db->transComplete();
-
-            if ($db->transStatus() === false) {
-                return $this->response->setJSON([
-                    'status'  => 'error',
-                    'message' => 'Terjadi kesalahan saat menyimpan ke database.'
-                ]);
-            }
-
-            return $this->response->setJSON([
-                'status'  => 'success',
-                'message' => "$insertedCount soal berhasil diimport ke Subjek '$subjectName'."
-            ]);
-
-        } catch (\Throwable $e) {
-            log_message('critical', 'WordImportController::process gagal: {exception}', ['exception' => $e]);
-            return $this->response->setJSON([
-                'status'  => 'error',
-                'message' => 'Gagal memproses file Word: ' . $e->getMessage()
-            ]);
+            $insertedCount++;
         }
+
+        return $insertedCount;
+    }
+
+    private function insertAnswer(array $data): void
+    {
+        if ($this->answerModel->skipValidation(true)->insert($data) === false) {
+            throw new WordImportException('Gagal menyimpan pilihan jawaban ke database.');
+        }
+    }
+
+    /** @param string[] $errors */
+    private function validationError(array $errors)
+    {
+        return $this->response->setJSON([
+            'status' => 'validation_error',
+            'errors' => array_values($errors)
+        ]);
+    }
+
+    private function failure(string $message)
+    {
+        return $this->response->setJSON([
+            'status'  => 'error',
+            'message' => $message
+        ]);
     }
 
     public function downloadTemplate()

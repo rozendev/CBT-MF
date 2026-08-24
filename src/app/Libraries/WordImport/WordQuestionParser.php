@@ -84,6 +84,13 @@ class WordQuestionParser
 
             if ($option !== null) {
                 $letter = $option['letter'] ?? $this->nextLetter($current['options']);
+                if (array_key_exists($letter, $current['options'])) {
+                    // Huruf yang sama ditulis dua kali: teksnya sudah pasti
+                    // saling menimpa, jadi tanda benarnya ikut menimpa juga
+                    // supaya tidak tertinggal menunjuk teks yang sudah hilang.
+                    $current['duplicate_letters'][$letter] = true;
+                    $current['correct'] = array_values(array_diff($current['correct'], [$letter]));
+                }
                 $current['options'][$letter] = $option['text'];
                 if ($option['is_correct']) {
                     $current['correct'][] = $letter;
@@ -195,6 +202,7 @@ class WordQuestionParser
             'correct'            => [],
             'answer_key'         => '',
             'matches'            => null,
+            'duplicate_letters'  => [],
             'declared_pair_type' => null,
             'declared_answer_mode' => null,
         ];
@@ -219,6 +227,7 @@ class WordQuestionParser
             $hasKey = trim($q['answer_key']) !== '';
             $q['answer_mode'] = ($q['declared_answer_mode'] === 'manual' || !$hasKey) ? 'manual' : 'exact';
         }
+        $q['duplicate_letters'] = array_keys($q['duplicate_letters']);
         unset($q['declared_pair_type'], $q['declared_answer_mode']);
         return $q;
     }

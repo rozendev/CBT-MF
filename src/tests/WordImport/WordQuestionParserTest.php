@@ -341,4 +341,55 @@ class WordQuestionParserTest extends TestCase
         $this->assertNull($questions[0]['matches']);
         $this->assertStringContainsString('<table></table>', $questions[0]['question']);
     }
+
+    public function testDuplicateOptionLetterIsRecordedInsteadOfSilentlyMerging(): void
+    {
+        $blocks = [
+            $this->line('1. Soal dengan huruf opsi kembar'),
+            $this->line('*A. Pertama'),
+            $this->line('B. Kedua'),
+            $this->line('*A. Ketiga'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $q = $questions[0];
+        $this->assertSame(['A' => 'Ketiga', 'B' => 'Kedua'], $q['options']);
+        // Huruf yang sama tidak boleh tercatat dua kali sebagai kunci: kalau
+        // tercatat dua kali, finalize() menganggapnya PG kompleks padahal
+        // jawaban benarnya cuma satu.
+        $this->assertSame(['A'], $q['correct']);
+        $this->assertSame(1, $q['type']);
+        $this->assertSame(['A'], $q['duplicate_letters']);
+    }
+
+    public function testDuplicateOptionLetterWithoutStarDropsPreviousCorrectMark(): void
+    {
+        $blocks = [
+            $this->line('1. Soal dengan huruf opsi kembar'),
+            $this->line('*A. Pertama'),
+            $this->line('B. Kedua'),
+            $this->line('A. Ketiga'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        // Teks A sudah tertimpa jadi "Ketiga" yang tidak berbintang, jadi tanda
+        // benarnya tidak boleh tertinggal menunjuk teks yang sudah hilang.
+        $this->assertSame([], $questions[0]['correct']);
+        $this->assertSame(['A'], $questions[0]['duplicate_letters']);
+    }
+
+    public function testNormalQuestionHasNoDuplicateLetters(): void
+    {
+        $blocks = [
+            $this->line('1. Siapa penemu bola lampu?'),
+            $this->line('A. Albert Einstein'),
+            $this->line('*B. Thomas Alva Edison'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame([], $questions[0]['duplicate_letters']);
+    }
 }
