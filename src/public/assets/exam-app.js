@@ -368,59 +368,31 @@
                 this.parseMatching();
 
                 if (window.__KIOSK_BUNDLE__) {
-                    // Tanpa event exam-data-loaded: set sendiri data yang
-                    // biasanya datang dari sana (nama + timer berjalan).
                     // CATATAN: factory komponen tidak boleh membaca EXAM_CONFIG
                     // (alpine.min.js bundle auto-start sebelum fetch init selesai);
                     // semua nilai dibaca di sini — setelah __bundleConfigPromise.
-                    this.studentName = EXAM_CONFIG.studentName || '';
                     this.testName = EXAM_CONFIG.testName || '';
                     this.durationMinutes = EXAM_CONFIG.durationMinutes || 0;
                     this.timeLeft = this.durationMinutes > 0 ? this.durationMinutes * 60 * 1000 : 0;
-                    if (this.durationMinutes > 0) {
-                        this.startTimer(EXAM_CONFIG.beginTimeMs || Date.now(), (EXAM_CONFIG.serverNowMs || Date.now()) - Date.now());
-                    }
+
+                    // ATTEMPT_ID biasanya diset initExam(), tapi keduanya menunggu
+                    // __bundleConfigPromise yang SAMA dan urutan bangunnya tidak
+                    // dijamin. Kalau komponen menang balapan, initWebSocket()
+                    // keluar lebih awal karena ATTEMPT_ID masih null dan kanal
+                    // real-time tidak pernah terbuka. Set di sini supaya jalur ini
+                    // tidak bergantung pada siapa yang bangun duluan.
+                    if (!ATTEMPT_ID) ATTEMPT_ID = EXAM_CONFIG.attemptId || null;
+
+                    // Event 'exam-data-loaded' hanya di-dispatch jalur non-bundle,
+                    // jadi bundle memanggil jalur yang sama secara langsung.
+                    // Sebelumnya blok ini hanya mereplikasi nama + timer, sehingga
+                    // di kiosk WebSocket tidak pernah terbuka, cadangan lokal tidak
+                    // pernah dipulihkan, dan posisi soal terakhir hilang.
+                    this.applyExamData(window.__examData || {});
                 }
 
                 document.addEventListener('exam-data-loaded', () => {
-                    const data = window.__examData || {};
-                    this.questions  = data.questions  || this.questions;
-                    this.allAnswers = data.answers     || this.allAnswers;
-
-                    // ─── Per-Attempt Reorder (Anti-Cheat) ───
-                    // Sort questions by server-assigned display_order (unique per attempt)
-                    if (this.questions && this.questions.length > 0 && this.questions[0].display_order !== undefined) {
-                        this.questions.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
-                        // Re-number visual display_order sequentially (1, 2, 3...)
-                        this.questions.forEach((q, i) => { q.display_order = i + 1; });
-                    }
-                    // Sort answer options by server-assigned display_order (unique per attempt)
-                    if (this.allAnswers) {
-                        for (const qId in this.allAnswers) {
-                            if (Array.isArray(this.allAnswers[qId]) && this.allAnswers[qId].length > 0 && this.allAnswers[qId][0].display_order !== undefined) {
-                                this.allAnswers[qId].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
-                            }
-                        }
-                    }
-
-                    this.studentName = data.studentName || '';
-                    this.parseMatching();
-                    this.restoreLocalBackup();
-
-                    // Restore saved question index from localStorage if any
-                    if (ATTEMPT_ID) {
-                        const savedIndex = localStorage.getItem('current_question_index_' + ATTEMPT_ID);
-                        if (savedIndex !== null) {
-                            const parsed = parseInt(savedIndex, 10);
-                            if (!isNaN(parsed) && parsed >= 0 && parsed < this.questions.length) {
-                                this.currentIndex = parsed;
-                            }
-                        }
-                    }
-
-                    this.initWebSocket();
-
-                    this.startTimer(data.beginTimeMs || Date.now(), data.timeOffset || 0);
+                    this.applyExamData(window.__examData || {});
                 });
 
                 // Init Auto Sync (Debounce + Max-Wait Hybrid)
@@ -472,6 +444,49 @@
                 }, 1000);
             },
 
+            /* Dipanggil oleh KEDUA jalur: web/static lewat event
+               'exam-data-loaded', dan bundle kiosk langsung dari init(). */
+            applyExamData(data) {
+                data = data || {};
+                this.questions  = data.questions || this.questions;
+                this.allAnswers = data.answers   || this.allAnswers;
+
+                // ─── Per-Attempt Reorder (Anti-Cheat) ───
+                // Sort questions by server-assigned display_order (unique per attempt)
+                if (this.questions && this.questions.length > 0 && this.questions[0].display_order !== undefined) {
+                    this.questions.sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+                    // Re-number visual display_order sequentially (1, 2, 3...)
+                    this.questions.forEach((q, i) => { q.display_order = i + 1; });
+                }
+                // Sort answer options by server-assigned display_order (unique per attempt)
+                if (this.allAnswers) {
+                    for (const qId in this.allAnswers) {
+                        if (Array.isArray(this.allAnswers[qId]) && this.allAnswers[qId].length > 0 && this.allAnswers[qId][0].display_order !== undefined) {
+                            this.allAnswers[qId].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+                        }
+                    }
+                }
+
+                this.studentName = data.studentName || this.studentName || '';
+                this.parseMatching();
+                this.restoreLocalBackup();
+
+                // Restore saved question index from localStorage if any
+                if (ATTEMPT_ID) {
+                    const savedIndex = localStorage.getItem('current_question_index_' + ATTEMPT_ID);
+                    if (savedIndex !== null) {
+                        const parsed = parseInt(savedIndex, 10);
+                        if (!isNaN(parsed) && parsed >= 0 && parsed < this.questions.length) {
+                            this.currentIndex = parsed;
+                        }
+                    }
+                }
+
+                this.initWebSocket();
+
+                this.startTimer(data.beginTimeMs || Date.now(), data.timeOffset || 0);
+            },
+
             initWebSocket() {
                 if (!ATTEMPT_ID) {
                     return;
@@ -497,6 +512,11 @@
 
             connectWebSocket(wsUrl) {
                 this.ws = new WebSocket(wsUrl);
+                // kiosk-integration.js mengirim telemetri lewat
+                // window.examWebSocket. Tanpa baris ini global itu tidak pernah
+                // terisi dan sendKioskWsEvent() jadi no-op permanen: exit_attempt,
+                // security_alert, kiosk_failed semuanya dibuang diam-diam.
+                window.examWebSocket = this.ws;
 
                 this.ws.onopen = () => {
                     this.wsErrorCount = 0;
@@ -557,6 +577,7 @@
 
                 this.ws.onclose = (e) => {
                     console.warn('WebSocket closed', e);
+                    if (window.examWebSocket === this.ws) window.examWebSocket = null;
                     this.reconnectWebSocket(wsUrl);
                 };
 
