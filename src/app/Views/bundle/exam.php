@@ -155,6 +155,16 @@
     <p style="margin-bottom:8px;color:var(--color-warning)">Pelanggaran: <span id="strikeCount" style="font-weight:700">1</span> / <span id="maxStrikes" style="font-weight:700">2</span></p>
 </div>
 
+<!-- Overlay Dikeluarkan Pengawas -->
+<div id="ejectedOverlay" style="display:none;position:fixed;inset:0;z-index:99999;background:var(--kiosk-danger-bg,#fef2f2);color:var(--kiosk-ink,#0f172a);flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
+    <div style="font-size:64px;line-height:1;margin-bottom:16px">&#9940;</div>
+    <h2 style="font-weight:800;color:var(--kiosk-danger,#b91c1c);margin:0 0 12px">DIKELUARKAN</h2>
+    <p id="ejectedMessage" style="font-size:18px;max-width:560px;margin:0 0 20px"></p>
+    <p style="font-size:15px;color:var(--kiosk-muted,#475569);max-width:560px;margin:0">
+        Perangkat ini masih terkunci. Serahkan kepada pengawas untuk membukanya.
+    </p>
+</div>
+
 <script>
     // Tunda start Alpine sampai config ujian siap (EXAM_CONFIG wajib ada saat
     // komponen x-data dibuat — fetch init bisa lebih lambat dari DOM ready).
@@ -168,7 +178,26 @@
     var testId = params.get('test_id') || '';
 
     window.__bundleConfigPromise = (function () {
+        window.showKioskEjected = function (message) {
+            var ls = document.getElementById('loading-screen');
+            if (ls) ls.style.display = 'none';
+            var gate = document.getElementById('prepareScreen');
+            if (gate) gate.style.display = 'none';
+            var content = document.getElementById('examContent');
+            if (content) content.style.display = 'none';
+            var el = document.getElementById('ejectedOverlay');
+            var msg = document.getElementById('ejectedMessage');
+            if (msg) msg.textContent = message || 'Ujian Anda dihentikan oleh pengawas.';
+            if (el) el.style.display = 'flex';
+        };
+
         var ready = function (j) {
+            // Attempt yang sudah dikunci pengawas: tampilkan layar dikeluarkan,
+            // bukan pesan error biasa -- dan jangan pernah menavigasi keluar bundle.
+            if (j.status !== 'success' && j.reason === 'ejected') {
+                window.showKioskEjected(j.message);
+                return false;
+            }
             if (j.status !== 'success') { throw new Error(j.message || 'Gagal memuat soal'); }
             if (!j.test) { throw new Error('Respon init tidak valid.'); }
             // mapping penuh — kunci persis yang dibaca exam-app.js

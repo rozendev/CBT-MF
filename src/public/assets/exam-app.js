@@ -103,7 +103,15 @@
             // init internal (boot-first / need_prepare / anti-cheat UI) dilewati.
             try {
                 const ok = await window.__bundleConfigPromise;
-                if (!ok) { window.location.href = 'login.html'; return; }
+                if (!ok) {
+                    // Overlay "dikeluarkan" sudah tampil dan perangkat harus tetap
+                    // di halaman ini; hanya kegagalan lain yang kembali ke login.
+                    const ejected = document.getElementById('ejectedOverlay');
+                    if (!ejected || ejected.style.display === 'none') {
+                        window.location.href = 'login.html';
+                    }
+                    return;
+                }
             } catch (e) {
                 console.error('Bundle init gagal:', e);
                 return; // pesan error sudah ditampilkan exam.html di loading-screen
@@ -487,6 +495,36 @@
                 this.startTimer(data.beginTimeMs || Date.now(), data.timeOffset || 0);
             },
 
+            /* Hentikan ujian dan tampilkan layar dikeluarkan. Sengaja TIDAK
+               memanggil logoutAndRedirect() maupun CBTKioskRequestExit(): di
+               kiosk, perangkat harus tetap terkunci sampai pengawas membuka
+               dengan password. */
+            showEjected(message) {
+                try { if (this.ws) this.ws.close(); } catch (e) {}
+                if (this.timerInterval) clearInterval(this.timerInterval);
+                if (this.syncTimeout) clearTimeout(this.syncTimeout);
+                Object.keys(this.saveTimers || {}).forEach((k) => {
+                    clearTimeout(this.saveTimers[k]);
+                    delete this.saveTimers[k];
+                });
+                this.isSaving = false;
+
+                if (window.__KIOSK_BUNDLE__ && typeof window.showKioskEjected === 'function') {
+                    window.showKioskEjected(message);
+                    return;
+                }
+
+                window.isSubmitting = true;
+                Swal.fire({
+                    title: 'Ujian Dihentikan',
+                    text: message,
+                    icon: 'error',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    confirmButtonText: 'OK'
+                }).then(() => logoutAndRedirect(API + '/login'));
+            },
+
             initWebSocket() {
                 if (!ATTEMPT_ID) {
                     return;
@@ -532,6 +570,14 @@
                         this.ws.close();
                         Swal.fire({ title:'Akun Di-Ban', text:d.message, icon:'error', allowOutsideClick:false, allowEscapeKey:false, confirmButtonText:'OK' })
                             .then(() => logoutAndRedirect(API + '/login'));
+                    }
+                    else if (eventName === 'ejected') {
+                        // BEDA dari 'kick': 'kick' memanggil logoutAndRedirect(),
+                        // yang di kiosk menendang WebView keluar dari bundle menuju
+                        // halaman login online -- justru merusak penguncian.
+                        // 'ejected' hanya menghentikan ujian; lock task Android
+                        // dibiarkan aktif, jadi keluar tetap butuh password pengawas.
+                        this.showEjected(d.message || 'Ujian Anda dihentikan oleh pengawas.');
                     }
                     else if (eventName === 'kick') {
                         this.ws.close();
