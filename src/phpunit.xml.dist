@@ -8,5 +8,8 @@
         <testsuite name="WordImport">
             <directory>tests/WordImport</directory>
         </testsuite>
+        <testsuite name="Realtime">
+            <directory>tests/Realtime</directory>
+        </testsuite>
     </testsuites>
 </phpunit>
