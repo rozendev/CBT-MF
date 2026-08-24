@@ -285,6 +285,39 @@
             syncTimeout: null,
             lastSyncTime: Date.now(),
 
+            /* Kunci soal untuk mencari opsi jawaban dan sebagai identitas
+               autosave. Halaman static memanggang question_id ke dalam HTML-nya,
+               sedangkan ujian normal (soal ditarik dari bank soal) hanya punya
+               log_id: satu baris test_logs per soal per attempt. log_id
+               didahulukan karena question_id yang sama bisa muncul dua kali
+               dalam satu attempt bila dua set subjek beririsan. Tanpa helper ini
+               lookup jatuh ke allAnswers[undefined] dan SELURUH pilihan jawaban
+               hilang tanpa satu pun error di console. */
+            qKey(q) {
+                if (!q) return undefined;
+                return (q.log_id !== undefined && q.log_id !== null) ? q.log_id : q.question_id;
+            },
+
+            /* Penjaga "mode ujian berubah di tengah jalan". Halaman static di web
+               hanya sah selama test masih exam_mode=static, jadi di sana perilaku
+               lama dipertahankan. Bundle kiosk merender KEDUA mode, sehingga ia
+               hanya perlu memuat ulang kalau modenya benar-benar berubah --
+               tanpa pembedaan ini setiap auto-sync pada ujian normal memicu
+               reload berulang dan siswa tidak pernah sempat mengerjakan. */
+            modeDriftTarget(examMode, staticPagePath) {
+                if (window.__KIOSK_BUNDLE__) {
+                    const known = EXAM_CONFIG.examMode;
+                    if (!known || known === examMode) return null;
+                    return 'exam.html?test_id=' + EXAM_CONFIG.testId + '&resume=1';
+                }
+                if (examMode !== 'static' || !staticPagePath) {
+                    return API + '/student/exam/take/' + EXAM_CONFIG.testId;
+                }
+                const expectedUrl = API + '/' + staticPagePath;
+                if (!expectedUrl.includes(window.location.pathname)) return expectedUrl;
+                return null;
+            },
+
             parseMatching() {
                 this.questions.forEach(q => {
                     q.is_flagged = false;
@@ -294,7 +327,7 @@
                         let savedMatching = {};
                         try { if (q.answer_text) savedMatching = JSON.parse(q.answer_text); } catch(e) {}
 
-                        let ansList = this.allAnswers[q.question_id] || [];
+                        let ansList = this.allAnswers[this.qKey(q)] || [];
                         ansList.forEach(a => {
                             let parts = (a.answer_text || '').split('|::|');
                             let left  = parts[0] || '';
@@ -513,19 +546,10 @@
                         }
                     }
                     else if (eventName === 'sync_mode') {
-                        if (d.exam_mode !== 'static' || !d.static_page_path) {
+                        const driftTarget = this.modeDriftTarget(d.exam_mode, d.static_page_path);
+                        if (driftTarget) {
                             window.isSubmitting = true;
-                            const target = window.__KIOSK_BUNDLE__
-                                ? 'exam.html?test_id=' + EXAM_CONFIG.testId + '&resume=1'
-                                : API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                            window.location.href = target;
-                        } else {
-                            const expectedUrl = API + '/' + d.static_page_path;
-                            const currentPath = window.location.pathname;
-                            if (!expectedUrl.includes(currentPath)) {
-                                window.isSubmitting = true;
-                                window.location.href = expectedUrl;
-                            }
+                            window.location.href = driftTarget;
                         }
                     }
                     else if (eventName === 'heartbeat') {
@@ -564,7 +588,7 @@
             },
 
             get currentQuestion() { return this.questions[this.currentIndex] || {}; },
-            get currentAnswers()  { return this.allAnswers[this.currentQuestion.question_id] || []; },
+            get currentAnswers()  { return this.allAnswers[this.qKey(this.currentQuestion)] || []; },
 
             formatTime(ms) {
                 if (ms <= 0) return "00:00:00";
@@ -617,19 +641,10 @@
                     success: (res) => { 
                         updateCsrf(res); 
                         if (res.exam_mode !== undefined) {
-                            if (res.exam_mode !== 'static' || !res.static_page_path) {
+                            const driftTarget = this.modeDriftTarget(res.exam_mode, res.static_page_path);
+                            if (driftTarget) {
                                 window.isSubmitting = true;
-                                const target = window.__KIOSK_BUNDLE__
-                                    ? 'exam.html?test_id=' + EXAM_CONFIG.testId + '&resume=1'
-                                    : API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                                window.location.href = target;
-                            } else {
-                                const expectedUrl = API + '/' + res.static_page_path;
-                                const currentPath = window.location.pathname;
-                                if (!expectedUrl.includes(currentPath)) {
-                                    window.isSubmitting = true;
-                                    window.location.href = expectedUrl;
-                                }
+                                window.location.href = driftTarget;
                             }
                         }
                     }
@@ -645,7 +660,7 @@
                 this.scheduleAutoSync();
 
                 // Masukkan ke antrean tunggal
-                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
+                this.enqueueRequest('autosave', { logId: this.qKey(this.currentQuestion), retries: 3 });
             },
             toggleCheckbox(answerId, isChecked) {
                 let ans = this.currentAnswers.find(a => a.answer_id == answerId);
@@ -654,13 +669,13 @@
                     ans.is_selected = isChecked ? 1 : 0;
                 }
                 this.scheduleAutoSync();
-                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
+                this.enqueueRequest('autosave', { logId: this.qKey(this.currentQuestion), retries: 3 });
             },
             updateMatching(index, value) {
                 if (this.questions[this.currentIndex].matchingPairs[index].selected === value) return;
                 this.questions[this.currentIndex].matchingPairs[index].selected = value;
                 this.scheduleAutoSync();
-                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
+                this.enqueueRequest('autosave', { logId: this.qKey(this.currentQuestion), retries: 3 });
             },
 
             scheduleAutoSync() {
@@ -703,19 +718,10 @@
                         }).always((res) => {
                             if (res && res.csrf_hash) updateCsrf(res);
                             if (res && res.exam_mode !== undefined) {
-                                if (res.exam_mode !== 'static' || !res.static_page_path) {
+                                const driftTarget = this.modeDriftTarget(res.exam_mode, res.static_page_path);
+                                if (driftTarget) {
                                     window.isSubmitting = true;
-                                    const target = window.__KIOSK_BUNDLE__
-                                        ? 'exam.html?test_id=' + EXAM_CONFIG.testId + '&resume=1'
-                                        : API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                                    window.location.href = target;
-                                } else {
-                                    const expectedUrl = API + '/' + res.static_page_path;
-                                    const currentPath = window.location.pathname;
-                                    if (!expectedUrl.includes(currentPath)) {
-                                        window.isSubmitting = true;
-                                        window.location.href = expectedUrl;
-                                    }
+                                    window.location.href = driftTarget;
                                 }
                             }
                             this.lastSyncTime = Date.now();
@@ -724,12 +730,21 @@
                         });
                     } else if (action === 'autosave') {
                         const { logId, retries } = params;
-                        const q = this.questions.find(x => x.question_id === logId);
+                        const q = this.questions.find(x => String(this.qKey(x)) === String(logId));
                         if (!q) return resolve();
 
                         this.saveLocalBackup();
 
-                        let passedData = { attempt_id: ATTEMPT_ID, question_id: logId, question_type: q.question_type, generated_at: EXAM_CONFIG.generatedAt };
+                        // Server menerima log_id ATAU (question_id + attempt_id).
+                        // Mengirim log_id lewat field question_id akan mencocokkan
+                        // baris test_logs milik soal LAIN, jadi nama fieldnya harus
+                        // mengikuti id yang benar-benar dipegang soal ini.
+                        let passedData = { attempt_id: ATTEMPT_ID, question_type: q.question_type, generated_at: EXAM_CONFIG.generatedAt };
+                        if (q.log_id !== undefined && q.log_id !== null) {
+                            passedData.log_id = q.log_id;
+                        } else {
+                            passedData.question_id = q.question_id;
+                        }
                         if (q.question_type == 3) {
                             passedData.answer_text = q.answer_text;
                         } else if (q.question_type == 4 || q.question_type == 5) {
@@ -840,7 +855,7 @@
             saveAnswer(qIdToSave = null) {
                 let logId = qIdToSave;
                 if (!logId && this.currentQuestion) {
-                    logId = this.currentQuestion.question_id;
+                    logId = this.qKey(this.currentQuestion);
                 }
                 if (!logId) return;
 
@@ -905,6 +920,7 @@
                 const backupData = {
                     questions: this.questions.map(q => ({
                         question_id: q.question_id,
+                        log_id: q.log_id,
                         question_type: q.question_type,
                         answer_text: q.answer_text || '',
                         is_flagged: q.is_flagged || false,
@@ -925,7 +941,7 @@
                         let needsSaveIds = [];
 
                         this.questions.forEach((q, idx) => {
-                            const bq = backup.questions.find(x => x.question_id === q.question_id);
+                            const bq = backup.questions.find(x => String(this.qKey(x)) === String(this.qKey(q)));
                             if (!bq) return;
 
                             q.is_flagged = bq.is_flagged || q.is_flagged;
@@ -950,8 +966,8 @@
                                     needsSaveIds.push(idx);
                                 }
                             } else {
-                                const serverAnswers = this.allAnswers[q.question_id] || [];
-                                const backupAnswers = backup.answers[q.question_id] || [];
+                                const serverAnswers = this.allAnswers[this.qKey(q)] || [];
+                                const backupAnswers = backup.answers[this.qKey(q)] || [];
 
                                 let changed = false;
                                 serverAnswers.forEach(sa => {
@@ -998,7 +1014,7 @@
                     } else if (q.question_type == 4 || q.question_type == 5) {
                         if (q.matchingPairs && q.matchingPairs.every(p => p.selected !== '')) count++;
                     } else {
-                        if ((this.allAnswers[q.question_id] || []).some(a => a.is_selected == 1)) count++;
+                        if ((this.allAnswers[this.qKey(q)] || []).some(a => a.is_selected == 1)) count++;
                     }
                 });
                 return count;
@@ -1022,7 +1038,7 @@
                     let answered = false;
                     if (q.question_type == 3) answered = (q.answer_text && q.answer_text.trim() !== '');
                     else if (q.question_type == 4 || q.question_type == 5) answered = (q.matchingPairs && q.matchingPairs.every(p => p.selected !== ''));
-                    else answered = (this.allAnswers[q.question_id] || []).some(a => a.is_selected == 1);
+                    else answered = (this.allAnswers[this.qKey(q)] || []).some(a => a.is_selected == 1);
                     classes.push(answered ? 'answered' : 'unanswered');
                 }
                 

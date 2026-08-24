@@ -194,7 +194,11 @@
                 attemptId: j.attempt_id,
                 studentName: j.user ? (((j.user.firstname || '') + ' ' + (j.user.lastname || '')).trim()) : '',
                 beginTimeMs: j.test.begin_time_ms,
-                serverNowMs: j.test.server_now_ms
+                serverNowMs: j.test.server_now_ms,
+                // Dipakai modeDriftTarget() di exam-app.js: bundle merender mode
+                // normal maupun static, jadi ia hanya boleh memuat ulang halaman
+                // kalau mode ujian benar-benar BERUBAH di tengah pengerjaan.
+                examMode: j.test.exam_mode
             };
             window.questionsData = window.EXAM_CONFIG.questionsData;
             window.answersData = window.EXAM_CONFIG.answersData;
@@ -475,7 +479,7 @@
                 <div>
                     <template x-for="(answer, i) in currentAnswers" :key="answer.answer_id">
                         <label class="answer-option" :class="{'selected': answer.is_selected == 1}" @click="selectRadio(answer.answer_id)">
-                            <input type="radio" :name="'q_' + currentQuestion.question_id" class="form-check-input flex-shrink-0" :checked="answer.is_selected == 1">
+                            <input type="radio" :name="'q_' + qKey(currentQuestion)" class="form-check-input flex-shrink-0" :checked="answer.is_selected == 1">
                             <div class="answer-content" x-html="answer.answer_text"></div>
                         </label>
                     </template>
@@ -497,7 +501,7 @@
             <!-- Type 3: Essay -->
             <template x-if="currentQuestion.question_type == 3">
                 <div>
-                    <textarea class="form-control" rows="8" x-model="currentQuestion.answer_text" @input="this._typingQid = this.currentQuestion.question_id" @input.debounce.500ms="saveAnswer(this._typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
+                    <textarea class="form-control" rows="8" x-model="currentQuestion.answer_text" @input="this._typingQid = qKey(this.currentQuestion)" @input.debounce.500ms="saveAnswer(this._typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
                 </div>
             </template>
 
@@ -539,10 +543,10 @@
                                     <tr>
                                         <td x-html="pair.left" class="py-3"></td>
                                         <td class="text-center py-3">
-                                            <input type="radio" :name="'tf_' + currentQuestion.question_id + '_' + i" value="Benar" :checked="pair.selected === 'Benar'" class="form-check-input" style="transform:scale(1.5);" @change="updateMatching(i, 'Benar')">
+                                            <input type="radio" :name="'tf_' + qKey(currentQuestion) + '_' + i" value="Benar" :checked="pair.selected === 'Benar'" class="form-check-input" style="transform:scale(1.5);" @change="updateMatching(i, 'Benar')">
                                         </td>
                                         <td class="text-center py-3">
-                                            <input type="radio" :name="'tf_' + currentQuestion.question_id + '_' + i" value="Salah" :checked="pair.selected === 'Salah'" class="form-check-input" style="transform:scale(1.5);" @change="updateMatching(i, 'Salah')">
+                                            <input type="radio" :name="'tf_' + qKey(currentQuestion) + '_' + i" value="Salah" :checked="pair.selected === 'Salah'" class="form-check-input" style="transform:scale(1.5);" @change="updateMatching(i, 'Salah')">
                                         </td>
                                     </tr>
                                 </template>
@@ -582,7 +586,7 @@
             </div>
             <div class="offcanvas-body p-3">
                 <div class="q-grid-container">
-                    <template x-for="(q, idx) in questions" :key="q.question_id">
+                    <template x-for="(q, idx) in questions" :key="q.log_id || q.question_id">
                         <button class="q-grid-btn" :class="getGridButtonClass(idx)" @click="goToQuestion(idx); closeMobileSidebar()" x-text="idx + 1"></button>
                     </template>
                 </div>
