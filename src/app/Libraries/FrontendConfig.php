@@ -3,6 +3,7 @@
 namespace App\Libraries;
 
 use App\Models\SettingModel;
+use App\Libraries\WebSocketUrl;
 
 /**
  * FrontendConfig — satu sumber kebenaran konfigurasi yang dikonsumsi frontend JS.
@@ -29,7 +30,7 @@ class FrontendConfig
             'app_version'     => $setting->getValue('app_version', '1.30'),
             'app_description' => $setting->getValue('app_description', 'Aplikasi Ujian Berbasis Komputer (CBT)'),
             'site_author'     => $setting->getValue('site_author', 'Sekolah/Lembaga'),
-            'websocket_url'   => self::websocketUrl($setting),
+            'websocket_url'   => WebSocketUrl::resolve($setting),
 
             'suspend_timer_seconds' => (int) $setting->getValue('suspend_timer_seconds', 30),
 
@@ -65,28 +66,5 @@ class FrontendConfig
             self::get(),
             JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
         );
-    }
-
-    /**
-     * Tentukan URL WebSocket final: setting websocket_url bila ada,
-     * jika tidak/localhost → turunkan dari host permintaan saat ini.
-     */
-    private static function websocketUrl(SettingModel $setting): string
-    {
-        $wsUrl = (string) $setting->getValue('websocket_url', '');
-
-        if (!empty($wsUrl) && !str_contains($wsUrl, 'localhost')) {
-            return rtrim($wsUrl, '/');
-        }
-
-        $https = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
-        $protocol = $https ? 'wss:' : 'ws:';
-        $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
-
-        if (str_contains($host, ':8080')) {
-            return $protocol . '//' . str_replace(':8080', ':8060', $host) . '/ws';
-        }
-
-        return $protocol . '//' . $host . '/ws';
     }
 }

@@ -173,7 +173,7 @@ class StaticExamController extends BaseController
             'questionsData' => $questionsData,
             'answersData' => $answersData,
             'generatedAt' => time(),
-            'wsUrl' => $settingModel->getValue('websocket_url', ''),
+            'wsUrl' => \App\Libraries\WebSocketUrl::resolve($settingModel),
             'assetVersion' => $assetVersion,
         ]);
 

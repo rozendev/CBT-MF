@@ -273,7 +273,7 @@ class ExamController extends BaseController
             'answers' => $answers,
             'isAntiCheatEnabled' => $isAntiCheatEnabled,
             'wsToken' => $wsToken,
-            'wsUrl' => $settingModel->getValue('websocket_url', '')
+            'wsUrl' => \App\Libraries\WebSocketUrl::resolve($settingModel)
         ]);
     }
 
