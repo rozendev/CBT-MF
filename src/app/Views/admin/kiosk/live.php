@@ -32,6 +32,12 @@
         <span x-text="outageMessage"></span>
     </div>
 
+    <div x-show="actionMessage" class="alert mb-4" :class="actionOk ? 'alert-success' : 'alert-danger'" style="display:none">
+        <i class="bi me-2" :class="actionOk ? 'bi-check-circle-fill' : 'bi-exclamation-octagon-fill'"></i>
+        <span x-text="actionMessage"></span>
+        <button type="button" class="btn-close float-end" @click="actionMessage = ''"></button>
+    </div>
+
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -40,6 +46,7 @@
                         <tr>
                             <th>Status</th><th>Siswa</th><th>Baterai</th><th>Jaringan</th>
                             <th>Versi App</th><th>Device ID</th><th>Terakhir Terlihat</th>
+                            <th class="text-end">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -66,10 +73,29 @@
                                 <td><span class="text-muted" x-text="s.app_version || '—'"></span></td>
                                 <td><span class="text-muted small" x-text="s.device_id ? s.device_id.substring(0, 8) + '…' : '—'"></span></td>
                                 <td><span class="text-muted small" x-text="s.last_seen || '—'"></span></td>
+                                <td class="text-end">
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-danger dropdown-toggle"
+                                                type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                                                :disabled="busyUser === s.user_id">
+                                            <span x-show="busyUser !== s.user_id">Aksi</span>
+                                            <span x-show="busyUser === s.user_id" style="display:none">Memproses…</span>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li><button class="dropdown-item" type="button" @click="runAction(s, 'eject')">
+                                                <i class="bi bi-box-arrow-right me-2"></i>Keluarkan dari ujian</button></li>
+                                            <li><button class="dropdown-item" type="button" @click="runAction(s, 'lock')">
+                                                <i class="bi bi-lock me-2"></i>Kunci akun</button></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><button class="dropdown-item text-danger fw-semibold" type="button" @click="runAction(s, 'eject_lock')">
+                                                <i class="bi bi-shield-exclamation me-2"></i>Keluarkan &amp; Kunci</button></li>
+                                        </ul>
+                                    </div>
+                                </td>
                             </tr>
                         </template>
                         <tr x-show="students.length === 0">
-                            <td colspan="7" class="text-center text-muted py-5">
+                            <td colspan="8" class="text-center text-muted py-5">
                                 <i class="bi bi-inbox fs-3 d-block mb-2"></i>
                                 <template x-if="!selectedTest">Pilih ujian untuk melihat status perangkat.</template>
                                 <template x-if="selectedTest">Belum ada peserta aktif pada ujian ini.</template>
@@ -92,6 +118,9 @@ function kioskLive() {
         selectedTest: '',
         students: [],
         outageMessage: '',
+        busyUser: null,
+        actionMessage: '',
+        actionOk: true,
         timer: null,
         init() {
             if (this.tests.length === 1) {
@@ -114,6 +143,42 @@ function kioskLive() {
                 .then(r => r.ok ? r.json() : Promise.reject(r.status))
                 .then(d => { this.students = d.students || []; })
                 .catch(e => console.error('kiosk live-data failed:', e));
+        },
+        actionLabel(action) {
+            if (action === 'eject') return 'mengeluarkan siswa ini dari ujian';
+            if (action === 'lock') return 'mengunci akun siswa ini';
+            return 'mengeluarkan siswa ini dari ujian DAN mengunci akunnya';
+        },
+        runAction(student, action) {
+            const nama = (student.firstname + ' ' + student.lastname).trim() + ' (' + student.username + ')';
+            if (!window.confirm('Anda akan ' + this.actionLabel(action) + ':\n\n' + nama + '\n\nLanjutkan?')) return;
+
+            this.busyUser = student.user_id;
+            fetch('<?= base_url('/admin/kiosk/live/action') ?>', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
+                },
+                body: JSON.stringify({
+                    test_id: this.selectedTest,
+                    user_id: student.user_id,
+                    action: action
+                })
+            })
+                .then(r => r.json())
+                .then(d => {
+                    this.actionOk = d.status === 'success';
+                    this.actionMessage = d.message || (this.actionOk ? 'Aksi berhasil.' : 'Aksi gagal.');
+                    this.loadData();
+                })
+                .catch(e => {
+                    console.error('kiosk action failed:', e);
+                    this.actionOk = false;
+                    this.actionMessage = 'Aksi gagal terkirim. Periksa koneksi lalu coba lagi.';
+                })
+                .finally(() => { this.busyUser = null; });
         },
         checkOutage() {
             fetch('<?= base_url('/maintenance-check.php') ?>', { cache: 'no-store' })
