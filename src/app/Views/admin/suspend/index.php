@@ -2,127 +2,159 @@
 
 <?= $this->section('page_title') ?>Suspend & Blokir<?= $this->endSection() ?>
 
+<?= $this->section('styles') ?>
+<style>
+    .danger-row > td { background: var(--danger-soft) !important; }
+    .danger-row:hover > td { background: rgba(214, 69, 80, 0.16) !important; }
+    .strike-chip {
+        display: inline-flex; align-items: center; gap: 0.3rem;
+        font-family: var(--mono); font-size: 0.72rem; font-weight: 600;
+        padding: 0.22rem 0.6rem; border-radius: 999px;
+        background: var(--danger-soft); color: var(--danger);
+    }
+    .strike-chip.zero { background: var(--bg-soft); color: var(--text-tertiary); }
+    .toolbar-strip {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 1rem; flex-wrap: wrap;
+        padding: 1.1rem 1.4rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+</style>
+<?= $this->endSection() ?>
+
 <?= $this->section('content') ?>
-<div class="card shadow-sm border-0">
-    <div class="card-header bg-white border-bottom-0 pt-4 pb-0">
-        <h5 class="fw-bold text-primary mb-0"><i class="bi bi-shield-lock me-2"></i>Manajemen Akses Siswa</h5>
-        <p class="text-muted small mt-1">Daftar seluruh siswa terdaftar. Admin dapat mem-ban, me-release, atau mereset seluruh sesi ujian siswa.</p>
+<!-- Page Head -->
+<div class="page-head rise">
+    <div>
+        <div class="eyebrow">Keamanan · Kontrol Akses</div>
+        <h1>Manajemen Akses Siswa</h1>
+        <p class="sub">Daftar seluruh siswa terdaftar. Admin dapat mem-ban, me-release, atau mereset seluruh sesi ujian siswa.</p>
     </div>
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="d-flex gap-2 align-items-center">
-                <select id="bulkActionSelect" class="form-select form-select-sm" style="width: auto;">
-                    <option value="">-- Aksi Massal --</option>
-                    <option value="ban">Ban (Suspend)</option>
-                    <option value="unban">Release (Unban)</option>
-                    <option value="reset_login">Reset Sesi Login</option>
-                </select>
-                <button type="button" class="btn btn-sm btn-primary" onclick="submitBulkAction()">Terapkan</button>
+</div>
+
+<div class="card rise" style="--d:80ms">
+    <div class="toolbar-strip">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <select id="bulkActionSelect" class="form-select form-select-sm" style="width: auto;">
+                <option value="">-- Aksi Massal --</option>
+                <option value="ban">Ban (Suspend)</option>
+                <option value="unban">Release (Unban)</option>
+                <option value="reset_login">Reset Sesi Login</option>
+            </select>
+            <button type="button" class="btn btn-accent btn-sm" onclick="submitBulkAction()"><i class="bi bi-lightning-charge-fill me-1"></i>Terapkan</button>
+        </div>
+
+        <!-- Search Form -->
+        <form action="<?= base_url('/admin/suspend') ?>" method="GET" class="m-0">
+            <div class="input-group input-group-sm" style="max-width: 320px;">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input type="text" name="search" class="form-control" placeholder="Cari nama/username..." value="<?= esc($search ?? '') ?>" style="border-left: 0;">
+                <button class="btn btn-ghost" type="submit">Cari</button>
+                <?php if(!empty($search)): ?>
+                    <a href="<?= base_url('/admin/suspend') ?>" class="btn btn-danger-soft" title="Reset Pencarian"><i class="bi bi-x"></i></a>
+                <?php endif; ?>
             </div>
-
-            <!-- Search Form -->
-            <form action="<?= base_url('/admin/suspend') ?>" method="GET" class="m-0">
-                <div class="input-group input-group-sm">
-                    <input type="text" name="search" class="form-control" placeholder="Cari nama/username..." value="<?= esc($search ?? '') ?>" style="width: 200px;">
-                    <button class="btn btn-outline-secondary" type="submit" title="Cari"><i class="bi bi-search"></i></button>
-                    <?php if(!empty($search)): ?>
-                        <a href="<?= base_url('/admin/suspend') ?>" class="btn btn-outline-danger" title="Reset Pencarian"><i class="bi bi-x"></i></a>
-                    <?php endif; ?>
-                </div>
-            </form>
-        </div>
-
-        <form id="bulkForm" action="<?= base_url('/admin/suspend/bulk-action') ?>" method="POST">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" id="bulkActionHidden">
-
-        <div class="table-responsive">
-            <table class="table table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th width="3%"><input type="checkbox" id="checkAll"></th>
-                        <th width="5%">No</th>
-                        <th>Siswa</th>
-                        <th>Status Akun</th>
-                        <th>Ujian Aktif</th>
-                        <th>Total Ujian</th>
-                        <th>Total Strikes</th>
-                        <th width="28%">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($users)): ?>
-                    <tr>
-                        <td colspan="8" class="text-center py-4 text-muted">
-                            <i class="bi bi-people fs-3 d-block mb-2"></i>
-                            Belum ada siswa terdaftar.
-                        </td>
-                    </tr>
-                    <?php else: ?>
-                        <?php $no = 1 + (int)($pager->getCurrentPage('users') - 1) * $pager->getPerPage('users'); foreach ($users as $u): ?>
-                        <tr class="<?= !$u->is_active ? 'table-danger bg-opacity-10' : '' ?>">
-                            <td><input type="checkbox" name="user_ids[]" value="<?= $u->id ?>" class="checkItem"></td>
-                            <td><?= $no++ ?></td>
-                            <td>
-                                <div class="fw-bold"><?= esc($u->firstname . ' ' . $u->lastname) ?></div>
-                                <div class="small text-muted">@<?= esc($u->username) ?></div>
-                            </td>
-                            <td>
-                                <?php if ($u->is_active): ?>
-                                    <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Aktif</span>
-                                <?php else: ?>
-                                    <span class="badge bg-danger"><i class="bi bi-x-circle-fill me-1"></i>Banned</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php if ($u->active_attempts > 0): ?>
-                                    <span class="badge bg-warning text-dark"><?= $u->active_attempts ?> sesi</span>
-                                <?php else: ?>
-                                    <span class="text-muted">—</span>
-                                <?php endif; ?>
-                            </td>
-                            <td><span class="badge bg-light text-dark border"><?= $u->total_attempts ?></span></td>
-                            <td>
-                                <?php if ($u->total_strikes > 0): ?>
-                                    <span class="badge bg-danger rounded-pill"><?= $u->total_strikes ?> strike</span>
-                                <?php else: ?>
-                                    <span class="text-muted">0</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <div class="d-flex gap-1 flex-wrap">
-                                    <?php if ($u->is_active): ?>
-                                        <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/ban/' . $u->id) ?>', 'Konfirmasi', 'BAN user <?= esc(addslashes($u->username)) ?>? User tidak akan bisa login.', 'Ya, Ban', '#dc3545')" class="btn btn-sm btn-danger fw-bold" title="Ban Akun">
-                                            <i class="bi bi-ban"></i> Ban
-                                        </button>
-
-                                        <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/reset-login/' . $u->id) ?>', 'Konfirmasi Reset Sesi', 'Hapus sesi login <?= esc(addslashes($u->username)) ?>?', 'Ya, Reset', '#0d6efd')" class="btn btn-sm btn-info text-white fw-bold" title="Reset Sesi Login (Multi-Login)">
-                                            <i class="bi bi-box-arrow-right"></i> Reset Sesi
-                                        </button>
-                                    <?php else: ?>
-                                        <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/release/' . $u->id) ?>', 'Konfirmasi', 'RELEASE user <?= esc(addslashes($u->username)) ?>?', 'Ya, Release', '#198754')" class="btn btn-sm btn-success fw-bold" title="Lepas Ban">
-                                            <i class="bi bi-unlock-fill"></i> Release
-                                        </button>
-                                    <?php endif; ?>
-
-                                    <?php if ($u->total_attempts > 0): ?>
-                                        <button type="button" class="btn btn-sm btn-outline-danger fw-bold" onclick="showResetModal(<?= $u->id ?>, '<?= esc($u->username) ?>')">
-                                            <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Ujian
-                                        </button>
-                                    <?php endif; ?>
-                                </div>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-        <div class="mt-3 d-flex justify-content-center">
-            <?= $pager->links('users', 'bootstrap_pagination') ?>
-        </div>
         </form>
     </div>
+
+    <form id="bulkForm" action="<?= base_url('/admin/suspend/bulk-action') ?>" method="POST">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" id="bulkActionHidden">
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 3%; padding-left: 1.4rem;"><input type="checkbox" id="checkAll"></th>
+                    <th style="width: 4%;">No</th>
+                    <th>Siswa</th>
+                    <th>Status Akun</th>
+                    <th>Ujian Aktif</th>
+                    <th>Total Ujian</th>
+                    <th>Total Strikes</th>
+                    <th style="width: 30%;" class="text-end pe-4">Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($users)): ?>
+                <tr>
+                    <td colspan="8">
+                        <div class="empty">
+                            <div class="empty-icon"><i class="bi bi-person-slash"></i></div>
+                            <h6>Belum ada siswa terdaftar</h6>
+                            <p>Data siswa muncul di sini setelah akun dibuat atau diimpor melalui menu Pengguna.</p>
+                        </div>
+                    </td>
+                </tr>
+                <?php else: ?>
+                    <?php $no = 1 + (int)($pager->getCurrentPage('users') - 1) * $pager->getPerPage('users'); foreach ($users as $u): ?>
+                    <tr class="<?= !$u->is_active ? 'danger-row' : '' ?>">
+                        <td style="padding-left: 1.4rem;"><input type="checkbox" name="user_ids[]" value="<?= $u->id ?>" class="checkItem"></td>
+                        <td class="mono" style="color: var(--text-tertiary);"><?= $no++ ?></td>
+                        <td>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="avatar-tile ink"><?= esc(strtoupper(substr($u->firstname, 0, 1))) ?></div>
+                                <div>
+                                    <div class="fw-semibold" style="color: var(--text-primary);"><?= esc($u->firstname . ' ' . $u->lastname) ?></div>
+                                    <div class="mono" style="font-size: 0.72rem; color: var(--text-tertiary);">@<?= esc($u->username) ?></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <?php if ($u->is_active): ?>
+                                <span class="chip ok"><span class="dot breathe"></span> Aktif</span>
+                            <?php else: ?>
+                                <span class="chip danger"><i class="bi bi-slash-circle"></i> Banned</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($u->active_attempts > 0): ?>
+                                <span class="chip warn"><i class="bi bi-broadcast"></i> <?= $u->active_attempts ?> sesi</span>
+                            <?php else: ?>
+                                <span class="row-meta">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><span class="chip ghost num"><?= $u->total_attempts ?></span></td>
+                        <td>
+                            <?php if ($u->total_strikes > 0): ?>
+                                <span class="strike-chip"><i class="bi bi-flag-fill"></i> <?= $u->total_strikes ?> strike</span>
+                            <?php else: ?>
+                                <span class="strike-chip zero">0</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="d-flex gap-1 flex-wrap justify-content-end">
+                                <?php if ($u->is_active): ?>
+                                    <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/ban/' . $u->id) ?>', 'Konfirmasi', 'BAN user <?= esc(addslashes($u->username)) ?>? User tidak akan bisa login.', 'Ya, Ban', '#dc3545')" class="btn btn-sm btn-danger-soft fw-semibold" title="Ban Akun">
+                                        <i class="bi bi-ban me-1"></i> Ban
+                                    </button>
+
+                                    <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/reset-login/' . $u->id) ?>', 'Konfirmasi Reset Sesi', 'Hapus sesi login <?= esc(addslashes($u->username)) ?>?', 'Ya, Reset', '#0d6efd')" class="btn btn-sm btn-ghost fw-semibold" title="Reset Sesi Login (Multi-Login)">
+                                        <i class="bi bi-box-arrow-right me-1"></i> Reset Sesi
+                                    </button>
+                                <?php else: ?>
+                                    <button type="button" onclick="singleAction('<?= base_url('/admin/suspend/release/' . $u->id) ?>', 'Konfirmasi', 'RELEASE user <?= esc(addslashes($u->username)) ?>?', 'Ya, Release', '#198754')" class="btn btn-sm btn-outline-success fw-semibold" title="Lepas Ban">
+                                        <i class="bi bi-unlock-fill me-1"></i> Release
+                                    </button>
+                                <?php endif; ?>
+
+                                <?php if ($u->total_attempts > 0): ?>
+                                    <button type="button" class="btn btn-sm btn-outline-danger fw-semibold" onclick="showResetModal(<?= $u->id ?>, '<?= esc($u->username) ?>')">
+                                        <i class="bi bi-arrow-counterclockwise me-1"></i> Reset Ujian
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <div class="py-3 d-flex justify-content-center border-top" style="border-color: var(--border-color) !important;">
+        <?= $pager->links('users', 'bootstrap_pagination') ?>
+    </div>
+    </form>
 </div>
 
 <!-- Modal Reset Ujian -->
@@ -182,7 +214,7 @@
             showCancelButton: true,
             confirmButtonText: confirmBtnText,
             cancelButtonText: 'Batal',
-            confirmButtonColor: btnColor || '#3085d6'
+            confirmButtonColor: btnColor || '#0e8a6b'
         }).then((res) => {
             if (res.isConfirmed) {
                 const form = document.createElement('form');
@@ -232,7 +264,7 @@
             showCancelButton: true,
             confirmButtonText: 'Ya, Lanjutkan',
             cancelButtonText: 'Batal',
-            confirmButtonColor: '#0d6efd'
+            confirmButtonColor: '#0e8a6b'
         }).then((res) => {
             if (res.isConfirmed) {
                 document.getElementById('bulkActionHidden').value = select;
@@ -312,7 +344,7 @@
             showCancelButton: true,
             confirmButtonText: 'Ya, Hapus',
             cancelButtonText: 'Batal',
-            confirmButtonColor: '#dc3545'
+            confirmButtonColor: '#d64550'
         }).then((result) => {
             if (result.isConfirmed) {
                 const formData = new FormData();
@@ -354,7 +386,7 @@
             showCancelButton: true,
             confirmButtonText: 'Ya, Hapus Permanen',
             cancelButtonText: 'Batal',
-            confirmButtonColor: '#dc3545'
+            confirmButtonColor: '#d64550'
         }).then((res) => {
             if(res.isConfirmed) {
                 document.getElementById('formResetAll').submit();

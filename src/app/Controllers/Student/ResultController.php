@@ -74,6 +74,27 @@ class ResultController extends BaseController
                     } else {
                         $wrongCount++;
                     }
+                } elseif ($log->question_type == 4 || $log->question_type == 5) {
+                    // Menjodohkan & Benar/Salah menyimpan pilihan sebagai JSON
+                    // {kiri: kanan} di test_logs.answer_text, bukan lewat
+                    // is_selected -- menghitungnya dari test_log_answers selalu
+                    // membuahkan nol dan soal terjawab pun masuk hitungan kosong.
+                    $picked = json_decode((string) ($log->answer_text ?? ''), true);
+                    $answered = 0;
+                    if (is_array($picked)) {
+                        foreach ($picked as $right) {
+                            if (trim((string) $right) !== '') {
+                                $answered++;
+                            }
+                        }
+                    }
+                    if ($answered == 0) {
+                        $unansweredCount++;
+                    } elseif ($log->score > 0) {
+                        $correctCount++;
+                    } else {
+                        $wrongCount++;
+                    }
                 } else {
                     $answered = $db->table('test_log_answers')
                                     ->where('test_log_id', $log->id)

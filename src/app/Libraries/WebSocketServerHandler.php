@@ -120,8 +120,39 @@ class WebSocketServerHandler implements MessageComponentInterface
     public function onMessage(ConnectionInterface $from, $msg)
     {
         $data = @json_decode($msg, true);
-        if ($data && ($data['event'] ?? '') === 'pong') {
+        if (!$data) {
+            return;
+        }
+
+        if (($data['event'] ?? '') === 'pong') {
             $from->lastPong = time();
+        }
+
+        if (isset($data['action']) && ($data['action'] === 'kiosk_event' || $data['action'] === 'kiosk_status')) {
+            $db = \Config\Database::connect();
+            $eventType = $data['type'] ?? ($data['action'] === 'kiosk_status' ? ($data['status'] ?? 'status_change') : 'unknown');
+            $eventDetails = isset($data['data']) ? json_encode($data['data']) : null;
+
+            $db->table('exam_kiosk_events')->insert([
+                'exam_session_id' => $from->testId ?? 0,
+                'student_id'      => $from->userId ?? 0,
+                'event_type'      => $eventType,
+                'event_details'   => $eventDetails,
+                'created_at'      => date('Y-m-d H:i:s'),
+            ]);
+
+            // Broadcast event to proctors monitoring this exam session
+            $testId = $from->testId ?? null;
+            $this->broadcastToProctors([
+                'event'      => 'kiosk_event',
+                'action'     => $data['action'],
+                'user_id'    => $from->userId ?? 0,
+                'attempt_id' => $from->attemptId ?? 0,
+                'test_id'    => $testId,
+                'type'       => $eventType,
+                'data'       => $data['data'] ?? [],
+                'timestamp'  => date('Y-m-d H:i:s'),
+            ], $testId);
         }
     }
 

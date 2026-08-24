@@ -98,11 +98,19 @@ class ExamService
 
         } else {
             // No previous attempt exists: Create new Test Attempt
+            $lastAttempt = $this->attemptModel->where('test_id', $testId)
+                                              ->where('user_id', $userId)
+                                              ->selectMax('attempt_number')
+                                              ->first();
+            
+            $attemptNumber = ($lastAttempt && !empty($lastAttempt->attempt_number)) ? (int)$lastAttempt->attempt_number + 1 : 1;
+
             $attemptData = [
-                'test_id'    => $testId,
-                'user_id'    => $userId,
-                'status'     => 1, // active
-                'started_at' => date('Y-m-d H:i:s'),
+                'test_id'        => $testId,
+                'user_id'        => $userId,
+                'attempt_number' => $attemptNumber,
+                'status'         => 1, // active
+                'started_at'     => date('Y-m-d H:i:s'),
             ];
             $this->attemptModel->insert($attemptData);
             $attemptId = $this->attemptModel->getInsertID();
@@ -121,12 +129,30 @@ class ExamService
                 continue;
             }
 
+            // Guard: set yang dibatasi topik hanya boleh menarik dari subject pemilik topik.
+            // Mencegah exclusion diam-diam soal dari subject lain yang tidak punya topic ini.
+            if (!empty($set->topic_id)) {
+                $topicOwner = $db->table('topics')
+                                 ->select('subject_id')
+                                 ->where('id', $set->topic_id)
+                                 ->where('deleted_at', null)
+                                 ->get()->getRow();
+                if ($topicOwner) {
+                    $subjectIds = [(int) $topicOwner->subject_id];
+                }
+            }
+
             // Fetch eligible question IDs to shuffle in PHP (eliminates ORDER BY RAND())
             $qBuilder = $db->table('questions')
                            ->select('id')
                            ->whereIn('subject_id', $subjectIds)
                            ->where('is_enabled', 1)
                            ->orderBy('id', 'ASC');
+
+            // Jika set dibatasi ke topik/bab tertentu, ambil hanya dari topik itu
+            if (!empty($set->topic_id)) {
+                $qBuilder->where('topic_id', $set->topic_id);
+            }
 
             if ($set->question_type != 0) {
                 $qBuilder->where('type', $set->question_type);
@@ -186,7 +212,9 @@ class ExamService
                 // Shuffle answers if test configured to randomize answers
                 if ($test->random_answers && in_array($q->type, [1, 2])) {
                     if ($test->exam_mode === 'static') {
-                        mt_srand($test->id + $q->id);
+                        // Per-attempt seed: each student sees different answer order
+                        // while the question pool remains the same.
+                        mt_srand($attemptId + $q->id);
                         shuffle($answers);
                         mt_srand(); // reset seed
                     } else {
@@ -216,7 +244,8 @@ class ExamService
         if ($test->random_questions) {
             $logs = $this->testLogModel->where('test_attempt_id', $attemptId)->findAll();
             if ($test->exam_mode === 'static') {
-                mt_srand($test->id);
+                // Per-attempt seed: each student sees different question order.
+                mt_srand($attemptId);
                 shuffle($logs);
                 mt_srand();
             } else {

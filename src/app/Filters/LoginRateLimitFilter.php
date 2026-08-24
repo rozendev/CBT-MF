@@ -34,17 +34,11 @@ class LoginRateLimitFilter implements FilterInterface
             }
         } catch (\Exception $e) {
             log_message('error', 'LoginRateLimitFilter Redis error: ' . $e->getMessage());
-            // Fallback: use in-memory file-based rate limiting when Redis is down
-            $ip = $request->getIPAddress();
-            $cacheKey = 'login_fallback_' . md5($ip);
-            $cache = service('cache');
-            $attempts = (int)$cache->get($cacheKey);
-            $cache->save($cacheKey, $attempts + 1, 900);
-            if ($attempts > 20) {
-                return redirect()->back()
-                    ->withInput()
-                    ->with('error', 'Terlalu banyak percobaan login. Silakan coba lagi dalam 15 menit.');
-            }
+            
+            // FAIL-CLOSED: Tolak login jika Redis tidak tersedia untuk menjamin keamanan
+            return \Config\Services::response()
+                ->setStatusCode(503)
+                ->setBody('Sistem keamanan tidak dapat diinisialisasi (Redis tidak terhubung). Silakan hubungi administrator.');
         }
     }
 

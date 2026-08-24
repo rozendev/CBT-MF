@@ -30,8 +30,15 @@ RUN pecl install redis \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copy tuning configuration
+# Konfig tuning: nilai bawaan dipakai kalau entrypoint tidak jalan
+# (mis. image dipakai langsung tanpa entrypoint kustom).
 COPY zzz-tuning.conf /usr/local/etc/php-fpm.d/zzz-tuning.conf
+
+# Entrypoint merender ulang zzz-tuning.conf dari env saat start.
+COPY entrypoint.sh /usr/local/bin/cbt-entrypoint.sh
+RUN chmod +x /usr/local/bin/cbt-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/cbt-entrypoint.sh"]
+CMD ["php-fpm"]
 
 WORKDIR /var/www/html
 

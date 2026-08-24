@@ -66,7 +66,7 @@ class LiveController extends BaseController
             ]));
         }
 
-        $wsUrl = $this->settingModel->getValue('websocket_url', 'ws://localhost:8060');
+        $wsUrl = \App\Libraries\WebSocketUrl::resolve($this->settingModel);
 
         $data = [
             'title'        => 'Live Proctoring: ' . $test->name,

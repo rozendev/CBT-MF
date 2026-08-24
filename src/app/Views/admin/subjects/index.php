@@ -3,32 +3,41 @@
 <?= $this->section('page_title') ?>Manajemen Subjek Topik<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="card mb-4">
+<!-- Page Head -->
+<div class="page-head rise">
+    <div>
+        <div class="eyebrow">Struktur Kurikulum</div>
+        <h1>Subjek Topik</h1>
+        <p class="sub">Daftar subjek atau topik mata pelajaran di dalam modul.</p>
+    </div>
+    <div class="actions">
+        <a href="<?= base_url('/admin/subjects/create') ?><?= $moduleId ? '?module_id='.$moduleId : '' ?>" class="btn btn-accent btn-sm">
+            <i class="bi bi-plus-circle me-1"></i> Tambah Subjek
+        </a>
+    </div>
+</div>
+
+<div class="card mb-4 rise" style="--d:60ms">
     <div class="card-body py-3">
         <form action="<?= base_url('/admin/subjects') ?>" method="GET" class="row g-3 align-items-center">
             <div class="col-md-5">
-                <select name="module_id" class="form-select" onchange="this.form.submit()">
-                    <option value="">Semua Modul</option>
-                    <?php foreach ($modules as $mod): ?>
-                        <option value="<?= $mod->id ?>" <?= ($moduleId == $mod->id) ? 'selected' : '' ?>>
-                            <?= esc($mod->name) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="col-md-7 d-flex justify-content-end">
-                <a href="<?= base_url('/admin/subjects/create') ?><?= $moduleId ? '?module_id='.$moduleId : '' ?>" class="btn btn-primary btn-sm rounded-pill px-3">
-                    <i class="bi bi-plus-circle me-1"></i> Tambah Subjek
-                </a>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-funnel"></i></span>
+                    <select name="module_id" class="form-select" onchange="this.form.submit()" style="border-left: 0;">
+                        <option value="">Semua Modul</option>
+                        <?php foreach ($modules as $mod): ?>
+                            <option value="<?= $mod->id ?>" <?= ($moduleId == $mod->id) ? 'selected' : '' ?>>
+                                <?= esc($mod->name) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
             </div>
         </form>
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header bg-white border-bottom py-3">
-        <h6 class="m-0 fw-bold"><i class="bi bi-bookmarks me-1"></i> Daftar Subjek Topik</h6>
-    </div>
+<div class="card rise" style="--d:120ms">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
@@ -45,29 +54,32 @@
                 <tbody>
                     <?php if (empty($subjects)): ?>
                         <tr>
-                            <td colspan="6" class="text-center py-5 text-muted">
-                                <i class="bi bi-bookmark-x fs-2 d-block mb-2 text-light"></i>
-                                Tidak ada subjek yang ditemukan.
+                            <td colspan="6">
+                                <div class="empty">
+                                    <div class="empty-icon"><i class="bi bi-bookmark-x"></i></div>
+                                    <h6>Tidak ada subjek ditemukan</h6>
+                                    <p>Ubah filter modul atau tambahkan subjek topik baru.</p>
+                                </div>
                             </td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($subjects as $subject): ?>
                             <tr>
                                 <td class="ps-4">
-                                    <span class="badge bg-light text-dark border px-2 py-1">
+                                    <span class="chip ghost">
                                         <?= esc($subject->module_name) ?>
                                     </span>
                                 </td>
-                                <td class="fw-medium text-dark"><?= esc($subject->name) ?></td>
-                                <td class="text-muted small text-truncate" style="max-width: 200px;" title="<?= esc($subject->description) ?>">
+                                <td class="fw-medium" style="color: var(--text-primary);"><?= esc($subject->name) ?></td>
+                                <td class="small text-truncate" style="max-width: 200px; color: var(--text-secondary);" title="<?= esc($subject->description) ?>">
                                     <?= esc($subject->description ?? '-') ?>
                                 </td>
-                                <td class="text-muted small"><?= esc($subject->author_name ?? 'System') ?></td>
+                                <td class="small" style="color: var(--text-secondary);"><?= esc($subject->author_name ?? 'System') ?></td>
                                 <td>
                                     <?php if ($subject->is_enabled): ?>
-                                        <span class="badge bg-success-subtle text-success rounded-pill px-2">Aktif</span>
+                                        <span class="chip ok"><span class="dot breathe"></span> Aktif</span>
                                     <?php else: ?>
-                                        <span class="badge bg-danger-subtle text-danger rounded-pill px-2">Nonaktif</span>
+                                        <span class="chip danger"><i class="bi bi-slash-circle"></i> Nonaktif</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-end pe-4">
@@ -90,7 +102,7 @@
         </div>
     </div>
     <?php if ($pager): ?>
-    <div class="card-footer bg-white py-3 border-top d-flex justify-content-end">
+    <div class="card-footer py-3 border-top d-flex justify-content-end">
         <?= $pager->links('default', 'bootstrap_pagination') ?>
     </div>
     <?php endif; ?>

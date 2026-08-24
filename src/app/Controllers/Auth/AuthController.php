@@ -43,6 +43,16 @@ class AuthController extends BaseController
      */
     public function attemptLogin()
     {
+        $wantsJson = str_contains($this->request->getHeaderLine('Accept'), 'application/json')
+            || $this->request->getHeaderLine('X-Requested-With') === 'kiosk-bundle';
+
+        $fail = function (string $message) use ($wantsJson) {
+            if ($wantsJson) {
+                return $this->response->setStatusCode(401)->setJSON(['status' => 'error', 'message' => $message]);
+            }
+            return redirect()->back()->withInput()->with('error', $message);
+        };
+
         // Validate input
         $rules = [
             'username' => 'required',
@@ -50,9 +60,7 @@ class AuthController extends BaseController
         ];
 
         if (!$this->validate($rules)) {
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'Username dan password wajib diisi.');
+            return $fail('Username dan password wajib diisi.');
         }
 
         $username = $this->request->getPost('username');
@@ -62,24 +70,18 @@ class AuthController extends BaseController
         $user = $this->userModel->getByUsername($username);
 
         if (!$user) {
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'Username atau password salah.');
+            return $fail('Username atau password salah.');
         }
 
         // Check if account is active
         if (!$user->is_active) {
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'Akun Anda telah dinonaktifkan. Hubungi administrator.');
+            return $fail('Akun Anda telah dinonaktifkan. Hubungi administrator.');
         }
 
         // Check if account is locked
         if ($this->userModel->isLocked($user)) {
             $lockedUntil = date('H:i', strtotime($user->locked_until));
-            return redirect()->back()
-                ->withInput()
-                ->with('error', "Akun dikunci karena terlalu banyak percobaan login. Coba lagi setelah {$lockedUntil}.");
+            return $fail("Akun dikunci karena terlalu banyak percobaan login. Coba lagi setelah {$lockedUntil}.");
         }
 
         // Verify password
@@ -107,23 +109,17 @@ class AuthController extends BaseController
                 $this->activityLog->log('login_locked', $user->id, 'user', $user->id,
                     "Akun dikunci setelah {$maxAttempts} percobaan gagal");
 
-                return redirect()->back()
-                    ->withInput()
-                    ->with('error', "Akun dikunci selama {$lockoutDuration} menit karena terlalu banyak percobaan login.");
+                return $fail("Akun dikunci selama {$lockoutDuration} menit karena terlalu banyak percobaan login.");
             }
 
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'Username atau password salah.');
+            return $fail('Username atau password salah.');
         }
 
         // Try to connect to Redis
         $redis = \App\Libraries\RedisClient::getInstance();
         if (!$redis) {
             log_message('error', 'Redis connection failed during login process.');
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'Layanan database sesi tidak tersedia. Coba lagi beberapa saat.');
+            return $fail('Layanan database sesi tidak tersedia. Coba lagi beberapa saat.');
         }
 
         $loginToken = bin2hex(random_bytes(16));
@@ -136,9 +132,7 @@ class AuthController extends BaseController
                 $existingToken = $redis->get($tokenKey);
                 // If a token exists and isn't a BANNED marker, they are already logged in elsewhere
                 if ($existingToken && $existingToken !== 'BANNED') {
-                    return redirect()->back()
-                        ->withInput()
-                        ->with('error', 'Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
+                    return $fail('Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
                 }
                 
                 // Set the token atomically to prevent concurrent login bypass
@@ -147,14 +141,12 @@ class AuthController extends BaseController
                 } else {
                     $set = $redis->set($tokenKey, $loginToken, ['nx', 'ex' => 7200]);
                     if (!$set) {
-                        return redirect()->back()
-                            ->withInput()
-                            ->with('error', 'Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
+                        return $fail('Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
                     }
                 }
             } catch (\Exception $e) {
                 log_message('error', 'Redis multi-login block/reserve error: ' . $e->getMessage());
-                return redirect()->back()->with('error', 'Layanan sedang tidak tersedia. Coba lagi.');
+                return $fail('Layanan sedang tidak tersedia. Coba lagi.');
             }
         } else {
             // Write it anyway (overwriting)
@@ -162,7 +154,7 @@ class AuthController extends BaseController
                 $redis->setex($tokenKey, 7200, $loginToken);
             } catch (\Exception $e) {
                 log_message('error', 'Redis session store error: ' . $e->getMessage());
-                return redirect()->back()->with('error', 'Layanan sedang tidak tersedia. Coba lagi.');
+                return $fail('Layanan sedang tidak tersedia. Coba lagi.');
             }
         }
 
@@ -217,9 +209,7 @@ class AuthController extends BaseController
             } catch (\Exception $re) {
                 log_message('error', 'Redis cleanup failed during login failure: ' . $re->getMessage());
             }
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'Gagal memproses login. Coba lagi.');
+            return $fail('Gagal memproses login. Coba lagi.');
         }
 
         // Redirect to queue if limited
@@ -251,6 +241,19 @@ class AuthController extends BaseController
             }
         }
 
+        if ($wantsJson) {
+            return $this->response->setJSON([
+                'status' => 'success',
+                'message' => 'Login berhasil.',
+                'user' => [
+                    'id' => (int) session('user_id'),
+                    'username' => session('username'),
+                    'firstname' => session('firstname'),
+                    'lastname' => session('lastname'),
+                ],
+            ]);
+        }
+
         return $this->redirectByRole();
     }
 
@@ -278,6 +281,19 @@ class AuthController extends BaseController
         }
 
         session()->destroy();
+
+        // Bundle kiosk memanggil lewat fetch lintas origin: redirect tidak berguna
+        // di sana (fetch mengikutinya dan menerima HTML login). Pola sama dengan
+        // attemptLogin.
+        $wantsJson = str_contains($this->request->getHeaderLine('Accept'), 'application/json')
+            || $this->request->getHeaderLine('X-Requested-With') === 'kiosk-bundle';
+
+        if ($wantsJson) {
+            return $this->response->setJSON([
+                'status'  => 'success',
+                'message' => 'Anda telah berhasil logout.',
+            ]);
+        }
 
         return redirect()->to('/login')
             ->with('success', 'Anda telah berhasil logout.');

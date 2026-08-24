@@ -16,17 +16,40 @@ $routes->post('queue/ping', 'Auth\QueueController::ping');
 $routes->get('maintenance', 'Auth\AuthController::maintenance');
 
 $routes->group('api', ['filter' => 'auth'], static function ($routes) {
-    $routes->get('test-scan', 'Api\TestCheatController::test');
+    // @todo remove: legacy endpoint, controller no longer exists
+    // $routes->get('test-scan', 'Api\TestCheatController::test');
     $routes->post('keep-alive', 'Api\SyncController::keepAlive');
     
     // Static Exam API
+    // init dipanggil GET oleh bundle kiosk (exam.php) dan POST oleh web
+    // desktop (static_exam_template.php) — controller membaca getPost ?? getGet.
+    $routes->get('exam/init', 'Api\ExamApiController::init');
     $routes->post('exam/init', 'Api\ExamApiController::init');
+    $routes->post('exam/start', 'Api\ExamApiController::start');
     $routes->post('exam/autosave', 'Api\ExamApiController::autosave');
     $routes->post('exam/auto-sync', 'Api\ExamApiController::autoSync');
     $routes->post('exam/finish', 'Api\ExamApiController::finish');
     $routes->post('exam/check-score', 'Api\ExamApiController::checkScore');
     $routes->post('exam/report-cheat', 'Api\ExamApiController::reportCheat');
     $routes->get('exam/stream/(:num)', 'Api\ExamApiController::stream/$1');
+    $routes->get('student/exams', 'Api\StudentApiController::exams');
+    $routes->get('student/results', 'Api\StudentApiController::results');
+    $routes->get('student/review', 'Api\StudentApiController::review');
+});
+
+// ── Kiosk & Intruder Routes (public, token/rate guarded) ──────────
+$routes->group('api', static function ($routes) {
+    $routes->get('kiosk/config', 'Api\KioskController::config');
+    $routes->post('kiosk/verify-exit', 'Api\KioskController::verifyExit');
+    $routes->post('kiosk/can-exit', 'Api\KioskController::canExit');
+    $routes->post('intruder/report', 'Api\IntruderReportController::report');
+});
+
+// ── CORS Preflight (catch-all OPTIONS) ──────────────
+// Preflight CORS: CorsApiFilter menangani header; rute ini memastikan
+// OPTIONS ke path mana pun (login, api/*, dll) tidak 404 sebelum filter jalan.
+$routes->options('(:any)', static function () {
+    return \Config\Services::response()->setStatusCode(200);
 });
 
 // ── Admin Routes (role-protected) ───────────────────
@@ -77,9 +100,23 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->post('settings/clear-cache', 'Admin\SettingController::clearCache');
         $routes->post('settings/reset', 'Admin\SettingController::resetSettings');
 
+        // Kiosk App Management (Independent Page)
+        $routes->get('kiosk', 'Admin\KioskSettingsController::index');
+        $routes->post('kiosk/update', 'Admin\KioskSettingsController::update');
+
+        // Kiosk Live Monitoring
+        $routes->get('kiosk/live', 'Admin\KioskLiveController::index');
+        $routes->get('kiosk/live-data', 'Admin\KioskLiveController::data');
+        $routes->post('kiosk/live/action', 'Admin\KioskLiveController::action');
+
         // Analytics
         $routes->get('analytics', 'Admin\AnalyticsController::index');
         $routes->get('analytics/data', 'Admin\AnalyticsController::getData');
+
+        // Logging / Aktivitas
+        $routes->get('logging', 'Admin\LoggingController::index');
+        $routes->post('logging/export', 'Admin\LoggingController::export');
+        $routes->get('logging/intruders', 'Admin\LoggingController::intruders');
     });
 
     // Modules
@@ -100,6 +137,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
 
     // Questions (Bank Soal)
     $routes->get('questions', 'Admin\QuestionController::index');
+    $routes->get('questions/topics', 'Admin\QuestionController::topicsBySubject');
     $routes->get('questions/create', 'Admin\QuestionController::create');
     $routes->post('questions/store', 'Admin\QuestionController::store');
     $routes->get('questions/edit/(:num)', 'Admin\QuestionController::edit/$1');
@@ -141,6 +179,12 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->post('results/update-score', 'Admin\ResultController::updateManualScore');
     $routes->post('results/delete-attempt/(:num)', 'Admin\ResultController::deleteAttempt/$1');
 
+    // Koreksi cepat: satu soal esai dinilai lintas siswa dalam satu layar.
+    $routes->get('results/grade/(:num)', 'Admin\ResultController::gradeRedirect/$1');
+    $routes->get('results/grade/(:num)/(:num)', 'Admin\ResultController::grade/$1/$2');
+    $routes->get('results/grade-data/(:num)/(:num)', 'Admin\ResultController::gradeData/$1/$2');
+    $routes->post('results/grade-save', 'Admin\ResultController::gradeSave');
+
     // Proctor Report Notifications (polling)
     $routes->get('notifications/proctor-reports', 'Admin\NotificationController::proctorReports');
 });
@@ -155,7 +199,8 @@ $routes->group('student', ['filter' => 'role:siswa,admin,guru'], static function
     $routes->post('exam/start/(:num)', 'Student\ExamController::start/$1');
     $routes->group('exam', static function ($routes) {
         $routes->get('take/(:num)', 'Student\ExamController::take/$1');
-        $routes->get('stream/(:num)', 'Student\SseController::stream/$1');
+        // @todo remove: legacy SSE endpoint, controller no longer exists
+        // $routes->get('stream/(:num)', 'Student\SseController::stream/$1');
         $routes->post('autosave', 'Student\ExamController::saveAnswer');
         $routes->post('auto-sync', 'Student\ExamController::autoSync');
     });

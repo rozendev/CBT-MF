@@ -5,6 +5,9 @@ composer.lock
 # Static Exports
 src/public/static/
 
+# Kiosk UI bundle (build artifact — dihasilkan cbt:build-ui-bundle)
+src/public/ui-bundle/
+
 # Environment
 .env
 .env.local
@@ -101,3 +104,8 @@ graphify-out/
 # Uploads / Dynamic Data (Ensure they aren't tracked)
 docker/mysql/data/
 docker/redis/data/
+src/public/uploads/
+src/writable.maintenance_manual
+src/writable/maintenance*
+# Dump database dari "cbt.sh db export" mendarat di root repo.
+*.sql

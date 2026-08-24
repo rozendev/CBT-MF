@@ -8,14 +8,32 @@ use CodeIgniter\HTTP\ResponseInterface;
 class CorsApiFilter implements FilterInterface
 {
     /**
+     * Origin tetap WebView aplikasi kiosk. WebViewAssetLoader selalu
+     * menyajikan bundle dari domain ini (lihat MainActivity.setDomain), jadi
+     * nilainya properti aplikasi, bukan pilihan pemasangan. Sempat harus
+     * diisi manual di src/.env, dan instalasi ulang menghapusnya diam-diam:
+     * bundle tetap terbuka, login-nya yang mati.
+     *
+     * Mengizinkannya tidak menambah permukaan serangan: CORS ditegakkan
+     * browser, bukan server. Penyerang yang memanggil API langsung tidak
+     * pernah melewati pemeriksaan ini sejak awal.
+     */
+    private const KIOSK_ORIGIN = 'https://appassets.androidplatform.net';
+
+    /**
      * Get the list of allowed origins from environment configuration.
      *
      * @return array<string>
      */
     private function getAllowedOrigins(): array
     {
-        $raw = env('CORS_ALLOWED_ORIGINS', rtrim(config('App')->baseURL, '/'));
-        return array_map('trim', explode(',', $raw));
+        $raw  = (string) env('CORS_ALLOWED_ORIGINS', '');
+        $list = $raw === '' ? [] : array_map('trim', explode(',', $raw));
+
+        $list[] = rtrim((string) config('App')->baseURL, '/');
+        $list[] = self::KIOSK_ORIGIN;
+
+        return array_values(array_unique(array_filter($list)));
     }
 
     /**
@@ -60,14 +78,23 @@ class CorsApiFilter implements FilterInterface
         // Strict Origin/Referer validation for state-changing requests (CSRF mitigation)
         $method = strtoupper($request->getMethod());
         if (in_array($method, ['POST', 'PUT', 'DELETE', 'PATCH'], true)) {
-            $referer = $request->getHeaderLine('Referer');
-            $baseURL = rtrim(config('App')->baseURL, '/');
-            
+            $referer      = $request->getHeaderLine('Referer');
+            $baseURL      = rtrim(config('App')->baseURL, '/');
+            $requestHost  = $request->getServer('HTTP_HOST') ?: '';
+            $requestProto = $request->isSecure() ? 'https' : 'http';
+
             $isValid = false;
             if (!empty($origin)) {
-                $isValid = $this->isOriginAllowed($origin);
+                // Same-origin (desktop web) selalu trusted walau env CORS lupa diupdate.
+                $sameOrigin = $requestHost !== '' && $origin === $requestProto . '://' . $requestHost;
+                $isValid    = $sameOrigin || $this->isOriginAllowed($origin);
             } elseif (!empty($referer)) {
-                $isValid = str_starts_with($referer, $baseURL);
+                $isValid          = str_starts_with($referer, $baseURL);
+                $sameOriginRef    = $requestHost !== '' && str_starts_with(
+                    $referer,
+                    $requestProto . '://' . $requestHost
+                );
+                $isValid = $isValid || $sameOriginRef;
             } else {
                 // Browsers send Origin for cross-origin POST. If both missing, assume safe client/same-origin.
                 $isValid = true;

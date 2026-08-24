@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CBT-MF Kiosk</string>
+    <string name="setup_title">CBT-MF Kiosk</string>
+    <string name="setup_subtitle">Masukkan URL Server CBT Sekolah untuk memulai ujian</string>
+    <string name="url_hint">https://cbt.sekolah.sch.id</string>
+    <string name="btn_start_exam">Mulai Ujian</string>
+    <string name="info_title">Keamanan Kiosk Aktif</string>
+    <string name="info_body">Screen pinning &amp; anti-screenshot aktif\nPemantau baterai dan jaringan aktif\nPengawas dapat keluar dengan password ujian</string>
+    <string name="battery_placeholder">--%%</string>
+    <string name="network_checking">Memeriksa\u2026</string>
+    <string name="btn_reload">Muat Ulang</string>
+    <string name="btn_exit">Keluar</string>
+    <string name="exit_dialog_title">Buka Kunci Kiosk</string>
+    <string name="exit_dialog_message">Masukkan password pengawas untuk melepas penguncian:</string>
+    <string name="exit_dialog_hint">Password Pengawas</string>
+    <string name="exit_dialog_confirm">Buka Kunci</string>
+    <string name="exit_dialog_cancel">Batal</string>
+    <string name="toast_url_empty">Silakan masukkan URL Server CBT</string>
+    <string name="toast_https_redirect">URL dialihkan ke HTTPS demi keamanan ujian</string>
+    <string name="toast_kiosk_locked">Kiosk Mode Aktif \u2014 Perangkat terkunci</string>
+    <string name="toast_kiosk_failed">Gagal mengunci Kiosk Mode. Periksa izin.</string>
+    <string name="toast_kiosk_unlocked">Kiosk Mode Dibuka</string>
+    <string name="toast_page_reloaded">Halaman dimuat ulang</string>
+    <string name="toast_exam_finished">Ujian selesai \u2014 Kiosk dibuka</string>
+    <string name="toast_exam_not_verified">Ujian belum selesai atau tidak terverifikasi</string>
+    <string name="btn_update_bundle">Update UI</string>
+    <string name="toast_bundle_up_to_date">Bundle UI sudah versi terbaru.</string>
+    <string name="toast_bundle_need_url">Isi alamat server dulu sebelum update UI.</string>
+    <string name="toast_bundle_missing">Bundle UI belum terpasang. Tekan "Update UI" dulu.</string>
+    <string name="btn_test_beep">Tes Suara Peringatan</string>
+    <string name="toast_test_beep">Memutar bunyi peringatan…</string>
+    <string name="toast_kiosk_locked_warning">Kiosk terkunci \u2014 Masukkan password pengawas</string>
+    <string name="toast_wrong_password">Password salah \u2014 Alarm aktif</string>
+    <string name="toast_url_invalid">URL server tidak valid</string>
+    <string name="toast_version_too_old">Versi aplikasi terlalu lama. Hubungi pengawas.</string>
+    <string name="toast_root_blocked">Perangkat terdeteksi ROOT. Ujian diblokir.</string>
+    <string name="toast_verify_failed">Gagal verifikasi ke server. Periksa koneksi.</string>
+    <string name="toast_password_empty">Password kosong atau server belum diatur</string>
+</resources>

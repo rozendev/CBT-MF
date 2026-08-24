@@ -77,7 +77,13 @@
                         <?php if (!empty($test->password)): ?>
                             <div class="mb-4 bg-light p-3 rounded-3 border border-warning">
                                 <label class="form-label fw-bold text-dark"><i class="bi bi-lock-fill me-1 text-warning"></i> Masukkan Password Ujian</label>
-                                <input type="password" class="form-control form-control-lg" name="password" required placeholder="Ketik password ujian...">
+                                <div class="input-group input-group-lg">
+                                    <input type="password" class="form-control" id="exam_password" name="password" required placeholder="Ketik password ujian...">
+                                    <button type="button" class="btn btn-outline-secondary" data-target="exam_password" aria-label="Tampilkan password ujian">
+                                        <i class="bi bi-eye"></i>
+                                        <i class="bi bi-eye-slash d-none"></i>
+                                    </button>
+                                </div>
                                 <div class="form-text mt-2 text-muted">Ujian ini dilindungi oleh password. Tanyakan kepada pengawas jika Anda belum mengetahuinya.</div>
                             </div>
                         <?php endif; ?>
@@ -276,6 +282,20 @@ document.addEventListener('DOMContentLoaded', function() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
     }
+
+    document.querySelectorAll('.toggle-password').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var input = document.getElementById(btn.dataset.target);
+            if (!input) return;
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            var eye = btn.querySelector('.bi-eye');
+            var eyeSlash = btn.querySelector('.bi-eye-slash');
+            if (eye) eye.classList.toggle('d-none', show);
+            if (eyeSlash) eyeSlash.classList.toggle('d-none', !show);
+            btn.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password');
+        });
+    });
 });
 </script>
 <?= $this->endSection() ?>

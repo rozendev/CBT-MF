@@ -1,205 +1,503 @@
 #!/bin/bash
-
 # ============================================================
 # CBT-MF CLI Helper
-# Unified interactive script for managing the CBT-MF project
+# Satu perintah ditulis sekali di senarai CMD; menu dan CLI
+# sama-sama dirender dari sana.
 # ============================================================
 
-# --- Color Definitions ---
-CYAN='\033[0;36m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
-PURPLE='\033[0;35m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
+set -euo pipefail
 
-# --- Security Check ---
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}Error: Script ini harus dijalankan sebagai root (gunakan sudo).${NC}"
-    echo "Contoh: sudo bash scripts/cbt.sh"
+CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
+RED='\033[0;31m'; BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
+
+# die() sering dipanggil dari dalam $( ), dan 'exit' di sana hanya
+# mematikan subshell-nya: skrip induk jalan terus dengan nilai kosong.
+# Sinyal ke $$ (PID skrip, tetap sama di dalam subshell) yang membuat
+# induknya benar-benar berhenti; trap-nya menjaga agar berhenti rapi
+# dengan status 1, bukan 143 plus "Terminated".
+trap 'exit 1' TERM
+die() {
+    printf '%b\n' "${RED}Error: $*${NC}" >&2
+    kill -TERM $$ 2>/dev/null
     exit 1
-fi
+}
+warn() { printf '%b\n' "${YELLOW}$*${NC}" >&2; }
+info() { printf '%b\n' "${CYAN}$*${NC}"; }
+ok()   { printf '%b\n' "${GREEN}$*${NC}"; }
 
-# --- Environment Setup ---
+[ "$EUID" -eq 0 ] || die "Script ini harus dijalankan sebagai root (gunakan sudo).
+Contoh: sudo bash scripts/cbt.sh"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ENV_FILE="$PROJECT_DIR/.env"
-
-if [ ! -f "$ENV_FILE" ]; then
-    ENV_FILE="$PROJECT_DIR/.env.example"
-fi
-
-if [ -f "$ENV_FILE" ]; then
-    # Export variables (ignore comments and empty lines)
-    export $(grep -v '^#' "$ENV_FILE" | grep -v '^$' | xargs)
-else
-    echo -e "${RED}Error: .env or .env.example file not found at $PROJECT_DIR${NC}"
-    exit 1
-fi
-
 COMPOSE="docker compose"
-PHP_CONTAINER="${CONTAINER_PHP:-ujian_php}"
-DB_CONTAINER="${CONTAINER_DB:-ujian_mariadb}"
-REDIS_CONTAINER="${CONTAINER_REDIS:-ujian_redis}"
-DB_USER="${DB_USERNAME:-sayasukakamu}"
-DB_PASS="${DB_PASSWORD:-sayasukakamu}"
-DB_NAME="${DB_DATABASE:-cbt-mf}"
-ROOT_PASS="${MYSQL_ROOT_PASSWORD:-root_secret}"
+
+# Pembaca .env yang tidak mengeksekusi isinya. 'source' akan menjalankan
+# backtick di dalam .env sebagai perintah; ini hanya membaca pasangan
+# key=value, melepas kutip pembungkus, dan melewati kunci yang bukan
+# identifier shell (mis. 'app.baseURL' di src/.env).
+load_env() {
+    local file="$1" line key value
+    [ -f "$file" ] || return 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|'#'*) continue ;; esac
+        case "$line" in *=*) ;; *) continue ;; esac
+        key=${line%%=*}
+        value=${line#*=}
+        key=$(printf '%s' "$key" | tr -d '[:space:]')
+        case "$key" in
+            ''|*[!A-Za-z0-9_]*) continue ;;
+        esac
+        case "$value" in
+            \"*\") value=${value#\"}; value=${value%\"} ;;
+            \'*\') value=${value#\'}; value=${value%\'} ;;
+        esac
+        export "$key=$value"
+    done < "$file"
+    return 0
+}
+
+# Instalasi baru yang bersih belum punya .env sama sekali; itu tugas
+# installer. Jadi ketiadaannya memperingatkan, bukan menghentikan.
+if ! load_env "$PROJECT_DIR/.env"; then
+    if ! load_env "$PROJECT_DIR/.env.example"; then
+        warn "Peringatan: .env maupun .env.example tidak ditemukan di $PROJECT_DIR."
+        warn "Sebagian besar perintah akan menolak jalan sampai installer dijalankan."
+    fi
+fi
+
+# Resolusi container sengaja MALAS. Kalau ini gagal-keras saat berkas
+# dimuat, 'install' ikut terkunci justru pada saat paling dibutuhkan.
+need_env() {
+    local name="$1" value="${!1:-}"
+    [ -n "$value" ] || die "$name belum ada di .env.
+Jalankan installer dulu:  sudo ./scripts/cbt.sh install"
+    printf '%s' "$value"
+}
+
+php_container()   { need_env CONTAINER_PHP; }
+db_container()    { need_env CONTAINER_DB; }
+redis_container() { need_env CONTAINER_REDIS; }
+
+require_container() {
+    local name="$1"
+    docker ps --format '{{.Names}}' | grep -qx "$name" \
+        || die "Container '$name' tidak berjalan.
+Nyalakan dulu:  sudo ./scripts/cbt.sh docker up"
+}
 
 # --- Helper Functions ---
 print_header() {
     clear
-    echo -e "${CYAN}${BOLD}"
+    printf '%b\n' "${CYAN}${BOLD}"
     echo "============================================================"
-    echo "                 🚀 CBT-MF CLI HELPER 🚀                    "
+    echo "                 CBT-MF CLI HELPER                          "
     echo "============================================================"
-    echo -e "${NC}"
+    printf '%b\n' "${NC}"
 }
 
 pause() {
     echo ""
-    read -p "Press [Enter] to continue..."
+    read -r -p "Press [Enter] to continue..."
+}
+
+# ── Senarai perintah ────────────────────────────────────────
+# Format: grup|nama|fungsi|bahaya|deskripsi
+# grup kosong = perintah tingkat atas (tanpa subperintah).
+# bahaya=1 memaksa ketik ulang nama perintah sebelum jalan.
+declare -a CMD=()
+reg() { CMD+=("$1|$2|$3|$4|$5"); }
+
+reg docker  up          do_docker_up        0 "Nyalakan semua layanan"
+reg docker  down        do_docker_down      0 "Matikan semua layanan"
+reg docker  restart     do_docker_restart   0 "Nyalakan ulang semua layanan"
+reg docker  logs        do_docker_logs      0 "Ikuti log semua layanan"
+reg docker  status      do_docker_status    0 "Status container"
+
+reg app     shell       do_app_shell        0 "Buka bash di container PHP"
+reg app     php         do_app_php          0 "Jalankan perintah php di container"
+reg app     composer    do_app_composer     0 "Jalankan composer di container"
+
+reg db      shell       do_db_shell         0 "Buka MariaDB sebagai user aplikasi"
+reg db      root        do_db_root          0 "Buka MariaDB sebagai root"
+reg db      export      do_db_export        0 "Ekspor database ke berkas .sql"
+reg db      import      do_db_import        1 "Impor berkas .sql (menimpa data)"
+reg db      reset-password do_db_reset_pw   0 "Setel ulang password admin"
+
+reg redis   shell       do_redis_shell      0 "Buka redis-cli"
+reg redis   flush       do_redis_flush      1 "Hapus seluruh isi Redis"
+
+reg bundle  build       do_bundle_build     0 "Bangun ulang bundle UI kiosk"
+reg bundle  status      do_bundle_status    0 "Bandingkan versi bundle lokal, server, dan zip publik"
+
+reg data    images      do_data_images      0 "Keluarkan gambar base64 dari teks soal"
+reg data    optimize    do_data_optimize    1 "OPTIMIZE TABLE (mengunci tabel)"
+reg data    cache-clear do_data_cache_clear 0 "Bersihkan cache aplikasi"
+reg data    finalize    do_data_finalize    0 "Tutup attempt yang lewat batas waktu"
+reg data    prune-kiosk do_data_prune_kiosk 0 "Bersihkan kunci kiosk_live basi"
+
+reg migrate up          do_migrate_up       0 "Jalankan migrasi yang belum diterapkan"
+reg migrate status      do_migrate_status   0 "Daftar migrasi dan statusnya"
+reg migrate rollback    do_migrate_rollback 1 "Mundurkan batch migrasi terakhir"
+
+reg tune    show        do_tune_show        0 "Tampilkan setelan kapasitas yang berlaku"
+reg tune    set         do_tune_set         0 "Setel PHP_FPM_MAX_CHILDREN atau DB_BUFFER_POOL"
+
+reg ""      backup      run_backup          0 "Backup database dan Redis"
+reg ""      log-rotate  run_log_rotate      0 "Rotasi log aplikasi"
+reg ""      reset-install run_reset         1 "Reset instalasi (hapus semua data)"
+reg ""      test-k6     do_test_k6          0 "Uji beban k6"
+reg ""      install     run_install         0 "Installer interaktif"
+reg ""      help        do_help             0 "Tampilkan bantuan"
+
+find_cmd() {
+    local entry g n fn danger desc
+    for entry in "${CMD[@]}"; do
+        IFS='|' read -r g n fn danger desc <<< "$entry"
+        if [ "$g" = "$1" ] && [ "$n" = "$2" ]; then
+            printf '%s|%s' "$fn" "$danger"
+            return 0
+        fi
+    done
+    return 1
+}
+
+groups() {
+    local entry g rest
+    for entry in "${CMD[@]}"; do
+        g=${entry%%|*}
+        [ -n "$g" ] && printf '%s\n' "$g"
+    done | awk '!seen[$0]++'
+}
+
+confirm_typed() {
+    local label="$1" answer
+    printf '%b\n' "${RED}${BOLD}BAHAYA:${NC} ${RED}perintah ini merusak data.${NC}"
+    printf 'Ketik ulang persis "%s" untuk melanjutkan: ' "$label"
+    read -r answer
+    [ "$answer" = "$label" ]
+}
+
+run_entry() {
+    local fn="$1" danger="$2" label="$3"; shift 3
+    if [ "$danger" = "1" ]; then
+        confirm_typed "$label" || { warn "Dibatalkan."; return 0; }
+    fi
+    "$fn" "$@"
 }
 
 # --- Command Functions ---
 
 # 1. Docker
-cmd_docker() {
-    while true; do
-        print_header
-        echo -e "${BLUE}=== 🐳 Docker Operations ===${NC}"
-        echo "1) Start all services (up -d --build)"
-        echo "2) Stop all services (down)"
-        echo "3) Restart all services"
-        echo "4) View logs"
-        echo "5) Container status"
-        echo "0) Back to main menu"
-        echo ""
-        read -p "Select an option: " d_opt
-        case $d_opt in
-            1) echo -e "${GREEN}Starting services...${NC}"; cd "$PROJECT_DIR" && $COMPOSE up -d --build; echo -e "\n✅ Services ready:\n   App:        http://localhost:8080\n   phpMyAdmin: http://localhost:8081"; pause ;;
-            2) echo -e "${YELLOW}Stopping services...${NC}"; cd "$PROJECT_DIR" && $COMPOSE down; pause ;;
-            3) echo -e "${YELLOW}Restarting services...${NC}"; cd "$PROJECT_DIR" && $COMPOSE restart; pause ;;
-            4) cd "$PROJECT_DIR" && $COMPOSE logs -f; pause ;;
-            5) cd "$PROJECT_DIR" && $COMPOSE ps; pause ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
-}
+do_docker_up()      { cd "$PROJECT_DIR" && $COMPOSE up -d --build; ok "Layanan siap: http://localhost:8080"; }
+do_docker_down()    { cd "$PROJECT_DIR" && $COMPOSE down; }
+do_docker_restart() { cd "$PROJECT_DIR" && $COMPOSE restart; }
+do_docker_logs()    { cd "$PROJECT_DIR" && $COMPOSE logs -f; }
+do_docker_status()  { cd "$PROJECT_DIR" && $COMPOSE ps; }
 
 # 2. App Services (PHP/Composer)
-cmd_app() {
-    while true; do
-        print_header
-        echo -e "${BLUE}=== 🐘 App Services ===${NC}"
-        echo "1) Open bash shell in PHP container"
-        echo "2) Run composer command"
-        echo "3) Run php command"
-        echo "0) Back to main menu"
-        echo ""
-        read -p "Select an option: " a_opt
-        case $a_opt in
-            1) echo -e "${GREEN}Opening shell...${NC}"; docker exec -it $PHP_CONTAINER bash; pause ;;
-            2) 
-                read -p "Enter composer arguments (e.g., install): " comp_args
-                docker exec -it $PHP_CONTAINER composer $comp_args
-                pause 
-                ;;
-            3) 
-                read -p "Enter php arguments (e.g., -v): " php_args
-                docker exec -it $PHP_CONTAINER php $php_args
-                pause 
-                ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
-}
+do_app_shell()    { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" bash; }
+do_app_php()      { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" php "$@"; }
+do_app_composer() { local c; c=$(php_container); require_container "$c"; docker exec -it "$c" composer "$@"; }
 
 # 3. Database Operations
-cmd_db() {
-    while true; do
-        print_header
-        echo -e "${BLUE}=== 🗄️ Database Operations ===${NC}"
-        echo "1) Open MariaDB CLI (App User)"
-        echo "2) Open MariaDB CLI (Root)"
-        echo "3) Export Database"
-        echo "4) Import Database"
-        echo "5) Reset Superadmin Password"
-        echo "0) Back to main menu"
-        echo ""
-        read -p "Select an option: " db_opt
-        case $db_opt in
-            1) echo -e "${GREEN}Connecting as $DB_USER...${NC}"; docker exec -it $DB_CONTAINER mariadb -u $DB_USER -p$DB_PASS $DB_NAME; pause ;;
-            2) echo -e "${GREEN}Connecting as root...${NC}"; docker exec -it $DB_CONTAINER mariadb -u root -p$ROOT_PASS; pause ;;
-            3) 
-                FILENAME="backup_$(date +%Y%m%d_%H%M%S).sql"
-                echo -e "${YELLOW}Exporting to $PROJECT_DIR/$FILENAME...${NC}"
-                docker exec $DB_CONTAINER mariadb-dump -u root -p$ROOT_PASS $DB_NAME > "$PROJECT_DIR/$FILENAME"
-                echo -e "${GREEN}✅ Exported successfully!${NC}"
-                pause
-                ;;
-            4) 
-                read -p "Enter path to SQL file to import (relative to project root): " sql_file
-                if [ -f "$PROJECT_DIR/$sql_file" ]; then
-                    echo -e "${YELLOW}Importing $sql_file...${NC}"
-                    docker exec -i $DB_CONTAINER mariadb -u root -p$ROOT_PASS $DB_NAME < "$PROJECT_DIR/$sql_file"
-                    echo -e "${GREEN}✅ Import complete!${NC}"
-                else
-                    echo -e "${RED}File not found at $PROJECT_DIR/$sql_file!${NC}"
-                fi
-                pause
-                ;;
-            5)
-                read -p "Enter superadmin username (default: admin): " super_user
-                super_user=${super_user:-admin}
-                read -p "Enter new password: " super_pass
-                if [ -z "$super_pass" ]; then
-                    echo -e "${RED}Password cannot be empty!${NC}"
-                else
-                    echo -e "${YELLOW}Hashing password and updating database...${NC}"
-                    HASHED_PASS=$(docker exec -i $PHP_CONTAINER php -r "echo password_hash('$super_pass', PASSWORD_BCRYPT);")
-                    docker exec -i $DB_CONTAINER mariadb -u $DB_USER -p$DB_PASS $DB_NAME -e "UPDATE users SET password = '$HASHED_PASS' WHERE username = '$super_user' AND role = 'admin';"
-                    
-                    if [ $? -eq 0 ]; then
-                        echo -e "${GREEN}✅ Superadmin password reset successfully for user '$super_user'!${NC}"
-                    else
-                        echo -e "${RED}❌ Failed to reset password. Are you sure the user exists?${NC}"
-                    fi
-                fi
-                pause
-                ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
+# Password TIDAK PERNAH lewat argumen: -p"$pass" terbaca siapa pun di
+# 'ps'. MYSQL_PWD adalah pola yang sudah dipakai run_backup di berkas ini.
+# Helper umum: "$@" sengaja disiapkan untuk pemanggil mendatang meski
+# do_db_reset_pw belum memakainya.
+# shellcheck disable=SC2119,SC2120
+db_exec() {
+    local c; c=$(db_container); require_container "$c"
+    docker exec -i -e MYSQL_PWD="${DB_PASSWORD:-}" "$c" \
+        mariadb -u"${DB_USERNAME:-}" "${DB_DATABASE:-}" "$@"
+}
+
+db_exec_root() {
+    local c; c=$(db_container); require_container "$c"
+    docker exec -i -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}" "$c" mariadb -uroot "$@"
+}
+
+do_db_shell() {
+    local c; c=$(db_container); require_container "$c"
+    docker exec -it -e MYSQL_PWD="${DB_PASSWORD:-}" "$c" \
+        mariadb -u"${DB_USERNAME:-}" "${DB_DATABASE:-}"
+}
+
+do_db_root() {
+    local c; c=$(db_container); require_container "$c"
+    docker exec -it -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}" "$c" mariadb -uroot
+}
+
+do_db_export() {
+    local c file
+    c=$(db_container); require_container "$c"
+    file="${1:-backup_$(date +%Y%m%d_%H%M%S).sql}"
+    docker exec -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}" "$c" \
+        mariadb-dump -uroot --single-transaction "${DB_DATABASE:-}" > "$PROJECT_DIR/$file"
+    ok "Diekspor ke $PROJECT_DIR/$file"
+}
+
+do_db_import() {
+    local c file="${1:-}"
+    [ -n "$file" ] || die "Berkas SQL belum disebut. Contoh: ./scripts/cbt.sh db import dump.sql"
+    [ -f "$PROJECT_DIR/$file" ] || die "Berkas tidak ditemukan: $PROJECT_DIR/$file"
+    c=$(db_container); require_container "$c"
+    docker exec -i -e MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-}" "$c" \
+        mariadb -uroot "${DB_DATABASE:-}" < "$PROJECT_DIR/$file"
+    ok "Impor $file selesai."
+}
+
+# Kutip nilai untuk MariaDB: gandakan kutip tunggal, bungkus.
+# MariaDB memperlakukan backslash sebagai karakter escape di dalam string,
+# jadi menggandakan kutip saja belum cukup: nama berakhiran "\\" membuat
+# kutip penutupnya ikut ter-escape dan kuerinya rusak.
+sql_quote() { printf "'%s'" "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/''/g")"; }
+
+# Penulis key=value yang tidak memakai sed. Delimiter sed di installer
+# adalah '|', jadi nilai yang memuat '|' merusak berkasnya; ini menulis
+# nilai apa adanya. 'cat >' dipakai, bukan 'mv', agar kepemilikan dan
+# izin berkas .env tidak berubah.
+env_set() {
+    local key="$1" value="$2" file="$PROJECT_DIR/.env" tmp line found=0
+    tmp=$(mktemp)
+    if [ -f "$file" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            if [ "${line%%=*}" = "$key" ] && [ "$line" != "${line%%=*}" ]; then
+                printf '%s=%s\n' "$key" "$value" >> "$tmp"
+                found=1
+            else
+                printf '%s\n' "$line" >> "$tmp"
+            fi
+        done < "$file"
+    fi
+    [ "$found" = "1" ] || printf '%s=%s\n' "$key" "$value" >> "$tmp"
+    cat "$tmp" > "$file"
+    rm -f "$tmp"
+}
+
+do_db_reset_pw() {
+    local user pass hash c
+    read -r -p "Username admin [admin]: " user
+    user=${user:-admin}
+    read -r -s -p "Password baru: " pass; echo ""
+    [ -n "$pass" ] || die "Password tidak boleh kosong."
+
+    c=$(php_container); require_container "$c"
+    hash=$(printf '%s' "$pass" | docker exec -i "$c" \
+        php -r 'echo password_hash(stream_get_contents(STDIN), PASSWORD_BCRYPT);')
+    [ -n "$hash" ] || die "Gagal membuat hash password."
+
+    # Nilai dikirim lewat variabel sesi MariaDB, bukan disisipkan ke teks
+    # SQL: username atau hash yang mengandung kutip tidak lagi bisa
+    # merusak kuerinya.
+    printf "SET @u := %s; SET @h := %s;\nUPDATE users SET password = @h WHERE username = @u AND role = 'admin';\nSELECT ROW_COUNT() AS diubah;\n" \
+        "$(sql_quote "$user")" "$(sql_quote "$hash")" | db_exec
 }
 
 # 4. Redis Operations
-cmd_redis() {
-     while true; do
-        print_header
-        echo -e "${BLUE}=== 📮 Redis Operations ===${NC}"
-        echo "1) Open Redis CLI"
-        echo "2) Flush all Redis data"
-        echo "0) Back to main menu"
-        echo ""
-        read -p "Select an option: " r_opt
-        case $r_opt in
-            1) echo -e "${GREEN}Connecting to Redis...${NC}"; docker exec -it $REDIS_CONTAINER redis-cli; pause ;;
-            2) 
-                echo -e "${YELLOW}Flushing Redis...${NC}"
-                docker exec -it $REDIS_CONTAINER redis-cli FLUSHALL
-                echo -e "${GREEN}✅ Redis flushed${NC}"
-                pause 
-                ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
+do_redis_shell() {
+    local c; c=$(redis_container); require_container "$c"
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+        docker exec -it "$c" redis-cli -a "$REDIS_PASSWORD" --no-auth-warning
+    else
+        docker exec -it "$c" redis-cli
+    fi
+}
+
+# redis-cli menjawab "NOAUTH Authentication required." lalu tetap keluar
+# dengan status 0, jadi status keluar tidak bisa dipercaya. Balasannya yang
+# harus diperiksa: FLUSHALL yang berhasil selalu menjawab "OK".
+redis_flushall() {
+    local c="$1"
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+        docker exec -i "$c" redis-cli -a "$REDIS_PASSWORD" --no-auth-warning FLUSHALL 2>&1
+    else
+        docker exec -i "$c" redis-cli FLUSHALL 2>&1
+    fi
+}
+
+do_redis_flush() {
+    local c out; c=$(redis_container); require_container "$c"
+    out=$(redis_flushall "$c")
+    [ "$out" = "OK" ] || die "Redis gagal dikosongkan: $out"
+    ok "Redis dikosongkan."
+    warn "Sesi login ikut terhapus — semua orang harus login ulang."
+}
+
+# 4b. Bundle UI Kiosk
+app_base_url() {
+    local f="$PROJECT_DIR/src/.env" line
+    [ -f "$f" ] || return 1
+    line=$(grep -E "^[# ]*app\.baseURL" "$f" | grep -v '^#' | head -1) || return 1
+    printf '%s' "$line" | sed -E "s/^[^=]*=[[:space:]]*['\"]?([^'\"]*)['\"]?.*/\1/" | sed 's:/*$::'
+}
+
+do_bundle_build() {
+    local logo="" c
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --logo) logo="${2:-}"; [ -n "$logo" ] || die "--logo butuh path berkas."; shift 2 ;;
+            *) die "Opsi tidak dikenal: $1" ;;
         esac
     done
+
+    c=$(php_container); require_container "$c"
+
+    if [ -z "$logo" ]; then
+        docker exec "$c" php spark cbt:build-ui-bundle
+        return
+    fi
+
+    # Path yang diketik ada di host; spark jalan di container. Berkasnya
+    # harus masuk repo dulu supaya terlihat dari dalam.
+    [ -f "$logo" ] || die "Berkas logo tidak ditemukan: $logo"
+    local mime ext hash dest bytes
+    mime=$(file -b --mime-type "$logo")
+    case "$mime" in
+        image/png)  ext=png ;;
+        image/jpeg) ext=jpg ;;
+        image/webp) ext=webp ;;
+        image/gif)  ext=gif ;;
+        *) die "Bukan gambar yang didukung (terbaca: $mime). Pakai PNG, JPG, WebP, atau GIF." ;;
+    esac
+    bytes=$(stat -c%s "$logo")
+    [ "$bytes" -le 5242880 ] || die "Logo lebih dari 5 MB ($bytes byte)."
+
+    hash=$(sha256sum "$logo" | cut -c1-32)
+    dest="uploads/kiosk/logo_${hash}.${ext}"
+    mkdir -p "$PROJECT_DIR/src/public/uploads/kiosk"
+    cp "$logo" "$PROJECT_DIR/src/public/$dest"
+    chmod 644 "$PROJECT_DIR/src/public/$dest"
+    ok "Logo disalin ke src/public/$dest"
+
+    docker exec "$c" php spark cbt:build-ui-bundle --logo "$dest"
+}
+
+do_bundle_status() {
+    local c base localVer serverVer zipVer zipUrl tmp
+    c=$(php_container); require_container "$c"
+
+    localVer=$(docker exec "$c" php -r \
+        '$m = @json_decode(@file_get_contents("public/ui-bundle/manifest.json"), true); echo $m["version"] ?? "";')
+    printf 'Bundle lokal di server : %s\n' "${localVer:-(tidak ada)}"
+
+    base=$(app_base_url || true)
+    if [ -z "$base" ]; then
+        warn "app.baseURL tidak terbaca dari src/.env — pemeriksaan publik dilewati."
+        return 0
+    fi
+
+    local cfg
+    if ! cfg=$(curl -fsS --max-time 15 "$base/api/kiosk/config" 2>/dev/null); then
+        warn "Server publik tidak terjangkau ($base) — dua pemeriksaan berikutnya dilewati."
+        return 0
+    fi
+    serverVer=$(printf '%s' "$cfg" | grep -o '"version":"[a-f0-9]*"' | head -1 | cut -d'"' -f4)
+    zipUrl=$(printf '%s' "$cfg" | grep -o '"url":"[^"]*"' | head -1 | cut -d'"' -f4)
+    printf 'Dilaporkan config      : %s\n' "${serverVer:-(kosong)}"
+
+    if ! command -v unzip >/dev/null 2>&1; then
+        warn "unzip tidak terpasang — isi zip publik tidak diperiksa."
+        return 0
+    fi
+    tmp=$(mktemp -d)
+    if curl -fsS --max-time 60 "$zipUrl" -o "$tmp/b.zip" 2>/dev/null; then
+        zipVer=$(unzip -p "$tmp/b.zip" manifest.json 2>/dev/null \
+            | grep -o '"version": *"[a-f0-9]*"' | head -1 | cut -d'"' -f4)
+        printf 'Isi zip yang diunduh   : %s\n' "${zipVer:-(gagal dibaca)}"
+    else
+        warn "Zip publik tidak dapat diunduh."
+    fi
+    rm -rf "$tmp"
+
+    if [ -n "${zipVer:-}" ] && [ "$zipVer" != "$serverVer" ]; then
+        warn "Zip publik BEDA dengan versi yang dilaporkan config."
+        warn "Cache CDN kemungkinan masih menahan berkas lama."
+    elif [ -n "$localVer" ] && [ "$localVer" = "$serverVer" ]; then
+        ok "Ketiganya cocok."
+    fi
+}
+
+# 4c. Data Maintenance
+do_data_images() {
+    local c; c=$(php_container); require_container "$c"
+    if [ "${1:-}" = "--commit" ]; then
+        confirm_typed "data images --commit" || { warn "Dibatalkan."; return 0; }
+        docker exec "$c" php spark cbt:extract-inline-images --commit
+        docker exec "$c" php spark cache:clear
+        warn "Jalankan 'data optimize' untuk mengembalikan ruang disk."
+    else
+        docker exec "$c" php spark cbt:extract-inline-images
+        info "Ini modus laporan. Tambahkan --commit untuk menerapkan."
+    fi
+}
+
+do_data_optimize() {
+    warn "OPTIMIZE mengunci tabel selama berjalan. Jangan lakukan saat ujian berlangsung."
+    db_exec_root "${DB_DATABASE:-}" -e \
+        "OPTIMIZE TABLE test_logs, test_log_answers, questions, answers"
+}
+
+do_data_cache_clear() {
+    local c; c=$(php_container); require_container "$c"
+    docker exec "$c" php spark cache:clear
+}
+
+do_data_finalize() {
+    local c; c=$(php_container); require_container "$c"
+    docker exec "$c" php spark finalize:expired
+}
+
+do_data_prune_kiosk() {
+    local c; c=$(php_container); require_container "$c"
+    docker exec "$c" php spark kiosk:prune
+}
+
+# 4d. Migrate
+do_migrate_up()       { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate; }
+do_migrate_status()   { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate:status; }
+do_migrate_rollback() { local c; c=$(php_container); require_container "$c"; docker exec "$c" php spark migrate:rollback; }
+
+# 4e. Tune
+do_tune_show() {
+    local p d
+    p=$(php_container); d=$(db_container)
+    require_container "$p"; require_container "$d"
+
+    printf '%b\n' "${BOLD}Nilai yang benar-benar berlaku${NC}"
+    printf 'Core CPU             : %s\n' "$(nproc)"
+    docker exec "$p" sh -c 'php-fpm -tt 2>&1 | grep -E "pm\.(max_children|start_servers)" | sed "s/^.*NOTICE:[[:space:]]*/php-fpm : /"'
+    db_exec_root -N -B -e "SELECT CONCAT('buffer pool         : ', @@innodb_buffer_pool_size/1024/1024, ' MB')"
+    # Tanpa 'sh -c': lapisan escaping ganda (bash lalu sh) meluruhkan '\$'
+    # jadi '$' polos, dan grep -P membaca '$' sebagai jangkar akhir-baris
+    # sehingga polanya tidak pernah cocok. Panggil grep langsung saja.
+    printf 'Handler cache        : %s\n' "$(docker exec "$p" grep -oP 'public string \$handler = .\K[a-z]+' app/Config/Cache.php)"
+
+    printf '\n%b\n' "${BOLD}Nilai di .env${NC}"
+    printf 'PHP_FPM_MAX_CHILDREN : %s\n' "${PHP_FPM_MAX_CHILDREN:-(kosong, otomatis 4x core)}"
+    printf 'DB_BUFFER_POOL       : %s\n' "${DB_BUFFER_POOL:-(kosong, default 512M)}"
+}
+
+do_tune_set() {
+    local key="${1:-}" value="${2:-}"
+    case "$key" in
+        PHP_FPM_MAX_CHILDREN|DB_BUFFER_POOL) ;;
+        *) die "Kunci yang didukung: PHP_FPM_MAX_CHILDREN, DB_BUFFER_POOL
+Contoh: ./scripts/cbt.sh tune set DB_BUFFER_POOL 1G" ;;
+    esac
+    [ -n "$value" ] || die "Nilai belum disebut. Contoh: tune set $key 1G"
+
+    env_set "$key" "$value"
+    ok "$key=$value disimpan ke .env"
+
+    # Sengaja tidak diterapkan sendiri: menyalakan ulang layanan di tengah
+    # ujian harus keputusan sadar.
+    case "$key" in
+        PHP_FPM_MAX_CHILDREN)
+            info "Terapkan dengan:  cd $PROJECT_DIR && docker compose build php && docker compose up -d php" ;;
+        DB_BUFFER_POOL)
+            info "Terapkan dengan:  cd $PROJECT_DIR && docker compose up -d mariadb" ;;
+    esac
 }
 
 # 5. Maintenance (Backup, Log rotate, Reset)
@@ -212,11 +510,9 @@ run_backup() {
     mkdir -p "$BACKUP_DIR"
     echo -e "${YELLOW}[$(date '+%Y-%m-%d %H:%M:%S')] Starting automated backup...${NC}"
 
-    docker exec -e MYSQL_PWD="$DB_PASSWORD" "$CONTAINER_DB" \
+    if docker exec -e MYSQL_PWD="$DB_PASSWORD" "$CONTAINER_DB" \
         mariadb-dump -u"$DB_USERNAME" --single-transaction --routines --triggers --databases "$DB_DATABASE" \
-        | gzip > "$DB_BACKUP"
-
-    if [ $? -eq 0 ] && [ -s "$DB_BACKUP" ]; then
+        | gzip > "$DB_BACKUP" && [ -s "$DB_BACKUP" ]; then
         size=$(du -h "$DB_BACKUP" | cut -f1)
         echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] Database backup complete: $DB_BACKUP ($size)${NC}"
     else
@@ -277,36 +573,47 @@ run_log_rotate() {
 }
 
 run_reset() {
-    echo -e "${RED}🛑 PERINGATAN: Semua data akan dihapus!${NC}"
-    read -p "Ketik 'YES' untuk melanjutkan reset instalasi: " CONFIRM
+    # run_entry sudah meminta ketik ulang "reset-install", jadi tidak ada
+    # konfirmasi kedua di sini.
+    local d r out db
+    d=$(db_container); require_container "$d"
+    r=$(redis_container); require_container "$r"
+    db="${DB_DATABASE:-}"
+    [ -n "$db" ] || die "DB_DATABASE belum ada di .env; menolak menebak nama database."
 
-    if [ "$CONFIRM" != "YES" ]; then
-        echo -e "${YELLOW}❌ Reset dibatalkan.${NC}"
-        return
-    fi
-
-    echo -e "${CYAN}🔄 Memulai proses reset...${NC}"
+    info "Memulai proses reset..."
     if [ -f "$PROJECT_DIR/src/.env" ]; then
-        echo "🗑️ Menghapus file src/.env..."
+        echo "Menghapus src/.env..."
         rm -f "$PROJECT_DIR/src/.env"
     fi
 
-    echo "🗄️ Menghapus dan membuat ulang database..."
-    docker exec $DB_CONTAINER mariadb -u root -p$ROOT_PASS -e "DROP DATABASE IF EXISTS $DB_NAME; CREATE DATABASE $DB_NAME;"
+    echo "Menghapus dan membuat ulang database..."
+    db_exec_root -e "DROP DATABASE IF EXISTS \`$db\`; CREATE DATABASE \`$db\`;"
 
-    echo "📮 Membersihkan memori Redis..."
-    docker exec $REDIS_CONTAINER redis-cli FLUSHALL > /dev/null
+    echo "Mengosongkan Redis..."
+    out=$(redis_flushall "$r")
+    [ "$out" = "OK" ] || die "Redis gagal dikosongkan: $out"
 
-    echo "🧹 Membersihkan file unggahan dan cache..."
+    echo "Membersihkan unggahan dan cache..."
     rm -rf "$PROJECT_DIR/src/public/uploads/questions/"* 2>/dev/null || true
     rm -rf "$PROJECT_DIR/src/writable/session/"* 2>/dev/null || true
     rm -rf "$PROJECT_DIR/src/writable/cache/"* 2>/dev/null || true
 
-    echo -e "\n${GREEN}✅ RESET SELESAI!${NC}"
-    echo "Sistem sekarang dalam kondisi awal (belum diinstall)."
+    ok "RESET SELESAI. Sistem kembali ke kondisi belum diinstall."
 }
 
 run_install() {
+    # Installer berjalan dengan aturan lama: isinya belum diaudit untuk
+    # mode ketat, dan satu-satunya cara mengujinya adalah instalasi dari
+    # nol. Hapus dua baris ini bila nanti sudah diaudit.
+    set +e +u +o pipefail
+
+    # Installer sengaja tidak berhenti di kegagalan pertama supaya sisa
+    # langkahnya tetap jalan dan pesannya terkumpul. Konsekuensinya status
+    # keluar harus dilacak sendiri, kalau tidak instalasi yang gagal separuh
+    # tetap terbaca "berhasil" oleh pemanggilnya.
+    local install_failed=0
+
     print_header
     echo -e "${CYAN}=== 🛠️ CBT-MF Interactive Installer ===${NC}"
     echo "Installer ini akan memandu Anda untuk mengatur kredensial database,"
@@ -459,6 +766,7 @@ run_install() {
     cd "$PROJECT_DIR"
     if ! $COMPOSE up -d --build --remove-orphans; then
         echo -e "${RED}Error: Docker Compose gagal berjalan! Cek log di atas untuk detailnya.${NC}"
+        install_failed=1
         exit 1
     fi
     
@@ -468,26 +776,36 @@ run_install() {
     echo -e "\n${YELLOW}Memulai Migrasi Database...${NC}"
     if ! docker ps | grep -q "$PHP_CONTAINER"; then
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
+        install_failed=1
     else
         echo -e "\n${CYAN}🔒 Memastikan folder sistem ada dan mengamankan permissions (tanpa 777)...${NC}"
-        if ! (mkdir -p "$PROJECT_DIR/src/writable/cache" "$PROJECT_DIR/src/writable/session" "$PROJECT_DIR/src/writable/debugbar" "$PROJECT_DIR/src/writable/uploads" "$PROJECT_DIR/src/writable/logs" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && chown -R :33 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && chmod -R 775 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static"); then
+        if ! (mkdir -p "$PROJECT_DIR/src/writable/cache" "$PROJECT_DIR/src/writable/session" "$PROJECT_DIR/src/writable/debugbar" "$PROJECT_DIR/src/writable/uploads" "$PROJECT_DIR/src/writable/logs" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && chown -R :33 "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" && find "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" -type d -exec chmod 775 {} + && find "$PROJECT_DIR/src/writable" "$PROJECT_DIR/src/public/uploads" "$PROJECT_DIR/src/public/static" -type f -exec chmod 664 {} +); then
             echo -e "${RED}Error: Gagal mengatur permission folder pada host!${NC}"
+            install_failed=1
             exit 1
         fi
 
         echo -e "${CYAN}Mengupdate dan Menginstall dependensi Composer...${NC}"
-        docker exec -i $PHP_CONTAINER composer update --no-dev --optimize-autoloader
-        docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader
+        if ! docker exec -i $PHP_CONTAINER composer update --no-dev --optimize-autoloader; then
+            echo -e "${RED}Error: composer update gagal!${NC}"
+            install_failed=1
+        fi
+        if ! docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader; then
+            echo -e "${RED}Error: composer install gagal!${NC}"
+            install_failed=1
+        fi
         
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
         if ! docker exec -i -e CI_ENVIRONMENT=development --user 33:33 $PHP_CONTAINER php spark migrate; then
             echo -e "${RED}Error: Migrasi database gagal!${NC}"
+            install_failed=1
         else
             echo -e "${CYAN}Membuat akun Admin awal...${NC}"
             HASHED_ADMIN_PASS=$(echo -n "$input_admin_pass" | docker exec -i $PHP_CONTAINER php -r "echo password_hash(file_get_contents('php://stdin'), PASSWORD_BCRYPT);")
             
             if [ -z "$HASHED_ADMIN_PASS" ]; then
                 echo -e "${RED}Error: Gagal melakukan hash password Admin!${NC}"
+                install_failed=1
             else
                 SAFE_ADMIN_USER=$(echo -n "$input_admin_user" | docker exec -i $PHP_CONTAINER php -r "echo addslashes(file_get_contents('php://stdin'));")
                 
@@ -502,176 +820,153 @@ run_install() {
                     echo -e "Username: $input_admin_user"
                 else
                     echo -e "${RED}Error: Gagal membuat akun Admin di database!${NC}"
+                    install_failed=1
                 fi
             fi
         fi
     fi
+    if [ "$install_failed" -ne 0 ]; then
+        echo -e "\n${RED}${BOLD}INSTALASI TIDAK SELESAI.${NC} ${RED}Baca pesan galat di atas sebelum memakai sistem ini.${NC}"
+    fi
     pause
-}
-
-cmd_maintenance() {
-     while true; do
-        print_header
-        echo -e "${BLUE}=== 🛡️ Maintenance ===${NC}"
-        echo "1) Run Automated Backup (DB & Redis)"
-        echo "2) Rotate Application Logs"
-        echo -e "3) ${RED}Reset Installation (DANGER)${NC}"
-        echo "0) Back to main menu"
-        echo ""
-        read -p "Select an option: " m_opt
-        case $m_opt in
-            1) run_backup; pause ;;
-            2) run_log_rotate; pause ;;
-            3) run_reset; pause ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
-    done
+    set -euo pipefail
+    return "$install_failed"
 }
 
 # 6. Testing
-cmd_testing() {
-    print_header
-    echo -e "${BLUE}=== 🚀 k6 Load Testing ===${NC}"
-    read -p "Number of Virtual Users (default 50): " vus
-    vus=${vus:-50}
-    read -p "Target URL (default http://localhost:8080): " turl
-    turl=${turl:-"http://localhost:8080"}
-    read -p "Test ID (default 1): " tid
-    tid=${tid:-1}
-
-    echo -e "\n${CYAN}Starting CBT-MF k6 Simulation with $vus virtual students...${NC}"
-    
+do_test_k6() {
+    local vus="${1:-50}" turl="${2:-http://localhost:8080}" tid="${3:-1}"
     cd "$PROJECT_DIR"
-    if command -v k6 &> /dev/null; then
+    if command -v k6 >/dev/null 2>&1; then
         BASE_URL="$turl" TEST_ID="$tid" k6 run --vus "$vus" --duration 2m scripts/k6_exam_simulation.js
-    elif command -v docker &> /dev/null; then
-        echo -e "${YELLOW}🐳 k6 CLI not found locally. Running via Docker...${NC}"
-        docker run --rm -i --net=host -e BASE_URL="$turl" -e TEST_ID="$tid" -v "$(pwd)/scripts:/scripts" grafana/k6 run --vus "$vus" --duration 2m /scripts/k6_exam_simulation.js
     else
-        echo -e "${RED}❌ Neither local k6 nor Docker found.${NC}"
+        docker run --rm -i --net=host -e BASE_URL="$turl" -e TEST_ID="$tid" \
+            -v "$PROJECT_DIR/scripts:/scripts" grafana/k6 run --vus "$vus" --duration 2m /scripts/k6_exam_simulation.js
     fi
-    pause
 }
 
 # --- Main Interactive Menu ---
-main_menu() {
+menu_group() {
+    local group="$1" entry g n fn danger desc
     while true; do
         print_header
-        echo -e "1) 🐳 Docker Operations"
-        echo -e "2) 🐘 App Services (PHP & Composer)"
-        echo -e "3) 🗄️ Database Operations"
-        echo -e "4) 📮 Redis Operations"
-        echo -e "5) 🛡️ Maintenance (Backup, Logs, Reset)"
-        echo -e "6) 🚀 Testing (k6 Load Test)"
-        echo -e "7) 🛠️ Install / Setup CBT-MF"
-        echo -e "0) ❌ Exit"
+        printf '%b\n' "${BLUE}=== ${group} ===${NC}"
+        local -a names=() fns=() dangers=()
+        local i=1
+        for entry in "${CMD[@]}"; do
+            IFS='|' read -r g n fn danger desc <<< "$entry"
+            [ "$g" = "$group" ] || continue
+            names+=("$n"); fns+=("$fn"); dangers+=("$danger")
+            if [ "$danger" = "1" ]; then
+                printf '%b%d) %s — %s%b\n' "$RED" "$i" "$n" "$desc" "$NC"
+            else
+                printf '%d) %s — %s\n' "$i" "$n" "$desc"
+            fi
+            i=$((i + 1))
+        done
+        echo "0) Kembali"
         echo ""
-        read -p "Select an option [0-7]: " opt
-        case $opt in
-            1) cmd_docker ;;
-            2) cmd_app ;;
-            3) cmd_db ;;
-            4) cmd_redis ;;
-            5) cmd_maintenance ;;
-            6) cmd_testing ;;
-            7) run_install ;;
-            0) echo -e "${GREEN}Goodbye!${NC}"; exit 0 ;;
-            *) echo -e "${RED}Invalid option!${NC}"; sleep 1 ;;
-        esac
+        read -r -p "Pilih: " pick
+        [ "$pick" = "0" ] && return 0
+        if [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -lt "$i" ]; then
+            local idx=$((pick - 1))
+            run_entry "${fns[$idx]}" "${dangers[$idx]}" "$group ${names[$idx]}"
+            echo ""; read -r -p "Tekan [Enter] untuk lanjut..."
+        else
+            warn "Pilihan tidak valid."; sleep 1
+        fi
+    done
+}
+
+main_menu() {
+    local entry g n fn danger desc
+    while true; do
+        print_header
+        local -a kinds=() labels=() fns=() dangers=()
+        local i=1 grp
+        while IFS= read -r grp; do
+            kinds+=("group"); labels+=("$grp"); fns+=(""); dangers+=("0")
+            printf '%d) %s\n' "$i" "$grp"
+            i=$((i + 1))
+        done < <(groups)
+        for entry in "${CMD[@]}"; do
+            IFS='|' read -r g n fn danger desc <<< "$entry"
+            [ -z "$g" ] || continue
+            kinds+=("cmd"); labels+=("$n"); fns+=("$fn"); dangers+=("$danger")
+            if [ "$danger" = "1" ]; then
+                printf '%b%d) %s — %s%b\n' "$RED" "$i" "$n" "$desc" "$NC"
+            else
+                printf '%d) %s — %s\n' "$i" "$n" "$desc"
+            fi
+            i=$((i + 1))
+        done
+        echo "0) Keluar"
+        echo ""
+        read -r -p "Pilih: " pick
+        [ "$pick" = "0" ] && { ok "Selesai."; exit 0; }
+        if [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -lt "$i" ]; then
+            local idx=$((pick - 1))
+            if [ "${kinds[$idx]}" = "group" ]; then
+                menu_group "${labels[$idx]}"
+            else
+                # Kegagalan satu perintah tidak boleh menutup menu; status
+                # sebenarnya tetap diteruskan lewat jalur CLI (dispatch).
+                run_entry "${fns[$idx]}" "${dangers[$idx]}" "${labels[$idx]}" \
+                    || warn "Perintah berakhir dengan galat."
+                echo ""; read -r -p "Tekan [Enter] untuk lanjut..."
+            fi
+        else
+            warn "Pilihan tidak valid."; sleep 1
+        fi
     done
 }
 
 # --- Argument Parser ---
-show_cli_help() {
-    echo -e "${CYAN}${BOLD}CBT-MF CLI Helper${NC}"
-    echo "Usage: ./scripts/cbt.sh [command] [args]"
+do_help() {
+    printf '%b\n' "${CYAN}${BOLD}CBT-MF CLI Helper${NC}"
+    echo "Pemakaian: sudo ./scripts/cbt.sh [grup] <perintah> [argumen]"
+    echo "Tanpa argumen, menu interaktif akan terbuka."
     echo ""
-    echo "If run without arguments, an interactive menu will be launched."
-    echo ""
-    echo "Commands:"
-    echo "  docker <up|down|restart|logs|status>   Docker operations"
-    echo "  php <args>                             Run PHP commands in container"
-    echo "  composer <args>                        Run Composer in container"
-    echo "  db <shell|root|export|import <file>>   Database operations"
-    echo "  redis <shell|flush>                    Redis operations"
-    echo "  backup                                 Run automated backup"
-    echo "  log-rotate                             Rotate application logs"
-    echo "  reset-install                          Reset application installation"
-    echo "  test-k6 [VUs] [URL] [TestID]           Run k6 load test"
-    echo "  install                                Run interactive installer"
-    echo "  help                                   Show this help message"
+    local entry g n fn danger desc last=""
+    for entry in "${CMD[@]}"; do
+        IFS='|' read -r g n fn danger desc <<< "$entry"
+        if [ "$g" != "$last" ]; then
+            echo ""
+            [ -n "$g" ] && printf '%b\n' "${BOLD}${g}${NC}" || printf '%b\n' "${BOLD}umum${NC}"
+            last="$g"
+        fi
+        if [ "$danger" = "1" ]; then
+            printf '  %b%-24s%b %s\n' "$RED" "$n" "$NC" "$desc"
+        else
+            printf '  %-24s %s\n' "$n" "$desc"
+        fi
+    done
 }
 
-if [ $# -gt 0 ]; then
-    case "$1" in
-        docker)
-            shift
-            subcmd=${1:-}
-            cd "$PROJECT_DIR"
-            case "$subcmd" in
-                up) $COMPOSE up -d --build ;;
-                down) $COMPOSE down ;;
-                restart) $COMPOSE restart ;;
-                logs) $COMPOSE logs -f ;;
-                status) $COMPOSE ps ;;
-                *) echo "Usage: ./scripts/cbt.sh docker <up|down|restart|logs|status>" ;;
-            esac
-            ;;
-        php) shift; docker exec -it $PHP_CONTAINER php "$@" ;;
-        composer) shift; docker exec -it $PHP_CONTAINER composer "$@" ;;
-        db)
-            shift
-            subcmd=${1:-}
-            case "$subcmd" in
-                shell) docker exec -it $DB_CONTAINER mariadb -u $DB_USER -p$DB_PASS $DB_NAME ;;
-                root) docker exec -it $DB_CONTAINER mariadb -u root -p$ROOT_PASS ;;
-                export) 
-                    FILENAME=${2:-"backup_$(date +%Y%m%d_%H%M%S).sql"}
-                    docker exec $DB_CONTAINER mariadb-dump -u root -p$ROOT_PASS $DB_NAME > "$PROJECT_DIR/$FILENAME"
-                    echo "Exported to $FILENAME"
-                    ;;
-                import)
-                    if [ -z "${2:-}" ]; then echo "Missing SQL file. Usage: ./scripts/cbt.sh db import <file>"; exit 1; fi
-                    if [ -f "$PROJECT_DIR/$2" ]; then
-                        docker exec -i $DB_CONTAINER mariadb -u root -p$ROOT_PASS $DB_NAME < "$PROJECT_DIR/$2"
-                        echo "Imported $2"
-                    else
-                         echo "File not found at $PROJECT_DIR/$2"
-                    fi
-                    ;;
-                *) echo "Usage: ./scripts/cbt.sh db <shell|root|export|import>" ;;
-            esac
-            ;;
-        redis)
-            shift
-            subcmd=${1:-}
-            case "$subcmd" in
-                shell) docker exec -it $REDIS_CONTAINER redis-cli ;;
-                flush) docker exec -it $REDIS_CONTAINER redis-cli FLUSHALL; echo "Redis flushed" ;;
-                *) echo "Usage: ./scripts/cbt.sh redis <shell|flush>" ;;
-            esac
-            ;;
-        backup) run_backup ;;
-        log-rotate) run_log_rotate ;;
-        reset-install) run_reset ;;
-        test-k6) 
-            VUS=${2:-50}
-            TURL=${3:-"http://localhost:8080"}
-            TID=${4:-1}
-            cd "$PROJECT_DIR"
-            if command -v k6 &> /dev/null; then
-                BASE_URL="$TURL" TEST_ID="$TID" k6 run --vus "$VUS" --duration 2m scripts/k6_exam_simulation.js
-            elif command -v docker &> /dev/null; then
-                docker run --rm -i --net=host -e BASE_URL="$TURL" -e TEST_ID="$TID" -v "$(pwd)/scripts:/scripts" grafana/k6 run --vus "$VUS" --duration 2m /scripts/k6_exam_simulation.js
-            else
-                echo "k6 or Docker required."
-            fi
-            ;;
-        install) run_install ;;
-        help) show_cli_help ;;
-        *) echo "Unknown command. Run './scripts/cbt.sh help' for usage." ;;
-    esac
-else
-    main_menu
-fi
+dispatch() {
+    local entry fn danger
+    if [ $# -eq 0 ]; then main_menu; return; fi
+
+    if entry=$(find_cmd "" "$1"); then
+        IFS='|' read -r fn danger <<< "$entry"
+        local label="$1"; shift
+        run_entry "$fn" "$danger" "$label" "$@"
+        return
+    fi
+
+    if [ $# -lt 2 ]; then
+        die "Perintah '$1' butuh subperintah. Lihat: ./scripts/cbt.sh help"
+    fi
+
+    if entry=$(find_cmd "$1" "$2"); then
+        IFS='|' read -r fn danger <<< "$entry"
+        local label="$1 $2"; shift 2
+        run_entry "$fn" "$danger" "$label" "$@"
+        return
+    fi
+
+    die "Perintah tidak dikenal: $1 $2
+Lihat daftar lengkap: ./scripts/cbt.sh help"
+}
+
+dispatch "$@"

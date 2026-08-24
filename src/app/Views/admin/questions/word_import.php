@@ -30,12 +30,12 @@ Import Soal dari Word
                     </h5>
                 </div>
                 <div class="card-body p-4">
-                    <form action="<?= base_url('admin/questions/word-import/process') ?>" method="POST" enctype="multipart/form-data">
+                    <form id="importForm" action="<?= base_url('admin/questions/word-import/process') ?>" method="POST" enctype="multipart/form-data" novalidate>
                         <?= csrf_field() ?>
                         
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Pilih Modul</label>
-                            <select name="module_id" class="form-select" id="moduleSelect" required>
+                            <select name="module_id" class="form-select" id="moduleSelect">
                                 <option value="">-- Pilih Modul --</option>
                                 <option value="new" class="fw-bold text-primary">+ Buat Modul Baru</option>
                                 <?php foreach($modules as $m): ?>
@@ -51,13 +51,13 @@ Import Soal dari Word
                         
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Nama Subjek Baru</label>
-                            <input type="text" name="subject_name" class="form-control" placeholder="Misal: Matematika Kelas X" required>
+                            <input type="text" name="subject_name" class="form-control" placeholder="Misal: Matematika Kelas X">
                             <div class="form-text">Soal-soal dari dokumen Word akan dimasukkan ke dalam Subjek baru ini.</div>
                         </div>
 
                         <div class="mb-4">
                             <label class="form-label fw-semibold">File Dokumen Soal (.docx)</label>
-                            <input type="file" name="word_file" class="form-control form-control-lg" accept=".docx" required>
+                            <input type="file" name="word_file" class="form-control form-control-lg" accept=".docx">
                             <div class="form-text">Maksimal ukuran file: 5MB. Hanya mendukung file .docx.</div>
                         </div>
 
@@ -81,37 +81,34 @@ Import Soal dari Word
                     <h5 class="fw-bold mb-3 text-secondary">
                         <i class="bi bi-info-circle me-2"></i> Panduan Format Penulisan Word
                     </h5>
-                    <p class="mb-3">Agar sistem dapat membaca soal dengan presisi, <strong>pastikan penulisan di dalam file Word persis seperti format di bawah ini</strong>:</p>
-                    
-                    <div class="bg-white p-3 border rounded font-monospace small mb-3" style="max-height: 250px; overflow-y: auto;">
-Q:1) Siapa penemu bola lampu?<br>
-A:) Albert Einstein<br>
-B:) Thomas Alva Edison<br>
-C:) Isaac Newton<br>
-RIGHT:B<br>
+                    <p class="mb-3">Format sekarang jauh lebih natural — tidak perlu hafal kode "Q:", "RIGHT:", dsb. Contoh:</p>
+
+                    <div class="bg-white p-3 border rounded font-monospace small mb-3" style="max-height: 280px; overflow-y: auto;">
+1. Siapa penemu bola lampu?<br>
+A. Albert Einstein<br>
+*B. Thomas Alva Edison<br>
+C. Isaac Newton<br>
 <br>
-Q:2) Apa nama ibukota Indonesia saat ini?<br>
-TYPE:ESSAY<br>
-RIGHT:Jakarta<br>
+2. Siapa nama presiden pertama Republik Indonesia?<br>
+Jawaban: Ir. Soekarno<br>
 <br>
-Q:3) Pasangkan negara dengan ibukotanya!<br>
-TYPE:MATCHING<br>
-MATCH:Jepang|::|Tokyo<br>
-MATCH:Korea|::|Seoul<br>
+3. Pasangkan negara berikut dengan ibukotanya!<br>
+Tipe: Menjodohkan<br>
+[Tabel 2 kolom: Negara | Ibukota]<br>
 <br>
-Q:4) Tentukan benar salah pernyataan ini!<br>
-TYPE:TRUEFALSE<br>
-MATCH:Bumi itu bulat|::|Benar<br>
-MATCH:Matahari terbit dari barat|::|Salah
+4. Tentukan benar atau salah pernyataan berikut!<br>
+Tipe: Benar/Salah<br>
+[Tabel 2 kolom: Pernyataan | Benar/Salah]
                     </div>
-                    
+
                     <ul class="text-muted small">
-                        <li class="mb-1">Teks soal diawali <code>Q:1) </code>, <code>Q:2) </code> dst.</li>
-                        <li class="mb-1"><strong>Pilihan Ganda:</strong> Pilihan jawaban wajib diawali <code>A:) </code>, <code>B:) </code> dst. Kunci ditulis <code>RIGHT:A</code> atau <code>RIGHT:A,B</code>.</li>
-                        <li class="mb-1"><strong>Esai:</strong> Tambahkan <code>TYPE:ESSAY</code> di bawah soal. Kunci ditulis <code>RIGHT:Teks Jawaban</code>.</li>
-                        <li class="mb-1"><strong>Menjodohkan:</strong> Tambahkan <code>TYPE:MATCHING</code> di bawah soal. Pasangan ditulis <code>MATCH:Premis Kiri|::|Jawaban Kanan</code>.</li>
-                        <li class="mb-1"><strong>Benar/Salah:</strong> Tambahkan <code>TYPE:TRUEFALSE</code>. Pernyataan ditulis <code>MATCH:Pernyataan|::|Benar</code> atau <code>Salah</code>.</li>
-                        <li class="mb-1">Unduh Template format di bawah untuk melihat contoh lengkapnya.</li>
+                        <li class="mb-1">Soal baru diawali angka polos, mis. <code>1.</code> atau <code>1)</code> — atau pakai fitur List/Numbering bawaan Word (tidak perlu mengetik angka sama sekali).</li>
+                        <li class="mb-1"><strong>Pilihan Ganda:</strong> opsi diawali huruf polos, mis. <code>A.</code> atau <code>A)</code>. Tandai jawaban benar dengan <code>*</code> tepat di depan huruf, mis. <code>*B. Thomas Alva Edison</code>. Boleh lebih dari satu opsi ber-<code>*</code> (otomatis jadi Pilihan Ganda Kompleks).</li>
+                        <li class="mb-1"><strong>Esai:</strong> cukup tulis soalnya saja. Baris <code>Jawaban: ...</code> di bawahnya sifatnya opsional, hanya untuk referensi.</li>
+                        <li class="mb-1"><strong>Menjodohkan:</strong> tambahkan baris <code>Tipe: Menjodohkan</code> di bawah soal, lalu buat tabel Word 2 kolom tepat di bawahnya — baris pertama tabel jadi judul kolom (dilewati), baris berikutnya jadi pasangan.</li>
+                        <li class="mb-1"><strong>Benar/Salah:</strong> sama seperti Menjodohkan, tapi tulis <code>Tipe: Benar/Salah</code> dan isi kolom kanan tabel dengan "Benar" atau "Salah".</li>
+                        <li class="mb-1">Tabel biasa (tanpa <code>Tipe:</code> di atasnya) tetap bisa dipakai sebagai data pendukung soal, seperti sebelumnya.</li>
+                        <li class="mb-1">Mendukung teks multi-baris, gambar yang disisipkan di dalam dokumen, dan opsi/soal lewat list bawaan Word.</li>
                     </ul>
                 </div>
             </div>
@@ -124,21 +121,139 @@ document.addEventListener('DOMContentLoaded', function() {
     const moduleSelect = document.getElementById('moduleSelect');
     const newModuleGroup = document.getElementById('newModuleGroup');
     const newModuleInput = document.querySelector('input[name="new_module_name"]');
+    const importForm = document.getElementById('importForm');
 
     moduleSelect.addEventListener('change', function() {
         if (this.value === 'new') {
             newModuleGroup.style.display = 'block';
-            newModuleInput.setAttribute('required', 'required');
         } else {
             newModuleGroup.style.display = 'none';
-            newModuleInput.removeAttribute('required');
         }
     });
 
-    document.querySelector('form').addEventListener('submit', function() {
+    importForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const moduleId = moduleSelect.value;
+        const newModuleName = newModuleInput.value.trim();
+        const subjectInput = document.querySelector('input[name="subject_name"]');
+        const subjectName = subjectInput.value.trim();
+        const fileInput = document.querySelector('input[name="word_file"]');
+
+        // SweetAlert2 Client Validation Enforcements
+        if (!moduleId) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Modul Belum Dipilih',
+                text: 'Silakan pilih Modul terlebih dahulu.',
+                customClass: { popup: 'rounded-4' }
+            });
+            return;
+        }
+
+        if (moduleId === 'new' && !newModuleName) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Nama Modul Kosong',
+                text: 'Silakan isi nama untuk modul baru.',
+                customClass: { popup: 'rounded-4' }
+            });
+            return;
+        }
+
+        if (!subjectName) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Nama Subjek Kosong',
+                text: 'Silakan isi nama Subjek terlebih dahulu.',
+                customClass: { popup: 'rounded-4' }
+            });
+            return;
+        }
+
+        if (!fileInput.files || fileInput.files.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'File Belum Dipilih',
+                text: 'Silakan pilih file dokumen Word (.docx) untuk diimport.',
+                customClass: { popup: 'rounded-4' }
+            });
+            return;
+        }
+
+        const fileName = fileInput.files[0].name;
+        if (!fileName.toLowerCase().endsWith('.docx')) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Format File Salah',
+                text: 'Hanya file dokumen dengan ekstensi .docx yang didukung.',
+                customClass: { popup: 'rounded-4' }
+            });
+            return;
+        }
+
         const btn = document.getElementById('btnSubmit');
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Sedang Memproses...';
+        const originalBtnHtml = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Memproses & Memvalidasi...';
         btn.disabled = true;
+
+        const formData = new FormData(importForm);
+
+        fetch(importForm.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(res => {
+            btn.innerHTML = originalBtnHtml;
+            btn.disabled = false;
+
+            if (res.status === 'validation_error') {
+                let errorHtml = '<div class="text-start small mt-2"><ul class="text-danger ps-3 mb-0" style="max-height: 250px; overflow-y: auto;">';
+                (res.errors || []).forEach(err => {
+                    errorHtml += `<li class="mb-1">${err}</li>`;
+                });
+                errorHtml += '</ul></div>';
+
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Validasi Format Gagal!',
+                    html: `<p class="mb-2 text-muted">Ditemukan ${res.errors.length} kesalahan pada dokumen Word Anda. Tidak ada data yang disimpan ke database:</p>` + errorHtml,
+                    confirmButtonText: 'Perbaiki Dokumen',
+                    customClass: { popup: 'rounded-4' }
+                });
+            } else if (res.status === 'error') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal Import',
+                    text: res.message || 'Terjadi kesalahan pada server.',
+                    customClass: { popup: 'rounded-4' }
+                });
+            } else if (res.status === 'success') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Import Berhasil!',
+                    text: res.message,
+                    confirmButtonText: 'Ke Bank Soal',
+                    customClass: { popup: 'rounded-4' }
+                }).then(() => {
+                    window.location.href = '<?= base_url('admin/questions') ?>';
+                });
+            }
+        })
+        .catch(err => {
+            btn.innerHTML = originalBtnHtml;
+            btn.disabled = false;
+            Swal.fire({
+                icon: 'error',
+                title: 'Kesalahan Sistem',
+                text: 'Gagal berkomunikasi dengan server. Silakan coba lagi.',
+                customClass: { popup: 'rounded-4' }
+            });
+        });
     });
 });
 </script>

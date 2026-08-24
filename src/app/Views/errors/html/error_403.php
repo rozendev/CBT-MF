@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>403 — Akses Ditolak</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="<?= base_url('assets/css/outfit.css') ?>" rel="stylesheet">
     <style>
         body {
-            font-family: 'Inter', sans-serif;
-            min-height: 100vh;
+            font-family: 'Outfit', sans-serif;
+            min-height: 100dvh;
             display: flex;
             align-items: center;
             justify-content: center;

@@ -47,14 +47,14 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Durasi (Menit) <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" name="duration_minutes" min="1" 
-                                   value="<?= old('duration_minutes', $test->duration_minutes ?? 90) ?>" required>
+                                   value="<?= old('duration_minutes', $test->duration_minutes ?? ($defaultDuration ?? 90)) ?>" required>
                             <div class="form-text">Waktu selesai otomatis: <strong class="text-danger">Waktu Mulai + Durasi</strong>.</div>
                         </div>
                     </div>
 
                     <div class="row g-3 mt-1">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Password (Opsional)</label>
+                            <label class="form-label fw-semibold">Password Masuk (Opsional)</label>
                             <input type="text" class="form-control" name="password" 
                                    value="<?= old('password', $test->password ?? '') ?>" placeholder="Kosongkan jika bebas">
                         </div>
@@ -93,7 +93,7 @@
                         <div class="col-md-3">
                             <label class="form-label fw-semibold">Batas Lulus</label>
                             <input type="number" step="0.01" class="form-control" name="passing_score" 
-                                   value="<?= old('passing_score', $test->passing_score ?? 0.00) ?>" required>
+                                   value="<?= old('passing_score', $test->passing_score ?? ($defaultPassingGrade ?? 0.00)) ?>" required>
                         </div>
                     </div>
                     
@@ -123,7 +123,7 @@
                         <div class="form-check form-switch">
                             <input class="form-check-input fs-4" type="checkbox" id="isEnabledToggle" name="is_enabled" value="1"
                                    <?= old('is_enabled', $test->is_enabled ?? '0') == '1' ? 'checked' : '' ?>>
-                            <label class="form-check-label mt-1 ms-2 fw-semibold">Aktif (Dapat Dikerjakan)</label>
+                            <label class="form-check-label mt-1 ms-2 fw-semibold" for="isEnabledToggle">Aktif (Dapat Dikerjakan)</label>
                         </div>
                     </div>
 
@@ -131,46 +131,63 @@
                     <div id="executionOptionsGroup">
                         <h6 class="fw-bold text-dark border-bottom pb-2 mb-3"><i class="bi bi-toggles me-2 text-primary"></i>Pengaturan Pelaksanaan</h6>
 
+                        <!-- Semua sakelar di bawah memakai gaya bawaan Bootstrap: abu saat mati,
+                             biru saat menyala. Sebelumnya sebagian dipaksa bg-info/bg-danger/bg-dark,
+                             yang menimpa warna KEDUA posisi sehingga sakelarnya terlihat menyala
+                             padahal mati. Penekanan sekarang lewat teks bantuan, bukan warna rel. -->
                         <div class="mb-4">
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" name="random_questions" value="1" 
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="randomQuestionsToggle" name="random_questions" value="1"
                                        <?= old('random_questions', $test->random_questions ?? '1') == '1' ? 'checked' : '' ?>>
-                                <label class="form-check-label">Acak Urutan Soal</label>
+                                <label class="form-check-label" for="randomQuestionsToggle">Acak Urutan Soal</label>
                             </div>
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" name="random_answers" value="1" 
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="randomAnswersToggle" name="random_answers" value="1"
                                        <?= old('random_answers', $test->random_answers ?? '1') == '1' ? 'checked' : '' ?>>
-                                <label class="form-check-label">Acak Urutan Jawaban (PG)</label>
+                                <label class="form-check-label" for="randomAnswersToggle">Acak Urutan Jawaban (PG)</label>
                             </div>
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" name="show_menu" value="1" 
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="showMenuToggle" name="show_menu" value="1"
                                        <?= old('show_menu', $test->show_menu ?? '1') == '1' ? 'checked' : '' ?>>
-                                <label class="form-check-label">Tampilkan Menu Navigasi Soal</label>
+                                <label class="form-check-label" for="showMenuToggle">Tampilkan Menu Navigasi Soal</label>
                             </div>
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" name="allow_noanswer" value="1" 
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="allowNoanswerToggle" name="allow_noanswer" value="1"
                                        <?= old('allow_noanswer', $test->allow_noanswer ?? '1') == '1' ? 'checked' : '' ?>>
-                                <label class="form-check-label">Izinkan Kosong (Tidak Dijawab)</label>
+                                <label class="form-check-label" for="allowNoanswerToggle">Izinkan Kosong (Tidak Dijawab)</label>
                             </div>
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input bg-info border-info" type="checkbox" name="mcma_partial_score" value="1" 
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="mcmaPartialToggle" name="mcma_partial_score" value="1"
                                        <?= old('mcma_partial_score', $test->mcma_partial_score ?? '1') == '1' ? 'checked' : '' ?>>
-                                <label class="form-check-label fw-bold text-info">Gunakan Sistem Bobot (PG Kompleks)</label>
+                                <label class="form-check-label" for="mcmaPartialToggle">Gunakan Sistem Bobot (PG Kompleks)</label>
+                                <div class="form-text small mt-1">
+                                    Jawaban PG Kompleks dinilai per opsi benar, bukan benar-semua atau nol.
+                                </div>
                             </div>
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input" type="checkbox" id="isRepeatableToggle" name="is_repeatable" value="1" 
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="isRepeatableToggle" name="is_repeatable" value="1"
                                        <?= old('is_repeatable', $test->is_repeatable ?? '0') == '1' ? 'checked' : '' ?>>
-                                <label class="form-check-label text-danger">Boleh Diulang</label>
+                                <label class="form-check-label" for="isRepeatableToggle">Boleh Diulang</label>
+                                <div class="form-text small mt-1">
+                                    Saling mengunci dengan &ldquo;Auto-Submit saat Kecurangan&rdquo;.
+                                </div>
                             </div>
-                            <div class="form-check form-switch mb-2">
-                                <input class="form-check-input bg-danger border-danger" type="checkbox" id="autoSubmitToggle" name="auto_submit_on_cheat" value="1" 
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="autoSubmitToggle" name="auto_submit_on_cheat" value="1"
                                        <?= old('auto_submit_on_cheat', $test->auto_submit_on_cheat ?? '0') == '1' ? 'checked' : '' ?>>
-                                <label class="form-check-label text-danger fw-bold">
-                                    <i class="bi bi-shield-exclamation me-1"></i>Auto-Submit saat Kecurangan
-                                </label>
+                                <label class="form-check-label" for="autoSubmitToggle">Auto-Submit saat Kecurangan</label>
+                                <div class="form-text text-danger-emphasis small mt-1">
+                                    Ujian langsung dikumpulkan begitu pelanggaran terdeteksi, tanpa bisa dibatalkan.
+                                </div>
                             </div>
-                            <div class="form-text text-danger-emphasis small mb-2" style="margin-top:-4px;">
-                                Ujian akan otomatis dikumpulkan saat curang. Saling mengunci dengan opsi "Boleh Diulang".
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="requireKioskToggle" name="require_kiosk" value="1"
+                                       <?= old('require_kiosk', $test->require_kiosk ?? '0') == '1' ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="requireKioskToggle">Wajib Integrasi EXAMBRO</label>
+                                <div class="form-text small mt-1">
+                                    Jawaban hanya diterima selama aplikasi EXAMBRO mengirim heartbeat. Ujian jadi
+                                    tidak bisa dikerjakan lewat browser biasa, termasuk browser di komputer.
+                                </div>
                             </div>
                         </div>
 

@@ -7,6 +7,7 @@ use App\Models\QuestionModel;
 use App\Models\AnswerModel;
 use App\Models\SubjectModel;
 use App\Models\ModuleModel;
+use App\Models\TopicModel;
 use App\Models\ActivityLogModel;
 
 class QuestionController extends BaseController
@@ -70,15 +71,35 @@ class QuestionController extends BaseController
             'question'         => null,
             'answers'          => [],
             'subjectsByModule' => $subjectsByModule,
-            'subjectId'        => $this->request->getGet('subject_id')
+            'subjectId'        => $this->request->getGet('subject_id'),
+            'topics'           => $this->request->getGet('subject_id')
+                ? (new TopicModel())->getTopicsBySubject((int) $this->request->getGet('subject_id'))
+                : []
         ]);
+    }
+
+    /**
+     * AJAX: daftar topik untuk sebuah subjek (dropdown dinamis Topik/Bab)
+     */
+    public function topicsBySubject()
+    {
+        $subjectId = (int) $this->request->getGet('subject_id');
+        if ($subjectId <= 0) {
+            return $this->response->setJSON([]);
+        }
+
+        $topics = (new TopicModel())->getTopicsBySubject($subjectId);
+
+        return $this->response->setJSON($topics);
     }
 
     public function store()
     {
         $rules = [
             'subject_id'  => 'required|is_natural_no_zero',
+            'topic_id'    => 'permit_empty|is_natural_no_zero',
             'type'        => 'required|in_list[1,2,3,4,5]',
+            'answer_mode' => 'permit_empty|in_list[exact,manual]',
             'description' => 'required',
             'difficulty'  => 'required|is_natural_no_zero',
         ];
@@ -88,13 +109,26 @@ class QuestionController extends BaseController
         }
 
         $type = (int) $this->request->getPost('type');
-        
+
+        // Gambar yang ditempel langsung ke editor masuk sebagai data URI base64
+        // dan ikut tersalin ke test_logs setiap attempt. Keluarkan jadi berkas
+        // sebelum menyentuh database.
+        $img = new \App\Libraries\InlineImageExtractor();
+
         // Insert Question
         $data = [
             'subject_id'     => $this->request->getPost('subject_id'),
+            'topic_id'       => $this->request->getPost('topic_id') ?: null,
             'type'           => $type,
-            'description'    => $this->request->getPost('description'),
-            'explanation'    => $this->request->getPost('explanation'),
+            // Hanya bermakna untuk tipe 3. Tipe lain dikunci ke 'exact' supaya
+            // nilainya tidak menyesatkan kalau tipenya diubah belakangan.
+            // Dropdown default 'exact'; bila guru tidak mengisi teks kunci,
+            // paksa 'manual' agar soalnya antre koreksi, bukan dinilai 0.
+            'answer_mode'    => $type === 3
+                ? (($this->request->getPost('answer_mode') === 'manual' || !$this->_postHasAnswerKey()) ? 'manual' : 'exact')
+                : 'exact',
+            'description'    => $img->process($this->request->getPost('description')),
+            'explanation'    => $img->process($this->request->getPost('explanation')),
             'difficulty'     => $this->request->getPost('difficulty'),
             'is_enabled'     => $this->request->getPost('is_enabled') ? 1 : 0,
         ];
@@ -156,7 +190,8 @@ class QuestionController extends BaseController
             'question'         => $question,
             'answers'          => $answers,
             'subjectsByModule' => $subjectsByModule,
-            'subjectId'        => $question->subject_id
+            'subjectId'        => $question->subject_id,
+            'topics'           => (new TopicModel())->getTopicsBySubject($question->subject_id)
         ]);
     }
 
@@ -169,7 +204,9 @@ class QuestionController extends BaseController
 
         $rules = [
             'subject_id'  => 'required|is_natural_no_zero',
+            'topic_id'    => 'permit_empty|is_natural_no_zero',
             'type'        => 'required|in_list[1,2,3,4,5]',
+            'answer_mode' => 'permit_empty|in_list[exact,manual]',
             'description' => 'required',
             'difficulty'  => 'required|is_natural_no_zero',
         ];
@@ -179,12 +216,21 @@ class QuestionController extends BaseController
         }
 
         $type = (int) $this->request->getPost('type');
+        $img = new \App\Libraries\InlineImageExtractor();
 
         $data = [
             'subject_id'     => $this->request->getPost('subject_id'),
+            'topic_id'       => $this->request->getPost('topic_id') ?: null,
             'type'           => $type,
-            'description'    => $this->request->getPost('description'),
-            'explanation'    => $this->request->getPost('explanation'),
+            // Hanya bermakna untuk tipe 3. Tipe lain dikunci ke 'exact' supaya
+            // nilainya tidak menyesatkan kalau tipenya diubah belakangan.
+            // Dropdown default 'exact'; bila guru tidak mengisi teks kunci,
+            // paksa 'manual' agar soalnya antre koreksi, bukan dinilai 0.
+            'answer_mode'    => $type === 3
+                ? (($this->request->getPost('answer_mode') === 'manual' || !$this->_postHasAnswerKey()) ? 'manual' : 'exact')
+                : 'exact',
+            'description'    => $img->process($this->request->getPost('description')),
+            'explanation'    => $img->process($this->request->getPost('explanation')),
             'difficulty'     => $this->request->getPost('difficulty'),
             'is_enabled'     => $this->request->getPost('is_enabled') ? 1 : 0,
         ];
@@ -372,12 +418,34 @@ class QuestionController extends BaseController
 
             $this->answerModel->skipValidation(true)->insert([
                 'question_id' => $questionId,
-                'description' => $answerText,
+                'description' => (new \App\Libraries\InlineImageExtractor())->process($answerText),
                 'is_correct'  => $isCorrect,
                 'is_enabled'  => 1,
                 'position'    => $position,
             ]);
             $position++;
         }
+    }
+
+    /**
+     * True bila POST answers memuat minimal satu teks kunci non-kosong —
+     * kriteria yang sama dengan _saveAnswers() saat memutuskan baris mana
+     * yang ditulis. Bentuk field: array teks ber-key huruf/indeks.
+     */
+    private function _postHasAnswerKey(): bool
+    {
+        $answers = $this->request->getPost('answers') ?? [];
+
+        if (!is_array($answers)) {
+            return trim((string) $answers) !== '';
+        }
+
+        foreach ($answers as $text) {
+            if (trim((string) $text) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

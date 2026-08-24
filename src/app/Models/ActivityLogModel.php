@@ -29,6 +29,11 @@ class ActivityLogModel extends Model
     ): void {
         $request = service('request');
 
+        // Dipanggil juga dari perintah spark (finalize:expired, kiosk:prune),
+        // dan CLIRequest tidak punya getUserAgent(): memanggilnya di sana
+        // melempar Error dan menghentikan perintahnya di tengah jalan.
+        $isCli = $request instanceof \CodeIgniter\HTTP\CLIRequest;
+
         $this->insert([
             'user_id'     => $userId,
             'action'      => $action,
@@ -36,7 +41,7 @@ class ActivityLogModel extends Model
             'entity_id'   => $entityId,
             'description' => $description,
             'ip_address'  => $request->getIPAddress(),
-            'user_agent'  => (string) $request->getUserAgent(),
+            'user_agent'  => $isCli ? 'CLI' : (string) $request->getUserAgent(),
             'created_at'  => date('Y-m-d H:i:s'),
         ]);
     }

@@ -3,11 +3,16 @@ $settingModel = new \App\Models\SettingModel();
 $primaryColor = $settingModel->getValue('primary_color', '#4f46e5');
 $navbarColor = $settingModel->getValue('navbar_color', 'rgba(0,0,0,0.3)');
 $textColor = $settingModel->getValue('text_color', '#212529');
+$fontFamily = $settingModel->getValue('font_family', 'Outfit');
 $appLogo = $settingModel->getValue('app_logo', '');
+$appFavicon = $settingModel->getValue('app_favicon', '');
+$faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? base_url($appLogo) : base_url('favicon.ico'));
 $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 $appDesc = $settingModel->getValue('app_description', 'Aplikasi Ujian Berbasis Komputer (CBT)');
 $siteAuthor = $settingModel->getValue('site_author', 'Sekolah/Lembaga');
 $bgImage = $settingModel->getValue('login_background', '');
+$primaryRgb = sscanf($primaryColor, "#%02x%02x%02x");
+$primaryRgbStr = $primaryRgb[0] . ',' . $primaryRgb[1] . ',' . $primaryRgb[2];
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -16,9 +21,11 @@ $bgImage = $settingModel->getValue('login_background', '');
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>Antrean Masuk — <?= esc($appName) ?></title>
+    <link rel="icon" href="<?= $faviconUrl ?>">
+    <link rel="shortcut icon" href="<?= $faviconUrl ?>">
     <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css?v=1.1') ?>" rel="stylesheet">
     <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css?v=1.1') ?>" rel="stylesheet">
-    <link href="<?= base_url('assets/css/inter.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('assets/css/' . ($fontFamily === 'Inter' ? 'inter' : 'outfit') . '.css?v=1.1') ?>" rel="stylesheet">
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         :root {
@@ -27,16 +34,23 @@ $bgImage = $settingModel->getValue('login_background', '');
             --navbar-bg: <?= esc($navbarColor) ?>;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :focus-visible {
+            outline: 3px solid rgba(<?= $primaryRgbStr ?>, 0.35);
+            outline-offset: 2px;
+            border-radius: 4px;
+        }
         body {
-            font-family: 'Inter', sans-serif;
-            min-height: 100vh;
+            font-family: '<?= esc($fontFamily) ?>', sans-serif;
+            min-height: 100dvh;
             display: flex;
             flex-direction: column;
             color: var(--text-color);
+            text-rendering: optimizeLegibility;
             <?php if ($bgImage): ?>
             background: url('<?= base_url($bgImage) ?>') center center / cover no-repeat fixed;
             <?php else: ?>
             background: #e2e8f0;
+            background: radial-gradient(120% 80% at 50% 0%, #eef2f7 0%, #e2e8f0 100%);
             <?php endif; ?>
         }
         
@@ -69,10 +83,10 @@ $bgImage = $settingModel->getValue('login_background', '');
         .login-card {
             background: #ffffff;
             width: 100%;
-            max-width: 500px;
-            border-radius: 8px;
+            max-width: 440px;
+            border-radius: 16px;
             padding: 3rem 2.5rem;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 24px 48px -16px rgba(15, 23, 42, 0.18);
             text-align: center;
         }
         
@@ -85,10 +99,12 @@ $bgImage = $settingModel->getValue('login_background', '');
             margin-bottom: 1rem;
         }
         .login-logo h3 {
-            font-size: 1.2rem;
+            font-size: 1.5rem;
             font-weight: 700;
             color: var(--text-color);
             margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+            text-wrap: balance;
         }
         
         .pulse-ring {
@@ -96,7 +112,7 @@ $bgImage = $settingModel->getValue('login_background', '');
             width: 60px;
             height: 60px;
             border-radius: 50%;
-            background: rgba(79, 70, 229, 0.2);
+            background: rgba(<?= $primaryRgbStr ?>, 0.15);
             animation: pulse 2s infinite;
             display: flex;
             align-items: center;
@@ -105,9 +121,9 @@ $bgImage = $settingModel->getValue('login_background', '');
         }
         
         @keyframes pulse {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(79, 70, 229, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(<?= $primaryRgbStr ?>, 0.6); }
+            70% { transform: scale(1); box-shadow: 0 0 0 15px rgba(<?= $primaryRgbStr ?>, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(<?= $primaryRgbStr ?>, 0); }
         }
         
         .waiting-message {
@@ -142,6 +158,7 @@ $bgImage = $settingModel->getValue('login_background', '');
             backdrop-filter: blur(5px);
         }
     </style>
+    <?php include __DIR__ . '/../layouts/_frontend_config.php'; ?>
 </head>
 <body>
 
@@ -196,6 +213,7 @@ $bgImage = $settingModel->getValue('login_background', '');
             });
 
             // Polling interval (5 seconds)
+            const APP_CFG = window.APP_CONFIG || {};
             setInterval(function() {
                 $.post('<?= base_url('/queue/ping') ?>')
                 .done(function(res) {
@@ -209,7 +227,7 @@ $bgImage = $settingModel->getValue('login_background', '');
                 .fail(function() {
                     console.log("Connection error, waiting for next ping...");
                 });
-            }, 5000);
+            }, APP_CFG.queue_poll_ms || 5000);
         });
     </script>
     <form id="logout-form" action="<?= base_url('logout') ?>" method="POST" style="display: none;">

@@ -16,13 +16,14 @@ class TestAttemptModel extends Model
     protected $updatedField     = 'updated_at';
 
     protected $allowedFields = [
-        'test_id', 'user_id', 'status', 'cheat_strikes', 'score', 'comment', 
+        'test_id', 'user_id', 'attempt_number', 'status', 'cheat_strikes', 'score', 'comment', 
         'started_at', 'finished_at'
     ];
 
     protected $afterInsert = ['clearAttemptCache'];
     protected $afterUpdate = ['clearAttemptCacheAfterUpdate'];
     protected $afterDelete = ['clearAttemptCacheAfterDelete'];
+
 
     /**
      * Get active or uncompleted attempt for a user and test

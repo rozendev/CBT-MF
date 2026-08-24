@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Layanan Tidak Tersedia Sementara</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --card: #1a2233;
+    --border: #2a3550;
+    --text: #e6ebf5;
+    --muted: #93a1b8;
+    --accent: #f59e0b;
+    --danger: #ef4444;
+    --ok: #22c55e;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    max-width: 640px;
+    width: 100%;
+    padding: 32px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.4);
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    background: rgba(239,68,68,.12);
+    color: var(--danger);
+    border: 1px solid rgba(239,68,68,.35);
+  }
+  .badge .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--danger);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .badge.ok {
+    background: rgba(34,197,94,.12);
+    color: var(--ok);
+    border-color: rgba(34,197,94,.35);
+  }
+  .badge.ok .dot { background: var(--ok); animation: none; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  h1 { font-size: 24px; margin-bottom: 8px; }
+  p { color: var(--muted); line-height: 1.6; margin-bottom: 12px; }
+  pre {
+    background: #0d1320;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: #c7d2e4;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    margin: 8px 0 16px;
+  }
+  .section { margin-top: 20px; }
+  .section h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .note {
+    background: rgba(245,158,11,.08);
+    border: 1px solid rgba(245,158,11,.3);
+    color: #fcd34d;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+  button {
+    flex: 1;
+    min-width: 160px;
+    padding: 12px 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #243049;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: #2c3a58; }
+  .status-line {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 16px;
+  }
+  #manualMsg {
+    display: none;
+    background: #243049;
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 14px;
+    margin: 12px 0;
+    font-size: 15px;
+  }
+  #autoHint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <span class="badge" id="badge"><span class="dot"></span><span id="badgeText">Memeriksa status…</span></span>
+  <h1>Layanan Tidak Tersedia Sementara</h1>
+  <p id="intro">Sistem sedang mengalami gangguan. Mohon jangan menutup halaman ini; jawaban yang sudah tersimpan di perangkat Anda aman.</p>
+
+  <div id="manualMsg"></div>
+
+  <div class="section" id="redisSection">
+    <h2>Langkah Cepat untuk Admin</h2>
+    <pre>docker compose logs redis --tail 100
+docker stats
+docker compose restart redis</pre>
+    <p>Periksa pesan error di log (misalnya <b>OOM / maxmemory</b>). Redis memakai AOF — sesi dan jawaban aman setelah container kembali online.</p>
+  </div>
+
+  <div class="section">
+    <h2>Setelah Layanan Pulih</h2>
+    <div class="note">Halaman ini akan tertutup otomatis. Siswa yang sedang ujian perlu login ulang dan bisa melanjutkan dari sisa waktu. Jika waktu berkurang karena gangguan, pengawas dapat menggunakan fitur <b>Perpanjang Waktu</b> di menu admin.</div>
+  </div>
+
+  <div class="row">
+    <button onclick="checkNow(true)">Cek Ulang Sekarang</button>
+    <button onclick="location.reload()">Muat Ulang Halaman</button>
+  </div>
+  <div class="status-line" id="statusLine">—</div>
+  <div id="autoHint">Status diperiksa otomatis setiap 10 detik…</div>
+</div>
+
+<script>
+  var mode = 'none';
+
+  function fmt(ts) {
+    if (!ts) return '-';
+    var d = new Date(ts * 1000);
+    return d.toLocaleString('id-ID');
+  }
+
+  function render(data) {
+    mode = data.mode || 'none';
+    var badge = document.getElementById('badge');
+    var badgeText = document.getElementById('badgeText');
+    var intro = document.getElementById('intro');
+    var redisSection = document.getElementById('redisSection');
+    var manualMsg = document.getElementById('manualMsg');
+
+    if (mode === 'redis') {
+      badge.className = 'badge';
+      badgeText.textContent = 'Gangguan: Redis tidak tersedia';
+      intro.textContent = 'Sistem penyimpanan sesi (Redis) tidak dapat dijangkau. Ujian belum tentu berjalan normal — hubungi pengawas segera.';
+      redisSection.style.display = 'block';
+      manualMsg.style.display = 'none';
+    } else if (mode === 'manual') {
+      badge.className = 'badge ok';
+      badgeText.textContent = 'Mode Pemeliharaan Manual';
+      intro.textContent = 'Sistem sedang dalam pemeliharaan yang dijadwalkan oleh admin.';
+      redisSection.style.display = 'none';
+      manualMsg.style.display = 'block';
+      manualMsg.textContent = data.message || 'Sistem sedang dalam pemeliharaan. Silakan coba lagi beberapa saat lagi.';
+    } else {
+      badge.className = 'badge ok';
+      badgeText.textContent = 'Status: Normal — memuat ulang…';
+      document.getElementById('autoHint').textContent = 'Sistem sudah pulih. Memuat ulang halaman…';
+      setTimeout(function () { window.location.href = '/'; }, 1500);
+      return;
+    }
+
+    document.getElementById('statusLine').textContent = 'Terakhir diperiksa: ' + fmt(data.now || Math.floor(Date.now() / 1000));
+  }
+
+  function checkNow(manual) {
+    var line = document.getElementById('statusLine');
+    if (manual) line.textContent = 'Memeriksa…';
+    fetch('/maintenance-check.php', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        render(data);
+        if (!manual && mode === 'none') return;
+      })
+      .catch(function () {
+        line.textContent = 'Gagal menghubungi server status. Coba lagi sebentar.';
+      });
+  }
+
+  checkNow(false);
+  setInterval(function () { checkNow(false); }, 10000);
+</script>
+</body>
+</html>

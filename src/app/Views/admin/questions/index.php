@@ -3,28 +3,40 @@
 <?= $this->section('page_title') ?>Bank Soal<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="card mb-4">
+<!-- Page Head -->
+<div class="page-head rise">
+    <div>
+        <div class="eyebrow">Bank Soal</div>
+        <h1>Daftar Soal</h1>
+        <p class="sub">Kelola perpustakaan soal per subjek dan modul — filter, import dari Word, atau buat soal baru.</p>
+    </div>
+</div>
+
+<div class="card mb-4 rise" style="--d:60ms">
     <div class="card-body py-3">
         <form action="<?= base_url('/admin/questions') ?>" method="GET" class="row g-3 align-items-center">
             <div class="col-md-5">
-                <select name="subject_id" class="form-select" onchange="this.form.submit()">
-                    <option value="">Semua Subjek</option>
-                    <?php foreach ($subjectsByModule as $moduleName => $subjects): ?>
-                        <optgroup label="<?= esc($moduleName) ?>">
-                            <?php foreach ($subjects as $sub): ?>
-                                <option value="<?= $sub->id ?>" <?= ($subjectId == $sub->id) ? 'selected' : '' ?>>
-                                    <?= esc($sub->name) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </optgroup>
-                    <?php endforeach; ?>
-                </select>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-funnel"></i></span>
+                    <select name="subject_id" class="form-select" onchange="this.form.submit()" style="border-left: 0;">
+                        <option value="">Semua Subjek</option>
+                        <?php foreach ($subjectsByModule as $moduleName => $subjects): ?>
+                            <optgroup label="<?= esc($moduleName) ?>">
+                                <?php foreach ($subjects as $sub): ?>
+                                    <option value="<?= $sub->id ?>" <?= ($subjectId == $sub->id) ? 'selected' : '' ?>>
+                                        <?= esc($sub->name) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </optgroup>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
             </div>
-            <div class="col-md-7 d-flex justify-content-end">
-                <a href="<?= base_url('admin/questions/word-import') ?>" class="btn btn-outline-success btn-sm rounded-pill px-3 me-2">
+            <div class="col-md-7 d-flex justify-content-end flex-wrap gap-2">
+                <a href="<?= base_url('admin/questions/word-import') ?>" class="btn btn-ghost btn-sm">
                     <i class="bi bi-file-earmark-word me-1"></i> Import Word
                 </a>
-                <a href="<?= base_url('/admin/questions/create') ?><?= $subjectId ? '?subject_id='.$subjectId : '' ?>" class="btn btn-primary btn-sm rounded-pill px-3">
+                <a href="<?= base_url('/admin/questions/create') ?><?= $subjectId ? '?subject_id='.$subjectId : '' ?>" class="btn btn-accent btn-sm">
                     <i class="bi bi-plus-circle me-1"></i> Tambah Soal
                 </a>
             </div>
@@ -34,10 +46,10 @@
 
 <form action="<?= base_url('/admin/questions/bulk-delete') ?>" method="POST" id="bulkDeleteForm">
     <?= csrf_field() ?>
-    <div class="card">
-        <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-            <h6 class="m-0 fw-bold"><i class="bi bi-question-circle me-1"></i> Daftar Soal</h6>
-            <button type="button" class="btn btn-sm btn-danger d-none" id="btnBulkDelete" onclick="confirmBulkDelete()">
+    <div class="card rise" style="--d:120ms">
+        <div class="card-body py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 fw-bold" style="letter-spacing:-0.01em;">Daftar Soal</h6>
+            <button type="button" class="btn btn-sm btn-danger-soft d-none" id="btnBulkDelete" onclick="confirmBulkDelete()">
                 <i class="bi bi-trash me-1"></i> Hapus Terpilih (<span id="bulkCount">0</span>)
             </button>
         </div>
@@ -62,9 +74,12 @@
                 <tbody>
                     <?php if (empty($questions)): ?>
                         <tr>
-                            <td colspan="6" class="text-center py-5 text-muted">
-                                <i class="bi bi-inbox fs-2 d-block mb-2 text-light"></i>
-                                Tidak ada soal yang ditemukan.
+                            <td colspan="7">
+                                <div class="empty">
+                                    <div class="empty-icon"><i class="bi bi-inbox"></i></div>
+                                    <h6>Tidak ada soal ditemukan</h6>
+                                    <p>Ubah filter subjek, atau tambahkan soal baru ke bank soal.</p>
+                                </div>
                             </td>
                         </tr>
                     <?php else: ?>
@@ -84,25 +99,25 @@
                                     </div>
                                 </td>
                                 <td>
-                                    <div class="text-dark mb-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                                    <div class="mb-1" style="color: var(--text-primary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
                                         <?= strip_tags($q->description) ?>
                                     </div>
                                 </td>
                                 <td>
-                                    <span class="badge bg-light text-dark border d-block text-start mb-1" style="width: max-content;">
+                                    <span class="chip ghost d-block text-start mb-1" style="width: max-content;">
                                         <?= esc($q->subject_name) ?>
                                     </span>
-                                    <small class="text-muted"><?= esc($q->module_name) ?></small>
+                                    <small class="row-meta"><?= esc($q->module_name) ?></small>
                                 </td>
-                                <td class="small text-muted"><?= $types[$q->type] ?? 'Unknown' ?></td>
+                                <td class="small" style="color: var(--text-secondary);"><?= $types[$q->type] ?? 'Unknown' ?></td>
                                 <td>
-                                    <span class="badge bg-secondary rounded-pill"><?= $q->difficulty ?></span>
+                                    <span class="chip ghost num"><?= $q->difficulty ?></span>
                                 </td>
                                 <td>
                                     <?php if ($q->is_enabled): ?>
-                                        <span class="badge bg-success-subtle text-success rounded-pill px-2">Aktif</span>
+                                        <span class="chip ok"><span class="dot breathe"></span> Aktif</span>
                                     <?php else: ?>
-                                        <span class="badge bg-danger-subtle text-danger rounded-pill px-2">Nonaktif</span>
+                                        <span class="chip danger"><i class="bi bi-slash-circle"></i> Nonaktif</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-end pe-4">
@@ -126,7 +141,7 @@
         </div>
     </div>
     <?php if ($pager): ?>
-    <div class="card-footer bg-white py-3 border-top d-flex justify-content-end">
+    <div class="card-footer py-3 border-top d-flex justify-content-end">
         <?= $pager->links('default', 'bootstrap_pagination') ?>
     </div>
     <?php endif; ?>

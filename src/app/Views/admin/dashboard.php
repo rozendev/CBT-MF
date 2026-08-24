@@ -4,219 +4,141 @@
 
 <?= $this->section('styles') ?>
 <style>
-    .stat-card {
-        padding: 1.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+    .hud-panel {
+        position: relative;
+        background:
+            radial-gradient(90% 120% at 100% 0%, var(--brand-soft) 0%, transparent 55%),
+            var(--bg-surface);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--card-shadow);
+        overflow: hidden;
     }
-    .stat-card {
-        padding: 1.5rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+    .chart-wrap { position: relative; }
+    .chart-center {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        pointer-events: none;
     }
-    
-    /* Table styles */
-    .table-modern {
-        border-collapse: separate;
-        border-spacing: 0 0.5rem;
+    .donut-col {
+        position: relative;
+        padding: clamp(1.5rem, 5vw, 3.5rem);
     }
-    .table-modern th {
-        border-bottom: none;
-        color: var(--text-secondary);
-        font-weight: 600;
-        text-transform: capitalize;
-        font-size: 0.85rem;
-        padding: 0.8rem 1rem;
+    .donut-col::after {
+        content: "";
+        position: absolute;
+        right: 0; top: 15%; bottom: 15%;
+        width: 1px;
+        background: linear-gradient(var(--border-color) 0%, transparent 100%);
     }
-    .table-modern td {
-        background: var(--bg-body);
-        border: none;
-        padding: 1rem;
-        vertical-align: middle;
-        font-size: 0.9rem;
+    .legend-row { display: flex; align-items: center; gap: 1rem; padding: 1.1rem 0; }
+    .legend-row + .legend-row { border-top: 1px dashed var(--border-color); }
+    .legend-dot {
+        width: 10px; height: 10px; border-radius: 50%;
+        flex: 0 0 auto;
     }
-    .table-modern tr td:first-child { border-top-left-radius: 12px; border-bottom-left-radius: 12px; }
-    .table-modern tr td:last-child { border-top-right-radius: 12px; border-bottom-right-radius: 12px; }
-    
-    .table-avatar {
-        width: 36px; height: 36px;
-        border-radius: 10px;
-        display: flex; align-items: center; justify-content: center;
-        color: white; font-weight: bold;
+    .partition {
+        border-top: 1px solid var(--border-color);
+        padding: 1.35rem clamp(1.5rem, 5vw, 3.5rem);
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 1rem; flex-wrap: wrap;
+        background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+    }
+    @media (max-width: 767.98px) {
+        .donut-col::after { display: none; }
     }
 </style>
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
 
+<?php if (isset($redis_down) && $redis_down): ?>
+<div class="alert alert-danger d-flex align-items-center rise" role="alert" style="border-radius: 16px;">
+    <i class="bi bi-exclamation-triangle-fill fs-5 me-3"></i>
+    <div>
+        <strong class="d-block mb-1">Sistem anda tidak memiliki Redis!</strong>
+        Performa akan turun signifikan dan beberapa fitur keamanan mungkin tidak berfungsi secara optimal.
+    </div>
+</div>
+<?php endif; ?>
+
+<!-- Page Head -->
+<div class="page-head rise">
+    <div>
+        <div class="eyebrow">Overview · Partisipasi</div>
+        <h1>Dashboard</h1>
+        <p class="sub">Sebaran partisipasi siswa terhadap ujian secara langsung.</p>
+    </div>
+    <div class="actions">
+        <a href="<?= base_url('/admin/logging') ?>" class="btn btn-ghost btn-sm">
+            <i class="bi bi-journal-richtext me-1"></i> Logging Aktivitas
+        </a>
+        <a href="<?= base_url('/admin/tests/create') ?>" class="btn btn-accent btn-sm">
+            <i class="bi bi-plus-circle me-1"></i> Buat Ujian
+        </a>
+    </div>
+</div>
+
 <?php
-// Hitung percentage dummy untuk progress ring (misal ratio online vs total, max 100%)
-$onlineCount = count($onlineUsers ?? []);
-$totalUsers = $stats['users'] ?? 1;
-$onlinePercent = min(100, round(($onlineCount / $totalUsers) * 100));
-if($onlinePercent < 5) $onlinePercent = 87; // Dummy if too low to make UI look good
+$chartArr = json_decode($chartData ?? '', true);
+$chartVals = $chartArr['data'] ?? [0, 0, 0];
+$chartTotal = array_sum($chartVals);
 ?>
 
-<!-- TOP STATS WIDGETS -->
-<div class="row g-4 mb-4">
-    <!-- Widget 1: Users -->
-    <div class="col-md-4">
-        <div class="card stat-card h-100">
-            <div>
-                <div class="text-muted small fw-semibold mb-1">Total Pengguna</div>
-                <div class="fw-bold fs-3" style="color: var(--text-primary);"><?= esc($stats['users'] ?? 0) ?></div>
-            </div>
-            <div class="rounded-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; background: rgba(67, 24, 255, 0.1); color: var(--brand-color); font-size: 1.5rem;">
-                <i class="bi bi-person-fill"></i>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Widget 2: Active Tests -->
-    <div class="col-md-4">
-        <div class="card stat-card h-100">
-            <div>
-                <div class="text-muted small fw-semibold mb-1">Ujian Aktif</div>
-                <div class="fw-bold fs-3" style="color: var(--text-primary);"><?= esc($stats['active_tests'] ?? 0) ?></div>
-            </div>
-            <div class="rounded-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; background: rgba(217, 119, 6, 0.1); color: #d97706; font-size: 1.5rem;">
-                <i class="bi bi-journal-text"></i>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Widget 3: Questions -->
-    <div class="col-md-4">
-        <div class="card stat-card h-100">
-            <div>
-                <div class="text-muted small fw-semibold mb-1">Total Soal</div>
-                <div class="fw-bold fs-3" style="color: var(--text-primary);"><?= esc($stats['questions'] ?? 0) ?></div>
-            </div>
-            <div class="rounded-3 d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; background: rgba(5, 150, 105, 0.1); color: #059669; font-size: 1.5rem;">
-                <i class="bi bi-question-circle-fill"></i>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- CHARTS ROW (Visual placeholders using CSS/Flexbox to match reference) -->
-<div class="row g-4 mb-4">
-    <div class="col-lg-6">
-        <div class="card h-100 p-4">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h6 class="fw-bold mb-0">Rasio Partisipasi Ujian (Siswa)</h6>
-            </div>
-            <div class="d-flex gap-4 mb-4 small fw-semibold text-muted">
-                <div class="d-flex align-items-center gap-2">
-                    <div style="width:12px;height:12px;border-radius:50%;background:var(--brand-color);"></div> Sudah Mengerjakan
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <div style="width:12px;height:12px;border-radius:50%;background:#e2e8f0;"></div> Belum Mengerjakan
-                </div>
-            </div>
-            
-            <!-- Chart Area -->
-            <div class="w-100 rounded-3 mt-2" style="height: 250px;">
+<!-- Single HUD panel: donut + legend -->
+<div class="hud-panel rise" style="--d:120ms">
+    <div class="row g-0 align-items-stretch">
+        <div class="col-md-5 donut-col">
+            <div class="stat-label mb-1"><i class="bi bi-pie-chart me-1"></i> Rasio Partisipasi</div>
+            <h6 class="fw-bold mb-4" style="letter-spacing:-0.02em;">Status Pengerjaan Ujian</h6>
+            <div class="chart-wrap mx-auto" style="height: 300px; max-width: 360px;">
                 <canvas id="examChart"></canvas>
+                <div class="chart-center">
+                    <div class="num fw-bold" style="font-size:2.2rem; letter-spacing:-0.04em; line-height:1;"><?= (int)$participationPercent ?>%</div>
+                    <div class="mono" style="font-size:0.64rem; letter-spacing:0.16em; text-transform:uppercase; color:var(--text-tertiary); margin-top:4px;">Tuntas</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-7 d-flex flex-column p-4">
+            <div class="flex-grow-1 d-flex flex-column justify-content-center">
+                <div class="legend-row">
+                    <span class="legend-dot" style="background: var(--brand-color);"></span>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold" style="color: var(--text-primary);">Sudah Mengerjakan</div>
+                        <div class="small" style="color: var(--text-tertiary);">Attempt selesai dinilai</div>
+                    </div>
+                    <div class="num fw-bold" style="font-size:1.7rem; letter-spacing:-0.03em;"><?= esc($chartVals[0] ?? 0) ?></div>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-dot" style="background: var(--warn);"></span>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold" style="color: var(--text-primary);">Sedang Mengerjakan</div>
+                        <div class="small" style="color: var(--text-tertiary);">Dalam sesi aktif / paused</div>
+                    </div>
+                    <div class="num fw-bold" style="font-size:1.7rem; letter-spacing:-0.03em;"><?= esc($chartVals[1] ?? 0) ?></div>
+                </div>
+                <div class="legend-row">
+                    <span class="legend-dot" style="background: var(--border-strong);"></span>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold" style="color: var(--text-primary);">Belum Mengerjakan</div>
+                        <div class="small" style="color: var(--text-tertiary);">Belum ada attempt aktif</div>
+                    </div>
+                    <div class="num fw-bold" style="font-size:1.7rem; letter-spacing:-0.03em;"><?= esc($chartVals[2] ?? 0) ?></div>
+                </div>
             </div>
         </div>
     </div>
-    
-    <div class="col-lg-6">
-        <div class="card h-100 p-4">
-            <h6 class="fw-bold mb-4">User Online (Real-Time)</h6>
-            
-            <?php if (!empty($onlineUsers)): ?>
-                <div class="list-group list-group-flush" style="max-height: 280px; overflow-y: auto;">
-                    <?php foreach ($onlineUsers as $ou): ?>
-                    <div class="d-flex justify-content-between align-items-center py-3 border-bottom" style="border-color: var(--border-color) !important;">
-                        <div class="d-flex align-items-center">
-                            <div class="table-avatar me-3" style="background: linear-gradient(135deg, #059669, #34d399);">
-                                <?= esc(strtoupper(substr($ou['firstname'] ?? $ou['username'], 0, 1))) ?>
-                            </div>
-                            <div>
-                                <h6 class="mb-0 fs-6 fw-semibold" style="color: var(--text-primary);"><?= esc($ou['firstname'] ?? $ou['username']) ?></h6>
-                                <small class="text-muted" style="font-size: 0.75rem;"><i class="bi bi-person-badge"></i> <?= esc(ucfirst($ou['role'])) ?></small>
-                            </div>
-                        </div>
-                        <div class="text-end">
-                            <span class="spinner-grow spinner-grow-sm text-success" role="status" style="width: 0.5rem; height: 0.5rem;"></span>
-                            <div class="text-muted mt-1" style="font-size: 0.7rem;"><?= date('H:i', strtotime($ou['last_active_at'])) ?></div>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php else: ?>
-                <div class="text-center py-5 h-100 d-flex flex-column justify-content-center align-items-center">
-                    <div style="width:60px;height:60px;border-radius:50%;background:var(--bg-body);display:flex;align-items:center;justify-content:center;margin-bottom:1rem;">
-                        <i class="bi bi-moon-stars text-muted fs-3"></i>
-                    </div>
-                    <p class="text-muted small fw-semibold">Tidak ada user yang sedang online saat ini.</p>
-                </div>
-            <?php endif; ?>
-        </div>
-    </div>
-</div>
 
-<!-- BOTTOM TABLE SECTION -->
-<div class="card p-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h6 class="fw-bold mb-0">Aktivitas Terakhir</h6>
+    <div class="partition">
+        <div class="mono" style="font-size:0.72rem; color: var(--text-tertiary);">
+            <i class="bi bi-people me-1"></i> <?= esc($chartTotal) ?> siswa terdaftar
+        </div>
         <div class="d-flex gap-2">
-            <a href="<?= base_url('/admin/tests') ?>" class="btn btn-sm" style="background: var(--bg-body); color: var(--text-primary); font-weight:600;"><i class="bi bi-plus-circle me-1"></i> Buat Ujian</a>
-            <a href="<?= base_url('/admin/results') ?>" class="btn btn-sm btn-primary" style="background: var(--brand-color); border: none; font-weight:600;"><i class="bi bi-bar-chart me-1"></i> Lihat Laporan</a>
+            <a href="<?= base_url('/admin/results') ?>" class="btn btn-ghost btn-sm"><i class="bi bi-bar-chart me-1"></i> Hasil</a>
+            <a href="<?= base_url('/admin/reports') ?>" class="btn btn-ghost btn-sm"><i class="bi bi-file-earmark-spreadsheet me-1"></i> Export</a>
         </div>
-    </div>
-
-    <div class="table-responsive">
-        <table class="table table-modern w-100">
-            <thead>
-                <tr>
-                    <th width="30%">User</th>
-                    <th width="40%">Aktivitas</th>
-                    <th width="20%">Waktu</th>
-                    <th width="10%">Aksi</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (!empty($activities)): ?>
-                    <?php foreach ($activities as $act): ?>
-                    <tr>
-                        <td>
-                            <div class="d-flex align-items-center gap-3">
-                                <div class="table-avatar" style="background: linear-gradient(135deg, var(--brand-color), #8b5cf6);">
-                                    <?= esc(strtoupper(substr($act->firstname ?? $act->username ?? 'S', 0, 1))) ?>
-                                </div>
-                                <div class="fw-semibold" style="color: var(--text-primary);">
-                                    <?= esc($act->firstname ?? $act->username ?? 'System') ?>
-                                </div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center gap-2">
-                                <div style="width: 8px; height: 8px; border-radius: 50%; background: #059669;"></div>
-                                <span style="color: var(--text-secondary);"><?= esc($act->description ?? $act->action) ?></span>
-                            </div>
-                        </td>
-                        <td style="color: var(--text-primary); font-weight: 500;">
-                            <?= esc(date('d M Y, H:i', strtotime($act->created_at))) ?>
-                        </td>
-                        <td>
-                            <button class="btn btn-sm btn-icon" style="background: var(--bg-body); color: var(--text-secondary); border-radius:8px;">
-                                <i class="bi bi-three-dots"></i>
-                            </button>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <tr>
-                        <td colspan="4" class="text-center text-muted py-4">Belum ada aktivitas tercatat.</td>
-                    </tr>
-                <?php endif; ?>
-            </tbody>
-        </table>
     </div>
 </div>
 
@@ -229,47 +151,46 @@ document.addEventListener('DOMContentLoaded', function() {
     const chartDataRaw = <?= $chartData ?? 'null' ?>;
     if (chartDataRaw) {
         const ctx = document.getElementById('examChart').getContext('2d');
-        
-        // Brand color from CSS var (fallback to hex)
-        const brandColor = '#4318ff'; // matching CSS
-        const brandColorAlpha = '#e2e8f0'; // Grayish color for 'Belum Mengerjakan'
-        
+
+        // Theme-aware colors from CSS tokens — no hardcoded palette
+        const rootStyle = getComputedStyle(document.documentElement);
+        const brandColor  = rootStyle.getPropertyValue('--brand-color').trim() || '#0e8a6b';
+        const warnColor   = rootStyle.getPropertyValue('--warn').trim() || '#b07d1f';
+        const trackColor  = rootStyle.getPropertyValue('--border-strong').trim() || '#d7dade';
+        const mutedColor  = rootStyle.getPropertyValue('--text-tertiary').trim() || '#9aa0a8';
+
         new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: chartDataRaw.labels,
                 datasets: [{
                     data: chartDataRaw.data,
-                    backgroundColor: [brandColor, brandColorAlpha],
+                    backgroundColor: [brandColor, warnColor, trackColor],
                     borderWidth: 0,
-                    hoverOffset: 4
+                    hoverOffset: 6
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                cutout: '70%',
+                cutout: '76%',
+                animation: { animateRotate: true, duration: 1100, easing: 'easeOutQuart' },
                 plugins: {
-                    legend: {
-                        display: false // Custom legend used in HTML
-                    },
+                    legend: { display: false },
                     tooltip: {
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                        titleColor: '#2b3674',
-                        bodyColor: '#a3aed1',
-                        borderColor: '#e2e8f0',
+                        backgroundColor: 'rgba(16, 18, 20, 0.92)',
+                        titleColor: '#f2f4f6',
+                        bodyColor: mutedColor,
+                        borderColor: 'rgba(255,255,255,0.08)',
                         borderWidth: 1,
-                        padding: 10,
+                        padding: 12,
+                        cornerRadius: 12,
                         usePointStyle: true,
                         callbacks: {
                             label: function(context) {
                                 let label = context.label || '';
-                                if (label) {
-                                    label += ': ';
-                                }
-                                if (context.parsed !== null) {
-                                    label += context.parsed + ' Siswa';
-                                }
+                                if (label) label += ': ';
+                                if (context.parsed !== null) label += context.parsed + ' Siswa';
                                 return label;
                             }
                         }

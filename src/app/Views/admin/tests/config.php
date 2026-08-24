@@ -55,12 +55,15 @@
                                             <?php foreach ($set->subjects as $sub): ?>
                                                 <span class="badge bg-light text-dark border mb-1"><?= esc($sub->name) ?></span><br>
                                             <?php endforeach; ?>
+                                            <?php if (!empty($set->topic)): ?>
+                                                <span class="badge text-bg-info mb-1"><i class="bi bi-tag me-1"></i><?= esc($set->topic->name) ?></span>
+                                            <?php endif; ?>
                                         </td>
                                         <td class="small text-muted"><?= $types[$set->question_type] ?? 'Unknown' ?></td>
                                         <td><span class="badge bg-secondary"><?= $set->difficulty == 0 ? 'Semua Level' : $set->difficulty ?></span></td>
                                         <td class="fw-bold text-primary"><?= $set->quantity ?> Soal</td>
                                         <td class="text-end pe-4">
-                                            <form action="<?= base_url('/admin/tests/config/subjects/' . $set->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi', text: 'Hapus set soal ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Hapus', cancelButtonText: 'Batal', confirmButtonColor: '#dc3545'}).then((res) => { if(res.isConfirmed) this.submit(); });">
+                                            <form action="<?= base_url('/admin/tests/config/subjects/' . $set->id) ?>" method="POST" class="d-inline" onsubmit="event.preventDefault(); Swal.fire({title: 'Konfirmasi', text: 'Hapus set soal ini?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, Hapus', cancelButtonText: 'Batal', confirmButtonColor: '#d64550'}).then((res) => { if(res.isConfirmed) this.submit(); });">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="_method" value="DELETE">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus Set">
@@ -82,7 +85,7 @@
                     <?= csrf_field() ?>
                     <div class="mb-3">
                         <label class="form-label fw-semibold small">Pilih Subjek (Bisa lebih dari 1) <span class="text-danger">*</span></label>
-                        <select class="form-select" name="subjects[]" multiple required style="height: 120px;">
+                        <select class="form-select" name="subjects[]" id="set_subjects" multiple required style="height: 120px;">
                             <?php foreach ($subjectsByModule as $moduleName => $subjects): ?>
                                 <optgroup label="<?= esc($moduleName) ?>">
                                     <?php foreach ($subjects as $sub): ?>
@@ -92,6 +95,14 @@
                             <?php endforeach; ?>
                         </select>
                         <div class="form-text">Tekan CTRL (atau CMD) untuk memilih banyak subjek. Sistem akan mengacak soal dari subjek-subjek ini.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Topik / Bab <span class="text-muted">(opsional)</span></label>
+                        <select class="form-select" name="topic_id" id="set_topic_id">
+                            <option value="">Tanpa Topik (Semua Bab)</option>
+                        </select>
+                        <div class="form-text">Memilih topik akan membatasi pengambilan soal hanya pada mata pelajaran pemilik topik ini. Kosongkan untuk mengambil dari semua bab.</div>
                     </div>
                     
                     <div class="row g-3 mb-3">
@@ -153,4 +164,62 @@
         </div>
     </div>
 </div>
+<?= $this->endSection() ?>
+
+<?= $this->section('scripts') ?>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const subjectsSelect = document.getElementById('set_subjects');
+    const topicSelect    = document.getElementById('set_topic_id');
+    let topicSubjectMap = {};   // topicId -> subjectId (pemilik topik)
+    let lockedSubject   = null; // subject terkunci saat topik dipilih
+
+    // Dropdown dinamis Topik/Bab: ikuti subjek pertama yang dipilih
+    function loadTopics(subjectId, keepSelection) {
+        const prev = keepSelection ? topicSelect.value : '';
+        topicSubjectMap = {};
+        topicSelect.innerHTML = '<option value="">Tanpa Topik (Semua Bab)</option>';
+        if (!subjectId) return;
+        fetch('<?= base_url('/admin/questions/topics') ?>?subject_id=' + subjectId)
+            .then(r => r.json())
+            .then(topics => {
+                topics.forEach(t => {
+                    topicSubjectMap[t.id] = subjectId;
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.textContent = t.name;
+                    topicSelect.appendChild(opt);
+                });
+                if (prev && [...topicSelect.options].some(o => o.value === prev)) {
+                    topicSelect.value = prev;
+                }
+            })
+            .catch(() => {});
+    }
+
+    subjectsSelect.addEventListener('change', function() {
+        // Saat topik aktif, pilihan subjek dikunci ke pemilik topik
+        if (lockedSubject) {
+            subjectsSelect.value = lockedSubject;
+            return;
+        }
+        loadTopics(this.value ? this.value[0] : null, false);
+    });
+
+    // Binding Topik-Subjek: pilih topik => bersihkan multi-subject & kunci ke subject pemilik
+    topicSelect.addEventListener('change', function() {
+        const topicId = this.value;
+        if (topicId && topicSubjectMap[topicId]) {
+            lockedSubject = String(topicSubjectMap[topicId]);
+            subjectsSelect.value = lockedSubject;
+            subjectsSelect.style.opacity = '0.6';
+            subjectsSelect.style.borderColor = 'var(--brand-color)';
+        } else {
+            lockedSubject = null;
+            subjectsSelect.style.opacity = '';
+            subjectsSelect.style.borderColor = '';
+        }
+    });
+});
+</script>
 <?= $this->endSection() ?>

@@ -121,6 +121,10 @@ fi
 
 PHP_CONTAINER="ujian_php"
 
+echo "-> Memperbaiki permission direktori writable/ di dalam container..."
+docker exec -i $PHP_CONTAINER chown -R www-data:www-data /var/www/html/writable
+docker exec -i $PHP_CONTAINER chmod -R 775 /var/www/html/writable
+
 echo "-> Menginstall dependensi Composer..."
 docker exec -i $PHP_CONTAINER composer install --no-interaction --quiet
 

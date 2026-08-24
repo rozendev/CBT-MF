@@ -51,6 +51,8 @@ Vagrantfile
 /writable/cache/*
 !/writable/cache/index.html
 
+/writable/.phpunit.cache/
+
 /writable/logs/*
 !/writable/logs/index.html
 

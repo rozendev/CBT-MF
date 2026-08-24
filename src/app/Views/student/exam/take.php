@@ -4,6 +4,8 @@ $primaryColor = $settingModel->getValue('primary_color', '#0d6efd');
 $secondaryColor = $settingModel->getValue('secondary_color', '#f4f6f9');
 $textColor = $settingModel->getValue('text_color', '#212529');
 $appLogo = $settingModel->getValue('app_logo', '');
+$appFavicon = $settingModel->getValue('app_favicon', '');
+$faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? base_url($appLogo) : base_url('favicon.ico'));
 $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 $antiCheatTitle = $settingModel->getValue('anti_cheat_title', '⚠️ Peringatan Kecurangan!');
 $antiCheatMessage = $settingModel->getValue('anti_cheat_message', 'Sistem mendeteksi Anda meninggalkan halaman ujian.');
@@ -15,8 +17,11 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ujian: <?= esc($test->name) ?> - <?= esc($appName) ?></title>
+    <link rel="icon" href="<?= $faviconUrl ?>">
+    <link rel="shortcut icon" href="<?= $faviconUrl ?>">
     <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css') ?>" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="<?= base_url('assets/css/outfit.css?v=1.1') ?>" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
@@ -70,8 +75,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         body {
             background-color: var(--color-background); 
             color: var(--color-text);
-            font-family: 'Inter', sans-serif;
+            font-family: 'Outfit', sans-serif;
             -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
             padding-bottom: 80px; /* Space for bottom nav */
         }
 
@@ -464,6 +470,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         .question-container img { cursor: zoom-in; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <?php include __DIR__ . '/../../layouts/_frontend_config.php'; ?>
 </head>
 <body class="noselect">
 
@@ -522,7 +529,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             </div>
             <div class="d-flex align-items-center gap-3">
                 <?php if ($test->duration_minutes > 0): ?>
-                    <div class="exam-timer-chip" :class="{'danger': timeLeft <= 300000}">
+                    <div class="exam-timer-chip" :class="{'danger': timeLeft <= ((window.APP_CONFIG||{}).warning_threshold_ms || 300000)}">
                         <i class="bi bi-clock-history"></i> <span x-text="formatTime(timeLeft)">--:--:--</span>
                     </div>
                 <?php endif; ?>
@@ -578,7 +585,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             
             <template x-if="currentQuestion.question_type == 3">
                 <div>
-                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input.debounce.500ms="saveAnswer()" placeholder="Tulis jawaban Anda di sini..."></textarea>
+                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input="this._typingQid = this.currentQuestion.question_id" @input.debounce.500ms="saveAnswer(this._typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
                 </div>
             </template>
             
@@ -787,8 +794,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         </div>
     </div><!-- /examContent -->
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="<?= base_url('vendor/jquery/jquery-3.6.0.min.js') ?>"></script>
+    <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js') ?>"></script>
     <script>
         const RAW_QUESTIONS = <?= json_encode(!empty($questions) ? $questions : []) ?>;
         const RAW_ANSWERS = <?= json_encode(!empty($answers) ? $answers : (object)[]) ?>;
@@ -810,7 +817,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             }
         });
 
-        const FETCH_TIMEOUT_MS = 15000;
+        const APP_CFG = window.APP_CONFIG || {};
+
+        const FETCH_TIMEOUT_MS = APP_CFG.fetch_timeout_ms || 15000;
         const LOGIN_URL = '<?= base_url('/login') ?>';
 
         function redirectReplace(url) {
@@ -927,8 +936,11 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     window.addEventListener('offline', () => this.isOffline = true);
                     window.addEventListener('online', () => this.isOffline = false);
                     
-                    this.$watch('currentIndex', () => {
+                    this.$watch('currentIndex', (val) => {
                         setTimeout(() => { if (typeof window.renderMath === 'function') window.renderMath(); }, 50);
+                        if (ATTEMPT_ID && val !== undefined && val !== null) {
+                            localStorage.setItem('current_question_index_' + ATTEMPT_ID, val);
+                        }
                     });
                     
                     // Parse Matching Options for Type 4 and Type 5
@@ -962,6 +974,17 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
                     // Restore offline progress from localStorage if any
                     this.restoreLocalBackup();
+
+                    // Restore saved question index from localStorage if any
+                    if (ATTEMPT_ID) {
+                        const savedIndex = localStorage.getItem('current_question_index_' + ATTEMPT_ID);
+                        if (savedIndex !== null) {
+                            const parsed = parseInt(savedIndex, 10);
+                            if (!isNaN(parsed) && parsed >= 0 && parsed < this.questions.length) {
+                                this.currentIndex = parsed;
+                            }
+                        }
+                    }
 
                     // Init Auto Sync (Debounce + Max-Wait Hybrid)
                     this.scheduleAutoSync();
@@ -1000,7 +1023,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                                 this.timeLeft = distance;
                                 
                                 // Tampilkan notifikasi peringatan jika sisa waktu <= 5 menit (300000 ms)
-                                if (distance <= 300000 && !this.warningShown) {
+                                if (distance <= (APP_CFG.warning_threshold_ms || 300000) && !this.warningShown) {
                                     this.warningShown = true;
                                     Swal.fire({
                                         title: 'Peringatan Waktu!',
@@ -1023,17 +1046,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                  * Automatically reconnects on connection loss.
                  */
                 initWebSocket() {
-                    let wsUrl = '<?= esc($wsUrl ?? '') ?>';
-                    if (!wsUrl || wsUrl.includes('localhost')) {
-                        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                        const wsHost = window.location.host;
-                        if (wsHost.includes(':8080')) {
-                            wsUrl = `${protocol}//${wsHost.replace(':8080', ':8060')}`;
-                        } else {
-                            wsUrl = `${protocol}//${wsHost}/ws`;
-                        }
+                    // URL ditentukan server (App\Libraries\WebSocketUrl).
+                    const wsBase = '<?= esc($wsUrl ?? '') ?>' || APP_CFG.websocket_url || '';
+                    if (!wsBase) {
+                        console.error('URL WebSocket tidak tersedia dari server');
+                        return;
                     }
-                    wsUrl = wsUrl.replace(/\/+$/, '') + '/?ws_token=<?= esc($wsToken) ?>';
+                    const wsUrl = wsBase.replace(/\/+$/, '') + '/?ws_token=<?= esc($wsToken) ?>';
                     
                     this.connectWebSocket(wsUrl);
                 },
@@ -1123,7 +1142,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         return;
                     }
                     
-                    const delay = Math.min(1000 * Math.pow(2, this.wsErrorCount), 30000);
+                    const delay = Math.min((APP_CFG.ws_reconnect_base_ms || 1000) * Math.pow(2, this.wsErrorCount), APP_CFG.ws_reconnect_cap_ms || 30000);
                     console.log(`Reconnecting WebSocket in ${delay}ms...`);
                     
                     setTimeout(() => {
@@ -1153,7 +1172,12 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     else this.confirmFinish();
                 },
                 prevQuestion() { if (this.currentIndex > 0) this.currentIndex--; },
-                goToQuestion(idx) { this.currentIndex = idx; },
+                goToQuestion(idx) { 
+                    this.currentIndex = idx; 
+                    if (ATTEMPT_ID) {
+                        localStorage.setItem('current_question_index_' + ATTEMPT_ID, idx);
+                    }
+                },
                 closeMobileSidebar() {
                     const el = document.getElementById('questionGridSheet');
                     if (el) {
@@ -1191,14 +1215,14 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     if (this.syncTimeout) clearTimeout(this.syncTimeout);
                     
                     const timeSinceLastSync = Date.now() - this.lastSyncTime;
-                    const MAX_WAIT = 180000; // 3 menit
+                    const MAX_WAIT = APP_CFG.auto_sync_max_wait_ms || 180000; // 3 menit
                     
                     if (timeSinceLastSync > MAX_WAIT) {
                         this.enqueueRequest('sync');
                     } else {
                         this.syncTimeout = setTimeout(() => {
                             this.enqueueRequest('sync');
-                        }, 60000); // 60 detik debounce
+                        }, APP_CFG.auto_sync_debounce_ms || 60000); // 60 detik debounce
                     }
                 },
 
@@ -1417,6 +1441,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
                     $.post(FINISH_URL, { attempt_id: ATTEMPT_ID })
                      .done((res) => {
+                         if (window.CommsBridge) {
+                             window.CommsBridge.requestExit("<?= esc($wsToken) ?>");
+                         }
                          if (res.redirect) {
                              window.location.href = res.redirect;
                          } else {
@@ -1814,6 +1841,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             });
         })();
     </script>
+    <script>
+        window.CBT_EXAM_CONFIG = {
+            examId: "<?= $test->id ?>",
+            token: "<?= esc($wsToken) ?>"
+        };
+    </script>
+    <script src="<?= base_url('js/kiosk-integration.js') ?>"></script>
 </body>
 </html>
 

@@ -46,7 +46,7 @@
                 <div class="card-body p-0">
                     <div id="editor-description" style="min-height: 200px; border: none;"><?= old('description', $question->description ?? '') ?></div>
                     <div class="image-limit-hint"><i class="bi bi-info-circle me-1"></i>Gambar otomatis dikecilkan jika lebih dari 1920px. Maksimal upload: 5 MB. Format: JPG, PNG, GIF, WebP.</div>
-                    <textarea style="display: none;" id="description" name="description" required><?= old('description', $question->description ?? '') ?></textarea>
+                    <textarea style="display: none;" id="description" name="description"><?= old('description', $question->description ?? '') ?></textarea>
                 </div>
             </div>
 
@@ -87,7 +87,7 @@
                 <div class="card-body">
                     <div class="mb-3">
                         <label class="form-label fw-semibold small text-muted">Subjek / Topik <span class="text-danger">*</span></label>
-                        <select class="form-select" name="subject_id" required>
+                        <select class="form-select" name="subject_id" id="subject_id" required>
                             <option value="">-- Pilih Subjek --</option>
                             <?php 
                                 $selectedSubject = old('subject_id', $subjectId ?? '');
@@ -105,15 +105,39 @@
                     </div>
 
                     <div class="mb-3">
+                        <label class="form-label fw-semibold small text-muted">Topik / Bab <span class="text-muted">(opsional)</span></label>
+                        <select class="form-select" name="topic_id" id="topic_id">
+                            <option value="">Tanpa Topik (Umum)</option>
+                            <?php $selectedTopic = old('topic_id', $question->topic_id ?? ''); ?>
+                            <?php foreach (($topics ?? []) as $t): ?>
+                                <option value="<?= $t->id ?>" <?= $selectedTopic == $t->id ? 'selected' : '' ?>>
+                                    <?= esc($t->name) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="form-text small">Pilih bab/kompetensi agar soal masuk ke pengelompokan topik.</div>
+                    </div>
+
+                    <div class="mb-3">
                         <label class="form-label fw-semibold small text-muted">Tipe Soal <span class="text-danger">*</span></label>
                         <select class="form-select" name="type" id="question_type" onchange="renderAnswerUI()" required>
                             <?php $selectedType = old('type', $question->type ?? 1); ?>
                             <option value="1" <?= $selectedType == 1 ? 'selected' : '' ?>>Pilihan Ganda (1 Benar)</option>
                             <option value="2" <?= $selectedType == 2 ? 'selected' : '' ?>>Pilihan Ganda (Banyak Benar)</option>
-                            <option value="3" <?= $selectedType == 3 ? 'selected' : '' ?>>Esai / Teks</option>
+                            <option value="3" <?= $selectedType == 3 ? 'selected' : '' ?>>Esai / Isian Singkat</option>
                             <option value="4" <?= $selectedType == 4 ? 'selected' : '' ?>>Menjodohkan (Pasangan)</option>
                             <option value="5" <?= $selectedType == 5 ? 'selected' : '' ?>>Pilihan Ganda Kompleks (Benar/Salah)</option>
                         </select>
+                    </div>
+
+                    <?php $selectedMode = old('answer_mode', $question->answer_mode ?? 'exact'); ?>
+                    <div class="mb-3" id="answer_mode_wrap" style="display:none">
+                        <label class="form-label fw-semibold small text-muted">Cara Penilaian <span class="text-danger">*</span></label>
+                        <select class="form-select" name="answer_mode" id="answer_mode" onchange="renderAnswerUI()">
+                            <option value="exact" <?= $selectedMode === 'manual' ? '' : 'selected' ?>>Isian Singkat — dinilai otomatis</option>
+                            <option value="manual" <?= $selectedMode === 'manual' ? 'selected' : '' ?>>Esai — dikoreksi guru</option>
+                        </select>
+                        <div class="form-text small">Isian singkat dinilai dengan mencocokkan teks persis. Esai tidak pernah dinilai mesin; nilainya menunggu koreksi Anda.</div>
                     </div>
 
                     <div class="mb-3">
@@ -149,6 +173,34 @@
 <script src="<?= base_url('vendor/quill/quill.js') ?>"></script>
 <script>
     $(document).ready(function() {
+        // ── Dropdown dinamis Topik/Bab: isi ulang sesuai subjek terpilih ──
+        const topicSelect = document.getElementById('topic_id');
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        function loadTopics(subjectId, keepSelection) {
+            const prev = keepSelection ? topicSelect.value : '';
+            topicSelect.innerHTML = '<option value="">Tanpa Topik (Umum)</option>';
+            if (!subjectId) return;
+            fetch('<?= base_url('/admin/questions/topics') ?>?subject_id=' + subjectId)
+                .then(r => r.json())
+                .then(topics => {
+                    topics.forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t.id;
+                        opt.textContent = t.name;
+                        topicSelect.appendChild(opt);
+                    });
+                    if (prev && [...topicSelect.options].some(o => o.value === prev)) {
+                        topicSelect.value = prev;
+                    }
+                })
+                .catch(() => {});
+        }
+        document.getElementById('subject_id').addEventListener('change', function() {
+            loadTopics(this.value, false);
+        });
+
         // Quill Toolbar configuration
         const toolbarOptions = [
             [{ 'header': [1, 2, 3, false] }],
@@ -293,13 +345,19 @@
         renderAnswerUI();
 
         // Hook for form submission to copy Quill content & handle Type 4/5
-        $('form').on('submit', function() {
+        $('form').on('submit', function(e) {
             // Get HTML from Quill and clean empty editor values
             let descHtml = quillDescription.root.innerHTML;
             let explHtml = quillExplanation.root.innerHTML;
 
             if (descHtml.trim() === '<p><br></p>') descHtml = '';
             if (explHtml.trim() === '<p><br></p>') explHtml = '';
+
+            if (descHtml === '') {
+                e.preventDefault();
+                Swal.fire('Validasi Gagal', 'Teks pertanyaan tidak boleh kosong!', 'warning');
+                return false;
+            }
 
             $('#description').val(descHtml);
             $('#explanation').val(explHtml);
@@ -331,9 +389,11 @@
     function renderAnswerUI() {
         const type = parseInt($('#question_type').val());
         const container = $('#answers-container');
+
+        $('#answer_mode_wrap').toggle(type === 3);
         
         if (type === 3) {
-            // Essay / Short Answer
+            // Esai / Isian Singkat
             let desc = '';
             let id = '';
             if (existingAnswers[0]) {
@@ -341,13 +401,24 @@
                 id = existingAnswers[0].id;
             }
 
-            container.html(`
+            const manual = $('#answer_mode').val() === 'manual';
+            const safeDesc = desc.replace(/"/g, '&quot;');
+
+            container.html(manual ? `
                 <div class="p-4 bg-light rounded-3">
-                    <h6 class="fw-bold mb-3"><i class="bi bi-key text-success me-2"></i>Kunci Jawaban Persis (Isian Singkat)</h6>
-                    <p class="text-muted small mb-3">Masukkan teks yang harus persis sama (mengabaikan huruf besar/kecil) untuk dianggap benar secara otomatis.</p>
+                    <h6 class="fw-bold mb-3"><i class="bi bi-pencil-square text-primary me-2"></i>Rambu-rambu Jawaban</h6>
+                    <p class="text-muted small mb-3">Acuan Anda saat mengoreksi. Tidak dipakai untuk menilai otomatis, dan tidak ditampilkan ke siswa saat ujian.</p>
                     <input type="hidden" name="correct_answers[]" value="0">
                     <input type="hidden" name="answer_ids[0]" value="${id}">
-                    <input type="text" class="form-control form-control-lg" name="answers[0]" value="${desc.replace(/"/g, '&quot;')}" placeholder="Ketik kunci jawaban di sini..." required>
+                    <textarea class="form-control" name="answers[0]" rows="4" placeholder="Poin-poin yang diharapkan muncul di jawaban siswa...">${safeDesc}</textarea>
+                </div>
+            ` : `
+                <div class="p-4 bg-light rounded-3">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-key text-success me-2"></i>Kunci Jawaban Persis (Isian Singkat)</h6>
+                    <p class="text-muted small mb-3">Jawaban siswa harus persis sama (mengabaikan huruf besar/kecil dan spasi berlebih) untuk dianggap benar. Untuk jawaban yang bisa ditulis bermacam-macam, pakai mode Esai.</p>
+                    <input type="hidden" name="correct_answers[]" value="0">
+                    <input type="hidden" name="answer_ids[0]" value="${id}">
+                    <input type="text" class="form-control form-control-lg" name="answers[0]" value="${safeDesc}" placeholder="Ketik kunci jawaban di sini..." required>
                 </div>
             `);
             $('#answers-card .btn-outline-primary').hide(); // Hide Add button

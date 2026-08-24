@@ -76,52 +76,15 @@ class SuspendController extends BaseController
     }
 
     /**
-     * Ban a user: set is_active = 0 and lock all their active attempts
+     * Ban a user: set is_active = 0 and lock all their active attempts.
+     *
+     * Logikanya tinggal di App\Libraries\ProctorAction supaya halaman suspend
+     * dan monitoring kiosk memakai kode yang sama -- dua salinan penguncian
+     * akan menyimpang begitu salah satunya diperbaiki.
      */
     private function _doBan($userId)
     {
-        $db = \Config\Database::connect();
-        $db->transStart();
-
-        $this->userModel->update($userId, ['is_active' => 0]);
-
-        $db->table('test_attempts')
-           ->where('user_id', $userId)
-           ->whereIn('status', [1, 2])
-           ->update(['status' => 2]);
-
-        $db->transComplete();
-
-        try {
-            $redis = \App\Libraries\RedisClient::getInstance();
-            if ($redis) {
-                $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
-                $redis->setex("ban_signal:{$userId}", 120, '1');
-                $redis->publish('exam_events', json_encode([
-                    'event' => 'ban',
-                    'user_id' => $userId,
-                    'message' => 'Akun Anda telah ditangguhkan/diblokir oleh Admin. Hubungi pengawas ujian.'
-                ]));
-                
-                $iterator = null;
-                do {
-                    $keys = $redis->scan($iterator, 'ci_session:*', 100);
-                    if ($keys) {
-                        foreach ($keys as $key) {
-                            $data = $redis->get($key);
-                            if ($data && (strpos($data, "user_id|i:{$userId};") !== false || 
-                                          strpos($data, "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";") !== false)) {
-                                $redis->del($key);
-                            }
-                        }
-                    }
-                } while ($iterator > 0);
-            }
-        } catch (\Exception $e) {
-            log_message('error', 'Redis error on ban: ' . $e->getMessage());
-        }
-
-
+        (new \App\Libraries\ProctorAction())->lockAccount((int) $userId, (int) session('user_id'));
     }
 
     public function ban($userId)

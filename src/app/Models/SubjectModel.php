@@ -38,4 +38,13 @@ class SubjectModel extends Model
         return $builder->orderBy('modules.name', 'ASC')
                        ->orderBy('subjects.name', 'ASC');
     }
+
+    /**
+     * Restore and update a soft-deleted subject
+     */
+    public function reuseDeletedSubject($id, $data)
+    {
+        $data['deleted_at'] = null;
+        return $this->db->table($this->table)->where('id', $id)->update($data);
+    }
 }

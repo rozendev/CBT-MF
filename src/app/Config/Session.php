@@ -30,7 +30,7 @@ class Session extends BaseConfig
         'domain'   => '',
         'secure'   => true,
         'httponly'  => true,
-        'samesite'  => 'Lax',
+        'samesite'  => 'None',
     ];
 
     /**

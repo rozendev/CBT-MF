@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface_bg">
+
+    <!-- SETUP & URL INPUT CONTAINER -->
+    <ScrollView
+        android:id="@+id/setupLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingHorizontal="@dimen/spacing_lg"
+            android:paddingVertical="@dimen/spacing_xl">
+
+            <!-- MAIN CARD -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:elevation="@dimen/card_elevation"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingHorizontal="@dimen/spacing_lg"
+                android:paddingTop="@dimen/spacing_xl"
+                android:paddingBottom="@dimen/spacing_lg">
+
+                <!-- LOGO ICON -->
+                <ImageView
+                    android:layout_width="@dimen/logo_size"
+                    android:layout_height="@dimen/logo_size"
+                    android:layout_marginBottom="@dimen/spacing_md"
+                    android:contentDescription="@string/app_name"
+                    android:src="@drawable/ic_shield" />
+
+                <!-- TITLE -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:letterSpacing="0.02"
+                    android:text="@string/setup_title"
+                    android:textColor="@color/text_primary"
+                    android:textSize="@dimen/text_title"
+                    android:textStyle="bold" />
+
+                <!-- SUBTITLE -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_sm"
+                    android:gravity="center"
+                    android:text="@string/setup_subtitle"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="@dimen/text_body_sm" />
+
+                <!-- URL + TOMBOL UPDATE UI
+                     Tombol update duduk di sebelah URL karena keduanya satu
+                     urusan: alamat server menentukan bundle mana yang diambil. -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_lg"
+                    android:orientation="horizontal"
+                    android:baselineAligned="false">
+
+                    <EditText
+                        android:id="@+id/etServerUrl"
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="@dimen/input_height"
+                        android:background="@drawable/bg_input"
+                        android:hint="@string/url_hint"
+                        android:inputType="textUri"
+                        android:maxLines="1"
+                        android:paddingHorizontal="@dimen/spacing_md"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_secondary"
+                        android:textSize="@dimen/text_body" />
+
+                    <Button
+                        android:id="@+id/btnUpdateBundle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/input_height"
+                        android:layout_marginStart="@dimen/spacing_sm"
+                        android:minWidth="0dp"
+                        android:paddingHorizontal="@dimen/spacing_md"
+                        android:text="@string/btn_update_bundle"
+                        android:textAllCaps="false"
+                        android:textColor="#2563EB"
+                        android:textSize="@dimen/text_body_sm"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- START BUTTON -->
+                <Button
+                    android:id="@+id/btnStartExam"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/button_height"
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:background="@drawable/bg_button_primary"
+                    android:drawableEnd="@drawable/ic_arrow_forward"
+                    android:drawablePadding="@dimen/spacing_sm"
+                    android:gravity="center"
+                    android:text="@string/btn_start_exam"
+                    android:textAllCaps="false"
+                    android:textColor="#FFFFFF"
+                    android:textSize="@dimen/text_body"
+                    android:textStyle="bold" />
+
+                <!-- IMPORT BUNDLE BUTTON -->
+                <Button
+                    android:id="@+id/btnImportBundle"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/button_height"
+                    android:layout_marginTop="@dimen/spacing_md"
+                    android:text="Import Bundle (.zip)"
+                    android:textAllCaps="false"
+                    android:textColor="#2563EB"
+                    android:textSize="@dimen/text_body"
+                    android:textStyle="bold" />
+
+                <!-- TEST WARNING BEEP -->
+                <Button
+                    android:id="@+id/btnTestBeep"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/button_height"
+                    android:layout_marginTop="@dimen/spacing_sm"
+                    android:text="@string/btn_test_beep"
+                    android:textAllCaps="false"
+                    android:textColor="#2563EB"
+                    android:textSize="@dimen/text_body" />
+
+                <!-- BUNDLE STATUS -->
+                <TextView
+                    android:id="@+id/tvBundleStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_sm"
+                    android:gravity="center"
+                    android:textColor="@color/text_accent"
+                    android:textSize="@dimen/text_caption" />
+
+                <!-- INFO BADGE -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_lg"
+                    android:background="@drawable/bg_info_badge"
+                    android:gravity="center_vertical"
+                    android:orientation="vertical"
+                    android:padding="@dimen/spacing_md">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="@dimen/icon_sm"
+                            android:layout_height="@dimen/icon_sm"
+                            android:layout_marginEnd="@dimen/spacing_sm"
+                            android:contentDescription="@string/info_title"
+                            android:src="@drawable/ic_lock" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/info_title"
+                            android:textColor="@color/text_accent"
+                            android:textSize="@dimen/text_body_sm"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_xs"
+                        android:lineSpacingExtra="3dp"
+                        android:text="@string/info_body"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="@dimen/text_caption" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- EXAM CONTAINER (WEBVIEW + TOOLBAR) -->
+    <LinearLayout
+        android:id="@+id/examContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!-- TOP TOOLBAR -->
+        <LinearLayout
+            android:id="@+id/kioskToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/toolbar_height"
+            android:background="@color/surface_dark"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="@dimen/spacing_md">
+
+            <!-- BATTERY ICON -->
+            <ImageView
+                android:layout_width="@dimen/icon_toolbar"
+                android:layout_height="@dimen/icon_toolbar"
+                android:contentDescription="Battery"
+                android:src="@drawable/ic_battery" />
+
+            <!-- BATTERY TEXT -->
+            <TextView
+                android:id="@+id/tvBatteryStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_xs"
+                android:text="@string/battery_placeholder"
+                android:textColor="@color/text_on_dark"
+                android:textSize="@dimen/text_caption"
+                android:fontFamily="sans-serif-medium" />
+
+            <!-- SPACER -->
+            <View
+                android:layout_width="@dimen/spacing_md"
+                android:layout_height="0dp" />
+
+            <!-- WIFI ICON -->
+            <ImageView
+                android:layout_width="@dimen/icon_toolbar"
+                android:layout_height="@dimen/icon_toolbar"
+                android:contentDescription="Network"
+                android:src="@drawable/ic_wifi" />
+
+            <!-- NETWORK TEXT -->
+            <TextView
+                android:id="@+id/tvNetworkStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/spacing_xs"
+                android:text="@string/network_checking"
+                android:textColor="@color/text_on_dark"
+                android:textSize="@dimen/text_caption"
+                android:fontFamily="sans-serif-medium" />
+
+            <!-- FLEXIBLE SPACER -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <!-- RELOAD BUTTON -->
+            <ImageButton
+                android:id="@+id/btnReloadPage"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:contentDescription="@string/btn_reload"
+                android:padding="@dimen/spacing_sm"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_refresh" />
+
+            <!-- EXIT BUTTON -->
+            <ImageButton
+                android:id="@+id/btnExitKiosk"
+                style="?android:attr/borderlessButtonStyle"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="@dimen/spacing_xs"
+                android:contentDescription="@string/btn_exit"
+                android:padding="@dimen/spacing_sm"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_exit" />
+
+        </LinearLayout>
+
+        <!-- WEBVIEW -->
+        <WebView
+            android:id="@+id/webView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+    </LinearLayout>
+
+</FrameLayout>

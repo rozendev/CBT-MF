@@ -14,6 +14,9 @@ $settingModel = new \App\Models\SettingModel();
 $primaryColor = $settingModel->getValue('primary_color', '#0d6efd');
 $secondaryColor = $settingModel->getValue('secondary_color', '#f4f6f9');
 $textColor = $settingModel->getValue('text_color', '#212529');
+$appLogo = $settingModel->getValue('app_logo', '');
+$appFavicon = $settingModel->getValue('app_favicon', '');
+$faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? base_url($appLogo) : base_url('favicon.ico'));
 $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 ?>
 <!DOCTYPE html>
@@ -22,47 +25,145 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ujian: <?= esc($test->name) ?> - <?= esc($appName) ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <link rel="icon" href="<?= $faviconUrl ?>">
+    <link rel="shortcut icon" href="<?= $faviconUrl ?>">
+    <link href="<?= base_url('vendor/bootstrap/css/bootstrap.min.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('vendor/bootstrap-icons/font/bootstrap-icons.min.css?v=1.1') ?>" rel="stylesheet">
+    <link href="<?= base_url('assets/css/outfit.css?v=1.1') ?>" rel="stylesheet">
+    <link rel="preload" as="script" fetchpriority="high" href="<?= base_url('assets/exam-app.js?v=' . $assetVersion['app']) ?>">
+    <link rel="preload" as="script" fetchpriority="high" href="<?= base_url('vendor/alpinejs/alpine.min.js?v=3.14.8') ?>">
+    <link rel="preload" as="script" fetchpriority="high" href="<?= base_url('vendor/jquery/jquery-3.6.0.min.js') ?>">
     <script>
-        window.renderMath = () => {
-            const container = document.querySelector('.question-container');
-            if (!container) return;
-            
-            // 1. Render Quill Editor Formulas
-            container.querySelectorAll('.ql-formula').forEach(function(el) {
-                if (!el.hasAttribute('data-rendered')) {
-                    var math = el.getAttribute('data-value');
-                    if(math) {
-                        try { katex.render(math, el, { throwOnError: false }); } catch(e){}
-                    }
-                    el.setAttribute('data-rendered', 'true');
+        (function () {
+            // ── Boot-first: hubungi server & muat data ujian SEBELUM aset besar
+            // selesai diunduh. Berjalan paralel, tanpa jQuery — fetch native.
+            var API = <?= json_encode($apiBaseUrl) ?>;
+            var boot = { state: 'pending', status: 'Menghubungi server…', data: null, error: null };
+            window.__boot = boot;
+
+            window.__bootPromise = (async function () {
+                var csrfName = 'csrf_test_name';
+                var csrfToken = '';
+                try {
+                    var csrfRes = await fetch(API + '/health', {
+                        credentials: 'same-origin',
+                        cache: 'no-store',
+                        signal: AbortSignal.timeout(20000)
+                    });
+                    csrfToken = csrfRes.headers.get('X-CSRF-TOKEN') || '';
+
+                    var body = new URLSearchParams();
+                    body.set('test_id', <?= (int) $test->id ?>);
+                    if (csrfToken) body.set(csrfName, csrfToken);
+
+                    var res = await fetch(API + '/api/exam/init', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        cache: 'no-store',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-TOKEN': csrfToken
+                        },
+                        body: body.toString(),
+                        signal: AbortSignal.timeout(20000)
+                    });
+                    if (!res.ok) throw new Error('init HTTP ' + res.status);
+                    var data = await res.json();
+                    boot.state = 'ok';
+                    boot.status = 'Data ujian diterima, menyiapkan tampilan…';
+                    boot.data = data;
+                    return data;
+                } catch (e) {
+                    boot.state = 'error';
+                    boot.status = 'Gagal menghubungi server. Mencoba ulang…';
+                    boot.error = e;
+                    return null;
                 }
+            })();
+
+            document.addEventListener('DOMContentLoaded', function () {
+                var statusEl = document.getElementById('bootStatus');
+                if (!statusEl) return;
+                var timer = setInterval(function () {
+                    statusEl.textContent = boot.status;
+                    if (boot.state === 'ok' || boot.state === 'error') clearInterval(timer);
+                }, 250);
             });
-            
-            // 2. Auto-Render Text Formulas (for Word Imports via $$)
-            if (typeof renderMathInElement !== 'undefined') {
-                renderMathInElement(container, {
-                    delimiters: [
-                        {left: '$$', right: '$$', display: true},
-                        {left: '\\(', right: '\\)', display: false},
-                        {left: '\\[', right: '\\]', display: true}
-                    ],
-                    throwOnError: false
-                });
-            }
-        };
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initial render delay to ensure auto-render is loaded
-            setTimeout(window.renderMath, 500);
-        });
+        })();
     </script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        (function () {
+            // Katex dimuat LAZY: hanya jika soal benar-benar mengandung rumus
+            // (klasik .ql-formula atau delimiters $$). Hemat ~300KB dari
+            // critical path pada ujian tanpa rumus.
+            var katexLoading = false, katexQueue = [];
+            var KATEX_BASE = <?= json_encode(base_url()) ?>;
+
+            window.ensureKatex = function (cb) {
+                if (window.katex && window.renderMathInElement) { cb(); return; }
+                katexQueue.push(cb);
+                if (katexLoading) return;
+                katexLoading = true;
+
+                var css = document.createElement('link');
+                css.rel = 'stylesheet';
+                css.href = KATEX_BASE + 'vendor/katex/katex.min.css';
+                document.head.appendChild(css);
+
+                function loadScript(src, done) {
+                    var s = document.createElement('script');
+                    s.src = src;
+                    s.onload = done;
+                    s.onerror = done; // jangan blokir ujian jika katex gagal
+                    document.head.appendChild(s);
+                }
+                loadScript(KATEX_BASE + 'vendor/katex/katex.min.js', function () {
+                    loadScript(KATEX_BASE + 'vendor/katex/auto-render.min.js', function () {
+                        var q = katexQueue; katexQueue = [];
+                        q.forEach(function (f) { try { f(); } catch (e) {} });
+                    });
+                });
+            };
+
+            window.renderMath = function () {
+                var container = document.querySelector('.question-container');
+                if (!container) return;
+
+                var hasFormulas = container.querySelector('.ql-formula') !== null ||
+                                  (container.textContent || '').indexOf('$$') !== -1;
+                if (!hasFormulas) return;
+
+                window.ensureKatex(function () {
+                    container.querySelectorAll('.ql-formula').forEach(function (el) {
+                        if (!el.hasAttribute('data-rendered')) {
+                            var math = el.getAttribute('data-value');
+                            if (math) {
+                                try { katex.render(math, el, { throwOnError: false }); } catch (e) {}
+                            }
+                            el.setAttribute('data-rendered', 'true');
+                        }
+                    });
+                    if (typeof renderMathInElement !== 'undefined') {
+                        renderMathInElement(container, {
+                            delimiters: [
+                                { left: '$$', right: '$$', display: true },
+                                { left: '\\(', right: '\\)', display: false },
+                                { left: '\\[', right: '\\]', display: true }
+                            ],
+                            throwOnError: false
+                        });
+                    }
+                });
+            };
+
+            document.addEventListener('DOMContentLoaded', function () {
+                setTimeout(window.renderMath, 500);
+            });
+        })();
+    </script>
+    <script defer src="<?= base_url('assets/exam-app.js?v=' . $assetVersion['app']) ?>" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()"></script>
+    <script defer src="<?= base_url('vendor/alpinejs/alpine.min.js?v=3.14.8') ?>" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()"></script>
+    <script defer src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js') ?>" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()"></script>
     <style>
         :root {
             --color-background: <?= $secondaryColor ?>;
@@ -78,405 +179,24 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         body {
             background-color: var(--color-background); 
             color: var(--color-text);
-            font-family: 'Inter', sans-serif;
+            font-family: 'Outfit', sans-serif;
             -webkit-font-smoothing: antialiased;
-            padding-bottom: 80px;
+            text-rendering: optimizeLegibility;
+            padding-bottom: 80px; /* Space for bottom nav */
         }
-
-        /* Sidebar Layout */
-        .exam-layout {
-            display: flex;
-            min-height: 100vh;
-        }
-        .exam-main {
-            flex: 1;
-            min-width: 0;
-        }
-        
-        /* Beautiful Desktop Drawer */
-        .desktop-drawer-wrapper {
-            position: fixed;
-            right: 0;
-            top: 0;
-            height: 100vh;
-            width: 40px;
-            z-index: 1040;
-        }
-        .desktop-drawer-trigger {
-            position: absolute;
-            right: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            background: var(--color-surface);
-            border: 1px solid rgba(0,0,0,0.08);
-            border-right: none;
-            border-radius: 16px 0 0 16px;
-            padding: 20px 8px;
-            box-shadow: -4px 0 15px rgba(0,0,0,0.05);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-        .desktop-drawer-wrapper:hover .desktop-drawer-trigger {
-            transform: translateY(-50%) translateX(100%);
-            opacity: 0;
-        }
-        .desktop-drawer {
-            position: absolute;
-            right: -360px;
-            top: 0;
-            width: 360px;
-            height: 100vh;
-            background: var(--color-surface);
-            box-shadow: -10px 0 30px rgba(0,0,0,0.1);
-            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            display: flex;
-            flex-direction: column;
-            padding: 30px 24px;
-            overflow-y: auto;
-            border-left: 1px solid rgba(0,0,0,0.05);
-        }
-        .desktop-drawer-wrapper:hover .desktop-drawer {
-            right: 0;
-        }
-        .desktop-drawer-wrapper:hover {
-            width: 360px;
-        }
-        
         .noselect { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; }
 
-        /* Loading & Anti Cheat */
+        /* Loading Screen — tetap inline agar sheet tampil walau CSS utama belum tiba */
         .loading-screen {
             position:fixed; inset:0; z-index:100001;
             background:var(--color-background); display:flex; flex-direction:column; align-items:center; justify-content:center;
             color: var(--color-text);
         }
-        .suspend-overlay {
-            position: fixed; inset: 0; z-index: 99998;
-            background: #000000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            color: white; text-align: center;
-        }
-
-        /* Top Navigation */
-        .exam-topbar {
-            position: sticky;
-            top: 0;
-            z-index: 1020;
-            background: var(--color-surface);
-            border-bottom: 1px solid rgba(0,0,0,0.08);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .exam-title-area {
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            max-width: 60%;
-        }
-        .exam-title-text {
-            font-weight: 700;
-            font-size: 16px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            color: var(--color-text);
-        }
-        .exam-student-text {
-            font-size: 12px;
-            color: var(--color-text-muted);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .exam-timer-chip {
-            background: rgba(var(--color-primary-rgb), 0.1);
-            color: var(--color-primary);
-            padding: 6px 12px;
-            border-radius: 9999px;
-            font-weight: 700;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .exam-timer-chip.danger {
-            background: rgba(220,53,69,0.1);
-            color: var(--color-danger);
-        }
-        
-        /* Progress Bar */
-        .progress-wrapper {
-            width: 100%;
-            height: 4px;
-            background: rgba(0,0,0,0.05);
-            position: sticky;
-            top: 61px;
-            z-index: 1019;
-        }
-        .progress-fill {
-            height: 100%;
-            background: var(--color-primary);
-            transition: width 0.3s ease;
-        }
-
-        /* Question Area */
-        .question-container {
-            padding: 24px 32px;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        .question-label {
-            font-size: 13px;
-            color: var(--color-text-muted);
-            font-weight: 600;
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .question-text {
-            font-size: 16px;
-            line-height: 1.6;
-            margin-bottom: 16px;
-            color: var(--color-text);
-        }
-        .question-text img {
-            max-width: 100%;
-            height: auto;
-        }
-        
-        /* Answer Options */
-        .answer-option {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding: 12px 14px;
-            margin-bottom: 8px;
-            border: 2px solid rgba(0,0,0,0.08);
-            border-radius: 10px;
-            background: var(--color-surface);
-            cursor: pointer;
-            transition: all 150ms ease;
-            min-height: 48px;
-        }
-        .answer-option:hover {
-            border-color: rgba(var(--color-primary-rgb), 0.3);
-        }
-        .answer-option.selected {
-            border-color: var(--color-primary);
-            background: rgba(var(--color-primary-rgb), 0.05);
-        }
-        .answer-option .form-check-input {
-            margin-top: 3px;
-            transform: scale(1.2);
-            cursor: pointer;
-        }
-        .answer-content {
-            font-size: 15px;
-            line-height: 1.5;
-            color: var(--color-text);
-            flex-grow: 1;
-        }
-        .answer-content img {
-            max-width: 100%;
-            height: auto;
-        }
-
-        /* Bottom Navigation */
-        .bottom-nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: var(--color-surface);
-            border-top: 1px solid rgba(0,0,0,0.08);
-            padding: 12px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 1020;
-            box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
-        }
-        .btn-nav {
-            height: 48px;
-            border-radius: 9999px;
-            font-weight: 600;
-            padding: 0 24px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 150ms ease;
-            border: none;
-            cursor: pointer;
-        }
-        .btn-nav.ghost {
-            background: transparent;
-            color: var(--color-text-muted);
-        }
-        .btn-nav.ghost:active { background: rgba(0,0,0,0.05); }
-        .btn-nav.filled {
-            background: var(--color-primary);
-            color: #fff;
-        }
-        .btn-nav.filled:active { transform: scale(0.96); }
-        
-        .btn-flag {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            border: 2px solid rgba(0,0,0,0.08);
-            background: var(--color-surface);
-            color: var(--color-text-muted);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            transition: all 150ms ease;
-            cursor: pointer;
-        }
-        .btn-flag.active {
-            border-color: var(--color-warning);
-            color: var(--color-warning);
-            background: rgba(255,193,7,0.1);
-        }
-
-        /* End Exam Button */
-        .end-exam-container {
-            margin-top: 48px;
-            padding-top: 32px;
-            border-top: 1px dashed rgba(0,0,0,0.1);
-            text-align: center;
-        }
-        .btn-end-exam {
-            background: transparent;
-            border: 2px solid var(--color-text-muted);
-            color: var(--color-text-muted);
-            height: 48px;
-            border-radius: 9999px;
-            padding: 0 32px;
-            font-weight: 600;
-            transition: all 150ms ease;
-        }
-        .btn-end-exam:hover {
-            border-color: var(--color-danger);
-            color: var(--color-danger);
-        }
-
-        /* Sidebar Offcanvas (Mobile) */
-        .offcanvas-end {
-            width: 300px;
-        }
-        .q-grid-container {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 8px;
-        }
-        .q-grid-btn {
-            width: 100%;
-            height: 48px;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            border-radius: 12px;
-            border: 2px solid transparent;
-            font-size: 14px;
-            transition: all 150ms ease;
-            cursor: pointer;
-        }
-        .q-grid-btn.answered {
-            background-color: var(--color-primary);
-            color: white;
-        }
-        .q-grid-btn.flagged {
-            background-color: var(--color-warning);
-            color: #000;
-        }
-        .q-grid-btn.unanswered {
-            background-color: rgba(0,0,0,0.04);
-            border-color: rgba(0,0,0,0.12);
-            color: var(--color-text-muted);
-        }
-        .q-grid-btn.current {
-            border-color: var(--color-text) !important;
-        }
-        .sidebar-legend {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            font-size: 12px;
-            margin-top: 16px;
-            padding: 12px;
-            background: rgba(0,0,0,0.03);
-            border-radius: 12px;
-        }
-        .sidebar-legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--color-text-muted);
-        }
-        .legend-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 4px;
-            flex-shrink: 0;
-        }
-
-        /* Auto-save chip */
-        .autosave-chip {
-            position: fixed;
-            bottom: 80px;
-            left: 16px;
-            background: var(--color-surface);
-            color: var(--color-text);
-            padding: 6px 12px;
-            border-radius: 9999px;
-            font-size: 12px;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            z-index: 1010;
-        }
-        /* Hide sidebar toggle on desktop */
-        @media (min-width: 992px) {
-            .btn-sidebar-toggle {
-                display: none !important;
-            }
-        }
-
-
-        /* Image Lightbox Overlay */
-        .image-lightbox {
-            position: fixed; inset: 0; z-index: 1050;
-            background: rgba(0,0,0,0.9);
-            display: none; flex-direction: column; align-items: center; justify-content: center;
-            backdrop-filter: blur(5px);
-        }
-        .image-lightbox.active { display: flex; }
-        .image-lightbox img {
-            max-width: 90vw; max-height: 90vh;
-            border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            object-fit: contain;
-        }
-        .image-lightbox-close {
-            position: absolute; top: 20px; right: 20px;
-            color: white; font-size: 40px; line-height: 1; cursor: pointer;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-        }
-        .question-container img { cursor: zoom-in; }
     </style>
+    <link href="<?= base_url('assets/exam-app.css?v=' . $assetVersion['css']) ?>" rel="stylesheet" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()">
 </head>
 <body class="noselect">
+    <?php include __DIR__ . '/../../layouts/_frontend_config.php'; ?>
     <script>
         const EXAM_CONFIG = {
             testId: <?= $test->id ?>,
@@ -490,6 +210,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             hasPassword: <?= !empty($test->password) ? 'true' : 'false' ?>,
             antiCheat: <?= json_encode($antiCheat) ?>,
             apiBaseUrl: '<?= esc($apiBaseUrl) ?>',
+            appBaseUrl: '<?= base_url() ?>',
             questionsData: <?= json_encode($questionsData ?? []) ?>,
             answersData: <?= json_encode($answersData ?? []) ?>,
             randomQuestions: <?= $test->random_questions ? 'true' : 'false' ?>,
@@ -498,14 +219,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             wsUrl: '<?= esc($wsUrl ?? '') ?>'
         };
 
-        if (EXAM_CONFIG.randomQuestions) {
-            EXAM_CONFIG.questionsData.sort(() => Math.random() - 0.5);
-        }
-        if (EXAM_CONFIG.randomAnswers) {
-            for (let qId in EXAM_CONFIG.answersData) {
-                EXAM_CONFIG.answersData[qId].sort(() => Math.random() - 0.5);
-            }
-        }
+        // Question and answer ordering is now handled server-side per-attempt.
+        // The init API returns display_order for each question/answer,
+        // and the client reorders DOM elements after receiving the response.
     </script>
 
     <!-- Loading Screen -->
@@ -514,6 +230,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             <span class="visually-hidden">Memuat...</span>
         </div>
         <h5 class="text-muted">Memuat ujian...</h5>
+        <p class="text-muted small mt-2" id="bootStatus" style="margin-top:8px;">Menghubungi server…</p>
     </div>
 
     <!-- Image Lightbox Overlay -->
@@ -572,7 +289,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             </div>
             <div class="d-flex align-items-center gap-3">
                 <template x-if="durationMinutes > 0">
-                    <div class="exam-timer-chip" :class="{'danger': timeLeft <= 300000}">
+                    <div class="exam-timer-chip" :class="{'danger': timeLeft <= ((window.APP_CONFIG||{}).warning_threshold_ms || 300000)}">
                         <i class="bi bi-clock-history"></i> <span x-text="formatTime(timeLeft)">--:--:--</span>
                     </div>
                 </template>
@@ -632,7 +349,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             <!-- Type 3: Essay -->
             <template x-if="currentQuestion.question_type == 3">
                 <div>
-                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input.debounce.500ms="saveAnswer()" placeholder="Tulis jawaban Anda di sini..."></textarea>
+                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input="this._typingQid = this.currentQuestion.question_id" @input.debounce.500ms="saveAnswer(this._typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
                 </div>
             </template>
             
@@ -845,1219 +562,614 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         </div>
     </div><!-- /examContent -->
 
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
+    <script defer src="<?= base_url('vendor/jquery/jquery-3.6.0.min.js') ?>" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()"></script>
+    <!-- jQuery defer — setup global dijalankan oleh <script defer> INLINE (dieksekusi
+         setelah semua defer selesai, sebelum DOMContentLoaded) -->
+    <script defer>
+        if (typeof window.jQuery === 'undefined') {
+            // jQuery gagal/terlambat dimuat — fallback renderer yang menangani.
+            window.__jqAbsent = true;
+        } else {
+            $(function () {
+                $.ajaxSetup({
+                    xhrFields: { withCredentials: true }
+                });
+                // Automatically update CSRF token on every AJAX response
+                $(document).ajaxComplete(function(event, xhr, settings) {
+                    const csrfHeader = xhr.getResponseHeader('X-CSRF-TOKEN');
+                    if (csrfHeader) {
+                        CSRF_HASH = csrfHeader;
+                        $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': csrfHeader } });
+                    }
+                });
+            });
+        }
+    </script>
+    <script defer src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js') ?>" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()"></script>
     <script>
-    let examStarted = false;
-    let ATTEMPT_ID  = null;
-    let USER_ID     = null;
-    let CSRF_NAME   = '';
-    let CSRF_HASH   = '';
-    let STUDENT_NAME = '';
-    let START_TIME  = 0;
+        window.CBT_EXAM_CONFIG = {
+            examId: EXAM_CONFIG.testId || "0",
+            token: (window.__examData && window.__examData.wsToken) || ""
+        };
+    </script>
+    <script src="<?= base_url('js/kiosk-integration.js') ?>"></script>
+    <script>
+    (function () {
+        // ═══ FALLBACK RENDERER (VANILLA — tanpa jQuery/Alpine) ═══
+        // Aktif hanya ketika aset besar (jquery/bootstrap/alpine/swal) gagal
+        // atau sangat lambat dimuat. Boot-first di <head> sudah memberi data
+        // ujian, jadi soal tetap bisa dikerjakan + jawaban tersimpan otomatis.
+        var ENGAGE_AFTER_MS = 4000;
+        var engaged = false;
+        var state = null;
+        var root = null;
+        var saveStatusEl = null;
+        var timerInterval = null;
+        var watchTimer = null;
+        var saveTimer = null;
+        var savePending = false;
+        var saveFailed = false;
+        var flagged = {};
+        var warningShown = false;
+        var finishing = false;
+        var lastSaveAt = 0;
 
-    const API = EXAM_CONFIG.apiBaseUrl;
+        var EXAM_CFG = window.EXAM_CONFIG || {};
+        var API_BASE = EXAM_CFG.apiBaseUrl || '';
+        var TEST_ID = EXAM_CFG.testId || 0;
+        var GENERATED_AT = EXAM_CFG.generatedAt || 0;
+        var PASSING_SCORE = EXAM_CFG.passingScore || 0;
 
-    $.ajaxSetup({
-        xhrFields: { withCredentials: true }
-    });
-
-    // Automatically update CSRF token on every AJAX response to prevent token out-of-sync
-    $(document).ajaxComplete(function(event, xhr, settings) {
-        const csrfHeader = xhr.getResponseHeader('X-CSRF-TOKEN');
-        if (csrfHeader) {
-            CSRF_HASH = csrfHeader;
-            $.ajaxSetup({
-                headers: {
-                    'X-CSRF-TOKEN': csrfHeader
+        function buildFd(fields) {
+            var fd = new FormData();
+            if (state && state.csrfName && state.csrfHash) fd.append(state.csrfName, state.csrfHash);
+            for (var k in fields) {
+                if (Array.isArray(fields[k])) {
+                    fields[k].forEach(function (v) { fd.append(k + '[]', v); });
+                } else {
+                    fd.append(k, fields[k]);
                 }
-            });
+            }
+            return fd;
         }
-    });
 
-    function buildFormData(obj) {
-        const fd = new FormData();
-        if (CSRF_NAME) fd.append(CSRF_NAME, CSRF_HASH);
-        for (const key in obj) {
-            if (Array.isArray(obj[key])) {
-                obj[key].forEach(v => fd.append(key + '[]', v));
+        function updateCsrf(res) {
+            if (!res || !state) return;
+            if (res.csrf_name) state.csrfName = res.csrf_name;
+            if (res.csrf_token) state.csrfHash = res.csrf_token;
+            if (res.csrf_hash) state.csrfHash = res.csrf_hash;
+        }
+
+        async function postJson(url, fields) {
+            var res = await fetch(API_BASE + url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: (state && state.csrfHash) ? { 'X-CSRF-TOKEN': state.csrfHash } : {},
+                body: buildFd(fields),
+                signal: AbortSignal.timeout(20000)
+            });
+            var data = {};
+            try { data = await res.json(); } catch (e) {}
+            updateCsrf(data);
+            if (res.status === 401 || res.status === 403) {
+                window.location.href = API_BASE + '/login';
+                throw new Error('session-expired');
+            }
+            return data;
+        }
+
+        function engage(data) {
+            if (engaged) return;
+            engaged = true;
+            if (watchTimer) clearInterval(watchTimer);
+
+            state = {
+                attemptId: data.attempt_id,
+                csrfName: data.csrf_name || 'csrf_test_name',
+                csrfHash: data.csrf_token || data.csrf_hash || '',
+                idx: 0,
+                endTimeMs: 0,
+                timeOffset: 0
+            };
+
+            // ── State soal: UTAMA dari response init API (mandiri, tidak
+            // bergantung pada EXAM_CONFIG yang mungkin gagal dimuat) ──
+            var mergedQuestions, mergedAnswers;
+
+            if (data.questions && data.questions.length) {
+                mergedQuestions = data.questions.map(function (q) {
+                    return {
+                        log_id: q.log_id, question_id: q.question_id,
+                        question_text: q.question_text, question_type: q.question_type,
+                        display_order: q.display_order, num_answers: q.num_answers,
+                        answer_text: q.answer_text || '', is_unsure: q.is_unsure || 0
+                    };
+                });
+                mergedAnswers = {};
+                mergedQuestions.forEach(function (q) {
+                    var list = (data.answers && (data.answers[q.log_id] || data.answers[q.question_id])) || [];
+                    mergedAnswers[q.question_id] = list.map(function (a) {
+                        return {
+                            answer_id: a.answer_id, answer_text: a.answer_text,
+                            display_order: a.display_order, is_selected: a.is_selected || 0
+                        };
+                    });
+                });
             } else {
-                fd.append(key, obj[key]);
-            }
-        }
-        return fd;
-    }
+                // Cadangan: snapshot statis (hanya bila init tidak mengirim soal)
+                mergedQuestions = JSON.parse(JSON.stringify(EXAM_CFG.questionsData || []));
+                mergedAnswers = JSON.parse(JSON.stringify(EXAM_CFG.answersData || {}));
 
-    function updateCsrf(res) {
-        if (res) {
-            if (res.csrf_name) CSRF_NAME = res.csrf_name;
-            if (res.csrf_token) CSRF_HASH = res.csrf_token;
-            if (res.csrf_hash) CSRF_HASH = res.csrf_hash;
-        }
-    }
-
-    const FETCH_TIMEOUT_MS = 15000;
-    const FETCH_MAX_RETRIES = 3;
-
-    function redirectReplace(url) {
-        window.location.replace(url);
-    }
-
-    async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-        return fetch(url, {
-            ...options,
-            credentials: 'same-origin',
-            signal: AbortSignal.timeout(timeoutMs),
-        });
-    }
-
-    async function fetchWithRetry(url, options = {}, maxRetries = FETCH_MAX_RETRIES, timeoutMs = FETCH_TIMEOUT_MS) {
-        let lastError;
-        for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-                const res = await fetchWithTimeout(url, options, timeoutMs);
-                if (res.ok) return res;
-                lastError = new Error('HTTP ' + res.status);
-            } catch (err) {
-                lastError = err;
-            }
-            if (attempt < maxRetries) {
-                await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-            }
-        }
-        throw lastError;
-    }
-
-    async function logoutAndRedirect(loginUrl) {
-        try {
-            const fd = buildFormData({});
-            await fetchWithRetry(API + '/logout', { method: 'POST', body: fd });
-        } catch (e) {
-            console.warn('Logout request failed, redirecting anyway:', e);
-        }
-        redirectReplace(loginUrl);
-    }
-
-    // ═══ INIT FLOW ═══
-    async function initExam() {
-        const loading = document.getElementById('loadingScreen');
-        loading.style.display = 'flex';
-
-        try {
-            // Because this is a static page, we must fetch the CSRF token first
-            try {
-                const csrfRes = await fetch(API + '/health', { credentials: 'same-origin' });
-                const csrfToken = csrfRes.headers.get('X-CSRF-TOKEN');
-                if (csrfToken) {
-                    CSRF_HASH = csrfToken;
-                    $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': csrfToken } });
-                }
-            } catch(e) {}
-
-            const body = { test_id: EXAM_CONFIG.testId };
-            if (CSRF_NAME) body[CSRF_NAME] = CSRF_HASH;
-
-            const res = await $.ajax({
-                url: API + '/api/exam/init',
-                type: 'POST',
-                data: body,
-                dataType: 'json'
-            });
-
-            updateCsrf(res);
-
-            if (res.status === 'need_prepare') {
-                window.location.href = API + '/student/exam/prepare/' + EXAM_CONFIG.testId;
-                return;
-            }
-
-            if (res.status === 'error') {
-                loading.style.display = 'none';
-                if (res.action === 'logout') {
-                    await logoutAndRedirect(API + '/login');
-                    return;
-                }
-                Swal.fire('Error', res.message || 'Terjadi kesalahan saat memuat ujian.', 'error');
-                return;
-            }
-
-            if (res.status === 'success') {
-                if (res.test && (res.test.exam_mode !== 'static' || !res.test.static_page_path)) {
-                    window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                    return;
-                }
-
-                ATTEMPT_ID   = res.attempt_id;
-                USER_ID      = res.user ? res.user.id : null;
-                STUDENT_NAME = res.user ? (res.user.firstname + ' ' + res.user.lastname).trim() : '';
-                START_TIME   = (res.test && res.test.started_at_ms) ? res.test.started_at_ms : Date.now();
-                const serverNow = (res.test && res.test.server_now_ms) ? res.test.server_now_ms : Date.now();
-                const timeOffset = serverNow - Date.now();
-
-                const mergedQuestions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData));
-                const mergedAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData));
-
-                if (res.answers) {
-                    for (const [qId, savedAnswers] of Object.entries(res.answers)) {
+                if (data.answers) {
+                    for (var qId in data.answers) {
                         if (mergedAnswers[qId]) {
-                            const savedMap = {};
-                            savedAnswers.forEach(sa => { savedMap[sa.answer_id] = sa.is_selected; });
-                            mergedAnswers[qId].forEach(ma => {
+                            var savedMap = {};
+                            data.answers[qId].forEach(function (sa) { savedMap[sa.answer_id] = sa.is_selected; });
+                            mergedAnswers[qId].forEach(function (ma) {
                                 if (savedMap[ma.answer_id] !== undefined) ma.is_selected = savedMap[ma.answer_id];
                             });
                         }
                     }
                 }
-                
-                if (res.questions) {
-                    const qSavedMap = {};
-                    res.questions.forEach(q => { qSavedMap[q.question_id] = q; });
-                    mergedQuestions.forEach(mq => {
-                        if (qSavedMap[mq.question_id]) {
-                            mq.answer_text = qSavedMap[mq.question_id].answer_text || '';
-                        }
+                if (data.questions) {
+                    var qSavedMap = {};
+                    data.questions.forEach(function (q) { qSavedMap[q.question_id] = q; });
+                    mergedQuestions.forEach(function (mq) {
+                        if (qSavedMap[mq.question_id]) mq.answer_text = qSavedMap[mq.question_id].answer_text || '';
                     });
                 }
-
-                window.__examData = {
-                    questions: mergedQuestions,
-                    answers: mergedAnswers,
-                    attemptId: ATTEMPT_ID,
-                    studentName: STUDENT_NAME,
-                    beginTimeMs: res.test.begin_time_ms,
-                    timeOffset: timeOffset,
-                    antiCheat: res.anti_cheat || null,
-                    user: res.user || null,
-                    wsToken: res.ws_token || null,
-                };
-
-                document.dispatchEvent(new CustomEvent('exam-data-loaded'));
-
-                if (res.anti_cheat) {
-                    EXAM_CONFIG.antiCheat = res.anti_cheat;
-                    // Ensure auto_submit_on_cheat is always present (fallback from test object)
-                    if (EXAM_CONFIG.antiCheat.auto_submit_on_cheat === undefined && res.test) {
-                        EXAM_CONFIG.antiCheat.auto_submit_on_cheat = !!(res.test.auto_submit_on_cheat);
-                    }
-                    document.getElementById('antiCheatTitle').textContent = res.anti_cheat.title || 'Peringatan Kecurangan!';
-                    document.getElementById('antiCheatMessage').textContent = res.anti_cheat.message || 'Sistem mendeteksi Anda meninggalkan halaman ujian.';
-                    if (res.anti_cheat.suspend_timer) document.getElementById('suspendTimerDisplay').textContent = res.anti_cheat.suspend_timer;
-                    if (res.anti_cheat.max_strikes) document.getElementById('maxStrikes').textContent = res.anti_cheat.max_strikes;
-                    
-                    const logoImg = document.getElementById('antiCheatLogoImg');
-                    if (res.anti_cheat.logo) {
-                        logoImg.src = '<?= base_url() ?>' + res.anti_cheat.logo;
-                        logoImg.style.display = 'inline-block';
-                    } else {
-                        logoImg.style.display = 'none';
-                    }
-                }
-
-                loading.style.display = 'none';
-                document.getElementById('examContent').style.display = 'block';
-                examStarted = true;
             }
-        } catch (err) {
-            loading.style.display = 'none';
-            const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : 'Gagal menghubungi server. Periksa koneksi Anda.';
-            Swal.fire('Error', msg, 'error');
-        }
-    }
 
-    // ═══ AUTO FULLSCREEN ═══
-    ['click', 'touchstart', 'keydown'].forEach(evt => {
-        document.addEventListener(evt, function() {
-            if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false && !EXAM_CONFIG.antiCheat.auto_submit_on_cheat) return;
-            if (!document.fullscreenElement && examStarted && !window.isSubmitting) {
-                const el = document.documentElement;
-                const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-                if (rfs) rfs.call(el).catch(()=>{});
+            if (mergedQuestions.length && mergedQuestions[0].display_order !== undefined) {
+                mergedQuestions.sort(function (a, b) { return (a.display_order || 0) - (b.display_order || 0); });
+                mergedQuestions.forEach(function (q, i) { q.display_order = i + 1; });
             }
-        });
-    });
-
-    // ═══ ALPINE.JS EXAM APP ═══
-    document.addEventListener('alpine:init', () => {
-        Alpine.data('examApp', () => ({
-            questions: [],
-            allAnswers: {},
-            currentIndex: 0,
-            isSaving: false,
-            showSavedToast: false,
-            showErrorToast: false,
-            timeLeft: EXAM_CONFIG.durationMinutes * 60 * 1000,
-            timerInterval: null,
-            warningShown: false,
-            testName: EXAM_CONFIG.testName,
-            studentName: '',
-            durationMinutes: EXAM_CONFIG.durationMinutes,
-            sseSource: null,
-            sseErrorCount: 0,
-            syncInterval: null,
-            isOffline: !navigator.onLine,
-            
-            activeQueue: Promise.resolve(),
-            syncTimeout: null,
-            lastSyncTime: Date.now(),
-
-            parseMatching() {
-                this.questions.forEach(q => {
-                    q.is_flagged = false;
-                    if (q.question_type == 4 || q.question_type == 5) {
-                        q.matchingPairs = [];
-                        let rights = [];
-                        let savedMatching = {};
-                        try { if (q.answer_text) savedMatching = JSON.parse(q.answer_text); } catch(e) {}
-
-                        let ansList = this.allAnswers[q.question_id] || [];
-                        ansList.forEach(a => {
-                            let parts = (a.answer_text || '').split('|::|');
-                            let left  = parts[0] || '';
-                            let right = parts[1] || '';
-                            if (left && right) {
-                                q.matchingPairs.push({ left, right, selected: savedMatching[left] || '' });
-                                rights.push(right);
-                            }
-                        });
-                        q.matchingOptions = rights.sort(() => 0.5 - Math.random());
-                    }
-                });
-            },
-
-            init() {
-                window.addEventListener('offline', () => this.isOffline = true);
-                window.addEventListener('online', () => this.isOffline = false);
-                
-                this.$watch('currentIndex', () => {
-                    setTimeout(() => { if (typeof window.renderMath === 'function') window.renderMath(); }, 50);
-                });
-                
-                this.questions = JSON.parse(JSON.stringify(EXAM_CONFIG.questionsData || []));
-                this.allAnswers = JSON.parse(JSON.stringify(EXAM_CONFIG.answersData || {}));
-                this.parseMatching();
-
-                document.addEventListener('exam-data-loaded', () => {
-                    const data = window.__examData || {};
-                    this.questions  = data.questions  || this.questions;
-                    this.allAnswers = data.answers     || this.allAnswers;
-                    this.studentName = data.studentName || '';
-                    this.parseMatching();
-                    this.restoreLocalBackup();
-
-                    this.initWebSocket();
-
-                    if (this.durationMinutes > 0) {
-                        const beginTimeMs = data.beginTimeMs || Date.now();
-                        const timeOffset = data.timeOffset || 0;
-                        this.endTimeMs = beginTimeMs + (this.durationMinutes * 60 * 1000);
-
-                        this.timerInterval = setInterval(() => {
-                            const now = Date.now() + timeOffset;
-                            const distance = this.endTimeMs - now;
-
-                            if (distance <= 0) {
-                                clearInterval(this.timerInterval);
-                                this.timeLeft = 0;
-                                Swal.fire('Waktu Habis!', 'Waktu Anda telah habis! Ujian akan disubmit otomatis.', 'info').then(() => {
-                                    this.submitFinish();
-                                });
-                            } else {
-                                this.timeLeft = distance;
-                                if (distance <= 300000 && !this.warningShown) {
-                                    this.warningShown = true;
-                                    Swal.fire({
-                                        title: 'Peringatan Waktu!',
-                                        text: 'Waktu ujian Anda tersisa 5 menit lagi.',
-                                        icon: 'warning',
-                                        toast: true,
-                                        position: 'top-end',
-                                        showConfirmButton: false,
-                                        timer: 5000,
-                                        timerProgressBar: true
-                                    });
-                                }
-                            }
-                        }, 1000);
-                    }
-                });
-
-                // Init Auto Sync (Debounce + Max-Wait Hybrid)
-                this.scheduleAutoSync();
-
-                // Fallback saat tab ditutup/refresh
-                window.addEventListener('beforeunload', (e) => {
-                    if (this.isSaving) {
-                        e.preventDefault();
-                        e.returnValue = ''; // Memicu konfirmasi penutupan pada browser modern
-                    }
-                    if (ATTEMPT_ID) {
-                        const fd = buildFormData({ attempt_id: ATTEMPT_ID });
-                        navigator.sendBeacon(API + '/api/exam/auto-sync', fd);
-                    }
-                });
-            },
-
-            initWebSocket() {
-                if (!ATTEMPT_ID) {
-                    return;
+            for (var k in mergedAnswers) {
+                if (Array.isArray(mergedAnswers[k]) && mergedAnswers[k].length && mergedAnswers[k][0].display_order !== undefined) {
+                    mergedAnswers[k].sort(function (a, b) { return (a.display_order || 0) - (b.display_order || 0); });
                 }
-                const wsToken = window.__examData ? window.__examData.wsToken : null;
-                if (!wsToken) {
-                    console.error('No WebSocket token available');
-                    return;
-                }
-                
-                let wsUrl = EXAM_CONFIG.wsUrl;
-                if (!wsUrl || wsUrl.includes('localhost')) {
-                    const urlObj = new URL(API);
-                    const protocol = urlObj.protocol === 'https:' ? 'wss:' : 'ws:';
-                    const wsHost = urlObj.host;
-                    if (wsHost.includes(':8080')) {
-                        wsUrl = `${protocol}//${wsHost.replace(':8080', ':8060')}`;
-                    } else {
-                        wsUrl = `${protocol}//${wsHost}/ws`;
-                    }
-                }
-                wsUrl = wsUrl.replace(/\/+$/, '') + `/?ws_token=${wsToken}`;
-                
-                this.connectWebSocket(wsUrl);
-            },
-
-            connectWebSocket(wsUrl) {
-                this.ws = new WebSocket(wsUrl);
-
-                this.ws.onopen = () => {
-                    this.wsErrorCount = 0;
-                    console.log('WebSocket connected');
-                };
-
-                this.ws.onmessage = (e) => {
-                    const payload = JSON.parse(e.data);
-                    const eventName = payload.event;
-                    const d = payload.data || {};
-
-                    if (eventName === 'ban') {
-                        this.ws.close();
-                        Swal.fire({ title:'Akun Di-Ban', text:d.message, icon:'error', allowOutsideClick:false, allowEscapeKey:false, confirmButtonText:'OK' })
-                            .then(() => logoutAndRedirect(API + '/login'));
-                    }
-                    else if (eventName === 'kick') {
-                        this.ws.close();
-                        Swal.fire('Sesi Dihentikan', d.message, 'error')
-                            .then(() => logoutAndRedirect(API + '/login'));
-                    }
-                    else if (eventName === 'finished') {
-                        this.ws.close();
-                        Swal.fire('Ujian Selesai', d.message, 'info')
-                            .then(() => { window.location.href = API + '/student/dashboard'; });
-                    }
-                    else if (eventName === 'extend_time') {
-                        if (d.test_id == EXAM_CONFIG.testId) {
-                            this.durationMinutes = d.duration_minutes;
-                            this.endTimeMs = Date.now() + (this.durationMinutes * 60 * 1000);
-                            this.warningShown = false;
-                            
-                            Swal.fire({
-                                title: 'Waktu Ditambahkan!',
-                                text: 'Admin telah menambahkan waktu ujian. Silakan periksa sisa waktu Anda.',
-                                icon: 'success',
-                                toast: true,
-                                position: 'top-end',
-                                showConfirmButton: false,
-                                timer: 5000,
-                                timerProgressBar: true
-                            });
+            }
+            mergedQuestions.forEach(function (q) {
+                if (q.question_type == 4 || q.question_type == 5) {
+                    q.matchingPairs = [];
+                    var savedMatching = {};
+                    try { if (q.answer_text) savedMatching = JSON.parse(q.answer_text); } catch (e) {}
+                    var rights = [];
+                    (mergedAnswers[q.question_id] || []).forEach(function (a) {
+                        var parts = (a.answer_text || '').split('|::|');
+                        if (parts[0] && parts[1]) {
+                            q.matchingPairs.push({ left: parts[0], right: parts[1], selected: savedMatching[parts[0]] || '' });
+                            rights.push(parts[1]);
                         }
-                    }
-                    else if (eventName === 'sync_mode') {
-                        if (d.exam_mode !== 'static' || !d.static_page_path) {
-                            window.isSubmitting = true;
-                            window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                        } else {
-                            const expectedUrl = API + '/' + d.static_page_path;
-                            const currentPath = window.location.pathname;
-                            if (!expectedUrl.includes(currentPath)) {
-                                window.isSubmitting = true;
-                                window.location.href = expectedUrl;
-                            }
-                        }
-                    }
-                    else if (eventName === 'heartbeat') {
-                        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                            this.ws.send(JSON.stringify({event: 'pong'}));
-                        }
-                    }
-                };
-
-                this.ws.onclose = (e) => {
-                    console.warn('WebSocket closed', e);
-                    this.reconnectWebSocket(wsUrl);
-                };
-
-                this.ws.onerror = (err) => {
-                    console.error('WebSocket error', err);
-                    this.ws.close();
-                };
-            },
-
-            reconnectWebSocket(wsUrl) {
-                if (!this.wsErrorCount) this.wsErrorCount = 0;
-                this.wsErrorCount++;
-                
-                if (this.wsErrorCount > 10) {
-                    console.warn('WebSocket reconnect limit reached');
-                    return;
-                }
-                
-                const delay = Math.min(1000 * Math.pow(2, this.wsErrorCount), 30000);
-                console.log(`Reconnecting WebSocket in ${delay}ms...`);
-                
-                setTimeout(() => {
-                    this.connectWebSocket(wsUrl);
-                }, delay);
-            },
-
-            get currentQuestion() { return this.questions[this.currentIndex] || {}; },
-            get currentAnswers()  { return this.allAnswers[this.currentQuestion.question_id] || []; },
-
-            formatTime(ms) {
-                if (ms <= 0) return "00:00:00";
-                let h = Math.floor(ms / 3600000);
-                let m = Math.floor((ms % 3600000) / 60000);
-                let s = Math.floor((ms % 60000) / 1000);
-                return (h<10?"0"+h:h)+":"+(m<10?"0"+m:m)+":"+(s<10?"0"+s:s);
-            },
-
-            nextQuestion() {
-                if (this.currentIndex < this.questions.length - 1) this.currentIndex++;
-                else this.confirmFinish();
-                this.checkExamMode();
-            },
-            prevQuestion() { 
-                if (this.currentIndex > 0) this.currentIndex--; 
-                this.checkExamMode();
-            },
-            goToQuestion(idx) { 
-                this.currentIndex = idx; 
-                this.checkExamMode();
-            },
-            closeMobileSidebar() {
-                const el = document.getElementById('questionGridSheet');
-                if (el) {
-                    const bs = bootstrap.Offcanvas.getInstance(el);
-                    if (bs) bs.hide();
-                }
-            },
-
-            checkExamMode() {
-                if (!ATTEMPT_ID) return;
-                const fd = buildFormData({ attempt_id: ATTEMPT_ID });
-                $.ajax({
-                    url: API + '/api/exam/auto-sync',
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    dataType: 'json',
-                    success: (res) => { 
-                        updateCsrf(res); 
-                        if (res.exam_mode !== undefined) {
-                            if (res.exam_mode !== 'static' || !res.static_page_path) {
-                                window.isSubmitting = true;
-                                window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                            } else {
-                                const expectedUrl = API + '/' + res.static_page_path;
-                                const currentPath = window.location.pathname;
-                                if (!expectedUrl.includes(currentPath)) {
-                                    window.isSubmitting = true;
-                                    window.location.href = expectedUrl;
-                                }
-                            }
-                        }
-                    }
-                });
-            },
-
-            selectRadio(answerId) {
-                let currentSelected = this.currentAnswers.find(a => a.is_selected == 1);
-                if (currentSelected && currentSelected.answer_id == answerId) return;
-                this.currentAnswers.forEach(a => { a.is_selected = (a.answer_id == answerId) ? 1 : 0; });
-                
-                // Meng-update jadwal sync setiap ada interaksi user
-                this.scheduleAutoSync();
-
-                // Masukkan ke antrean tunggal
-                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
-            },
-            toggleCheckbox(answerId, isChecked) {
-                let ans = this.currentAnswers.find(a => a.answer_id == answerId);
-                if (ans) {
-                    if (ans.is_selected == (isChecked ? 1 : 0)) return;
-                    ans.is_selected = isChecked ? 1 : 0;
-                }
-                this.scheduleAutoSync();
-                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
-            },
-            updateMatching(index, value) {
-                if (this.questions[this.currentIndex].matchingPairs[index].selected === value) return;
-                this.questions[this.currentIndex].matchingPairs[index].selected = value;
-                this.scheduleAutoSync();
-                this.enqueueRequest('autosave', { logId: this.currentQuestion.question_id, retries: 3 });
-            },
-
-            scheduleAutoSync() {
-                if (this.syncTimeout) clearTimeout(this.syncTimeout);
-                
-                const timeSinceLastSync = Date.now() - this.lastSyncTime;
-                const MAX_WAIT = 180000; // 3 menit
-                
-                if (timeSinceLastSync > MAX_WAIT) {
-                    this.enqueueRequest('sync');
-                } else {
-                    this.syncTimeout = setTimeout(() => {
-                        this.enqueueRequest('sync');
-                    }, 60000); // 60 detik debounce
-                }
-            },
-
-            enqueueRequest(action, params = {}) {
-                if (!this.activeQueue) this.activeQueue = Promise.resolve();
-                this.activeQueue = this.activeQueue.then(() => {
-                    return this.performNetworkRequest(action, params);
-                }).catch((err) => {
-                    console.warn("Recovered from queue error:", err);
-                    return Promise.resolve();
-                });
-            },
-
-            performNetworkRequest(action, params) {
-                return new Promise((resolve) => {
-                    if (action === 'sync') {
-                        if (!ATTEMPT_ID) return resolve();
-                        const fd = buildFormData({ attempt_id: ATTEMPT_ID });
-                        $.ajax({
-                            url: API + '/api/exam/auto-sync',
-                            type: 'POST',
-                            data: fd,
-                            processData: false,
-                            contentType: false,
-                            dataType: 'json'
-                        }).always((res) => {
-                            if (res && res.csrf_hash) updateCsrf(res);
-                            if (res && res.exam_mode !== undefined) {
-                                if (res.exam_mode !== 'static' || !res.static_page_path) {
-                                    window.isSubmitting = true;
-                                    window.location.href = API + '/student/exam/take/' + EXAM_CONFIG.testId;
-                                } else {
-                                    const expectedUrl = API + '/' + res.static_page_path;
-                                    const currentPath = window.location.pathname;
-                                    if (!expectedUrl.includes(currentPath)) {
-                                        window.isSubmitting = true;
-                                        window.location.href = expectedUrl;
-                                    }
-                                }
-                            }
-                            this.lastSyncTime = Date.now();
-                            this.scheduleAutoSync();
-                            resolve();
-                        });
-                    } else if (action === 'autosave') {
-                        const { logId, retries } = params;
-                        const q = this.questions.find(x => x.question_id === logId);
-                        if (!q) return resolve();
-
-                        this.saveLocalBackup();
-
-                        let passedData = { attempt_id: ATTEMPT_ID, question_id: logId, question_type: q.question_type, generated_at: EXAM_CONFIG.generatedAt };
-                        if (q.question_type == 3) {
-                            passedData.answer_text = q.answer_text;
-                        } else if (q.question_type == 4 || q.question_type == 5) {
-                            let matches = {};
-                            q.matchingPairs.forEach(p => { matches[p.left] = p.selected; });
-                            passedData.matching_answers_json = JSON.stringify(matches);
-                        } else {
-                            const ansList = this.allAnswers[logId] || [];
-                            passedData.selected_answers = ansList.filter(a => a.is_selected == 1).map(a => a.answer_id);
-                        }
-
-                        this.isSaving = true;
-                        this.showErrorToast = false;
-                        const fd = buildFormData(passedData);
-
-                        $.ajax({
-                            url: API + '/api/exam/autosave',
-                            type: 'POST',
-                            data: fd,
-                            processData: false,
-                            contentType: false,
-                            dataType: 'json',
-                            success: (res) => {
-                                updateCsrf(res);
-                                this.isSaving = false;
-                                this.showSavedToast = true;
-                                setTimeout(() => { this.showSavedToast = false; }, 2000);
-
-                                if (res.status === 'kicked') {
-                                    if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                                    Swal.fire('Informasi', res.message, 'info').then(() => {
-                                        window.location.href = API + '/login';
-                                    });
-                                }
-                                resolve();
-                            },
-                            error: (err) => {
-                                if (err.status === 401 || err.status === 403) {
-                                    this.isSaving = false;
-                                    if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                                    Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
-                                        window.location.href = API + '/login';
-                                    });
-                                    resolve();
-                                } else {
-                                    if (retries > 0) {
-                                        setTimeout(() => {
-                                            this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
-                                        }, 2500);
-                                    } else {
-                                        this.isSaving = false;
-                                        this.showErrorToast = true;
-                                        setTimeout(() => { this.showErrorToast = false; }, 4000);
-                                        resolve();
-                                    }
-                                }
-                            }
-                        });
-                    } else {
-                        resolve();
-                    }
-                });
-            },
-
-            saveAnswer(qIdToSave = null) {
-                let logId = qIdToSave;
-                if (!logId && this.currentQuestion) {
-                    logId = this.currentQuestion.question_id;
-                }
-                if (!logId) return;
-
-                this.scheduleAutoSync();
-                this.enqueueRequest('autosave', { logId: logId, retries: 3 });
-            },
-
-            saveLocalBackup() {
-                if (!ATTEMPT_ID) return;
-                const backupData = {
-                    questions: this.questions.map(q => ({
-                        question_id: q.question_id,
-                        question_type: q.question_type,
-                        answer_text: q.answer_text || '',
-                        is_flagged: q.is_flagged || false,
-                        matchingPairs: q.matchingPairs ? q.matchingPairs.map(p => ({ left: p.left, selected: p.selected })) : null
-                    })),
-                    answers: this.allAnswers
-                };
-                localStorage.setItem("cbt_backup_attempt_" + ATTEMPT_ID, JSON.stringify(backupData));
-            },
-
-            restoreLocalBackup() {
-                if (!ATTEMPT_ID) return;
-                const raw = localStorage.getItem("cbt_backup_attempt_" + ATTEMPT_ID);
-                if (!raw) return;
-                try {
-                    const backup = JSON.parse(raw);
-                    if (backup && backup.questions && backup.answers) {
-                        let needsSaveIds = [];
-
-                        this.questions.forEach((q, idx) => {
-                            const bq = backup.questions.find(x => x.question_id === q.question_id);
-                            if (!bq) return;
-
-                            q.is_flagged = bq.is_flagged || q.is_flagged;
-
-                            if (q.question_type == 3) {
-                                if (bq.answer_text && (!q.answer_text || q.answer_text.trim() === '')) {
-                                    q.answer_text = bq.answer_text;
-                                    needsSaveIds.push(idx);
-                                }
-                            } else if (q.question_type == 4 || q.question_type == 5) {
-                                let backupMatching = {};
-                                bq.matchingPairs.forEach(p => { backupMatching[p.left] = p.selected; });
-
-                                let changed = false;
-                                q.matchingPairs.forEach(p => {
-                                    if (backupMatching[p.left] && !p.selected) {
-                                        p.selected = backupMatching[p.left];
-                                        changed = true;
-                                    }
-                                });
-                                if (changed) {
-                                    needsSaveIds.push(idx);
-                                }
-                            } else {
-                                const serverAnswers = this.allAnswers[q.question_id] || [];
-                                const backupAnswers = backup.answers[q.question_id] || [];
-
-                                let changed = false;
-                                serverAnswers.forEach(sa => {
-                                    const ba = backupAnswers.find(x => x.answer_id === sa.answer_id);
-                                    if (ba && ba.is_selected == 1 && sa.is_selected == 0) {
-                                        sa.is_selected = 1;
-                                        changed = true;
-                                    }
-                                });
-                                if (changed) {
-                                    needsSaveIds.push(idx);
-                                }
-                            }
-                        });
-
-                        // Sequentially sync any unsaved offline answers back to the server
-                        if (needsSaveIds.length > 0) {
-                            let saveSequence = Promise.resolve();
-                            needsSaveIds.forEach(idx => {
-                                saveSequence = saveSequence.then(() => {
-                                    return new Promise((resolve) => {
-                                        const prevIndex = this.currentIndex;
-                                        this.currentIndex = idx;
-                                        this.saveAnswer();
-                                        setTimeout(() => {
-                                            this.currentIndex = prevIndex;
-                                            resolve();
-                                        }, 250);
-                                    });
-                                });
-                            });
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to restore local backup", e);
-                }
-            },
-
-            countAnswered() {
-                let count = 0;
-                this.questions.forEach(q => {
-                    if (q.question_type == 3) {
-                        if (q.answer_text && q.answer_text.trim() !== '') count++;
-                    } else if (q.question_type == 4 || q.question_type == 5) {
-                        if (q.matchingPairs && q.matchingPairs.every(p => p.selected !== '')) count++;
-                    } else {
-                        if ((this.allAnswers[q.question_id] || []).some(a => a.is_selected == 1)) count++;
-                    }
-                });
-                return count;
-            },
-            countFlagged() {
-                return this.questions.filter(q => q.is_flagged).length;
-            },
-
-            toggleFlag() {
-                this.currentQuestion.is_flagged = !this.currentQuestion.is_flagged;
-            },
-
-            getGridButtonClass(idx) {
-                const q = this.questions[idx];
-                if (!q) return 'unanswered';
-                
-                let classes = [];
-                if (q.is_flagged) {
-                    classes.push('flagged');
-                } else {
-                    let answered = false;
-                    if (q.question_type == 3) answered = (q.answer_text && q.answer_text.trim() !== '');
-                    else if (q.question_type == 4 || q.question_type == 5) answered = (q.matchingPairs && q.matchingPairs.every(p => p.selected !== ''));
-                    else answered = (this.allAnswers[q.question_id] || []).some(a => a.is_selected == 1);
-                    classes.push(answered ? 'answered' : 'unanswered');
-                }
-                
-                if (idx === this.currentIndex) classes.push('current');
-                return classes.join(' ');
-            },
-
-            async confirmFinish() {
-                if (EXAM_CONFIG.allowNoanswer === 0 && this.countAnswered() < this.questions.length) {
-                    new bootstrap.Modal(document.getElementById('unansweredRequiredModal')).show();
-                    return;
-                }
-
-                if (this.activeQueue) {
-                    try { await this.activeQueue; } catch(e) {}
-                }
-
-                this.isSaving = true;
-                const fd = buildFormData({ attempt_id: ATTEMPT_ID });
-
-                $.ajax({
-                    url: API + '/api/exam/check-score',
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    dataType: 'json'
-                })
-                .done((res) => {
-                    this.isSaving = false;
-                    updateCsrf(res);
-                    if (res.status === 'success' && res.score < EXAM_CONFIG.passingScore) {
-                        new bootstrap.Modal(document.getElementById('warningFinishModal')).show();
-                    } else {
-                        new bootstrap.Modal(document.getElementById('finishModal')).show();
-                    }
-                })
-                .fail(() => {
-                    this.isSaving = false;
-                    new bootstrap.Modal(document.getElementById('finishModal')).show();
-                });
-            },
-
-            async forceSubmit() {
-                const w1 = await Swal.fire({
-                    title: 'Peringatan 1',
-                    text: "Apakah Anda yakin ingin mengakhiri ujian?",
-                    icon: 'warning', showCancelButton: true, confirmButtonText: 'Yakin', cancelButtonText: 'Batal'
-                });
-                if (!w1.isConfirmed) return;
-
-                const w2 = await Swal.fire({
-                    title: 'Peringatan 2',
-                    text: "Anda masih memiliki waktu. Yakin ingin benar-benar menyerah?",
-                    icon: 'warning', showCancelButton: true, confirmButtonText: 'Yakin Menyerah', cancelButtonText: 'Batal'
-                });
-                if (!w2.isConfirmed) return;
-
-                const w3 = await Swal.fire({
-                    title: 'Peringatan Terakhir',
-                    text: "Ujian akan diakhiri secara permanen. Lanjutkan?",
-                    icon: 'error', showCancelButton: true, confirmButtonText: 'Akhiri Ujian',
-                    cancelButtonText: 'Batal', confirmButtonColor: '#d33'
-                });
-                if (w3.isConfirmed) {
-                    document.querySelectorAll('.modal.show').forEach(m => {
-                        bootstrap.Modal.getInstance(m)?.hide();
                     });
-                    this.submitFinish();
-                }
-            },
-
-            async submitFinish() {
-                window.isSubmitting = true;
-                if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-
-                if (this.activeQueue) {
-                    try { await this.activeQueue; } catch(e) {}
-                }
-
-                const fd = buildFormData({ test_id: EXAM_CONFIG.testId, attempt_id: ATTEMPT_ID });
-
-                $.ajax({
-                    url: API + '/api/exam/finish',
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    dataType: 'json'
-                })
-                .done((res) => {
-                    updateCsrf(res);
-                    if (res.redirect) {
-                        window.location.href = res.redirect;
-                    } else {
-                        window.location.href = API + '/student/results/view/' + EXAM_CONFIG.testId;
-                    }
-                })
-                .fail((err) => {
-                    this.isSaving = false;
-                    window.isSubmitting = false;
-                    const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : 'Gagal menyelesaikan ujian.';
-                    Swal.fire('Error', msg, 'error');
-                });
-            }
-        }));
-    });
-
-    // ═══ ANTI-CHEAT ENGINE (SERVER-AUTHORITATIVE) ═══
-    (function() {
-        let isSuspended = false;
-        let isLocked    = false;
-        let suspendTimerInterval = null;
-        let strikes = 0;
-
-        // Use a getter so we always read the LATEST antiCheat config
-        // (initExam overwrites EXAM_CONFIG.antiCheat after API response)
-        window.getAC = function() { return EXAM_CONFIG.antiCheat || {}; };
-
-        function clearSuspend() {
-            isSuspended = false;
-            if (suspendTimerInterval) {
-                clearInterval(suspendTimerInterval);
-                suspendTimerInterval = null;
-            }
-        }
-
-        function showSuspendOverlay(currentStrikes, remainingSec) {
-            isSuspended = true;
-            document.getElementById('examContent').style.display = 'none';
-            var overlay = document.getElementById('suspendOverlay');
-            overlay.style.display = 'flex';
-
-            document.getElementById('strikeCount').innerText = currentStrikes;
-            document.getElementById('maxStrikes').innerText = getAC().max_strikes;
-
-            var sec = remainingSec;
-            var timerEl = document.getElementById('suspendTimerDisplay');
-            timerEl.innerText = sec;
-
-            if (suspendTimerInterval) clearInterval(suspendTimerInterval);
-
-            suspendTimerInterval = setInterval(function() {
-                sec--;
-                timerEl.innerText = sec;
-                if (sec <= 0) {
-                    clearInterval(suspendTimerInterval);
-                    suspendTimerInterval = null;
-                    overlay.style.display = 'none';
-                    isSuspended = false;
-                    document.getElementById('examContent').style.display = 'block';
-                    clearSuspend();
-                }
-            }, 1000);
-        }
-
-        async function reportCheat(type) {
-            if (!ATTEMPT_ID) return;
-
-            try {
-                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
-                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
-                    method: 'POST',
-                    body: fd
-                }, 2, 5000);
-
-                const data = await res.json();
-                updateCsrf(data);
-
-                if (data.current_strikes !== undefined) {
-                    strikes = data.current_strikes;
-                }
-
-                if (data.action === 'auto_submitted') {
-                    isLocked = true;
-                    clearSuspend();
-                    document.getElementById('examContent').style.display = 'none';
-                    await Swal.fire({
-                        title: 'Ujian Dikumpulkan Otomatis',
-                        html: (data.message || 'Ujian dikumpulkan otomatis oleh server.') + '<br><br>Menuju halaman hasil...',
-                        icon: 'warning',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        confirmButtonText: 'Lihat Hasil Ujian',
-                        confirmButtonColor: '#dc3545'
-                    });
-                    window.location.href = data.redirect || (API + '/student/dashboard');
-                    return;
-                }
-
-                if (data.action === 'lock') {
-                    isLocked = true;
-                    clearSuspend();
-                    document.getElementById('examContent').style.display = 'none';
-                    await Swal.fire({
-                        title: 'Ujian Dikunci Permanen',
-                        html: (data.message || 'Ujian dikunci oleh server.') + '<br><br>Pelanggaran: <strong>' + strikes + '/' + getAC().max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
-                        icon: 'error',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        showConfirmButton: false,
-                        timer: 5000,
-                        timerProgressBar: true
-                    });
-                    await logoutAndRedirect(API + '/login');
-                } else if (data.action === 'suspend') {
-                    showSuspendOverlay(data.current_strikes || data.strike || strikes, data.timer || 30);
-                }
-            } catch (err) {
-                console.error('Failed to report cheat to server:', err);
-            }
-        }
-
-
-
-        window.__antiCheat = {
-            maxStrikes: getAC().max_strikes,
-        };
-
-        // ── Tab Switch Detection ──
-        document.addEventListener('visibilitychange', function() {
-            if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
-            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
-
-            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-
-            reportCheat('tab_switch');
-        });
-
-        // ── Window Focus Loss (Alt-Tab / Minimize) ──
-        window.addEventListener('blur', function() {
-            if (!examStarted || isLocked || isSuspended || window.isSubmitting) return;
-            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
-
-            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-
-            reportCheat('tab_switch'); // Treat focus loss as tab switch
-        });
-
-        // ── Fullscreen Exit Detection ──
-        document.addEventListener('fullscreenchange', function() {
-            if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
-
-            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) {
-                return;
-            }
-
-            reportCheat('fullscreen_exit');
-        });
-    })();
-
-    // ═══ BROWSER INTEGRITY MONITOR ═══
-    // Detects modified browsers (floating bubble, split-screen bypass, event suppression)
-    (function() {
-        let integrityReported = false;
-        let rafTimestamps = [];
-        let slowRafCount = 0;
-        let eventLog = { blur: 0, visibilitychange: 0, fullscreenchange: 0 };
-        let expectedScreenW = 0, expectedScreenH = 0;
-
-        // Track when security events actually fire
-        window.addEventListener('blur', function() { eventLog.blur = Date.now(); }, true);
-        document.addEventListener('visibilitychange', function() { eventLog.visibilitychange = Date.now(); }, true);
-        document.addEventListener('fullscreenchange', function() {
-            eventLog.fullscreenchange = Date.now();
-            if (document.fullscreenElement) {
-                expectedScreenW = screen.width;
-                expectedScreenH = screen.height;
-            }
-        }, true);
-
-        // rAF timing monitor
-        let lastRafTime = 0;
-        function rafLoop(timestamp) {
-            if (lastRafTime > 0) {
-                const delta = timestamp - lastRafTime;
-                rafTimestamps.push(delta);
-                if (rafTimestamps.length > 30) rafTimestamps.shift();
-            }
-            lastRafTime = timestamp;
-            if (!integrityReported) requestAnimationFrame(rafLoop);
-        }
-        requestAnimationFrame(rafLoop);
-
-        async function reportModifiedBrowser(detail) {
-            if (integrityReported || !examStarted || window.isSubmitting) return;
-            integrityReported = true;
-
-            try {
-                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: 'modified_browser', detail: detail });
-                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
-                    method: 'POST',
-                    body: fd
-                }, 2, 5000);
-
-                const data = await res.json();
-                if (data.action === 'lock') {
-                    window.isSubmitting = true;
-                    if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                    document.getElementById('examContent').style.display = 'none';
-
-                    await Swal.fire({
-                        title: 'Akun Dikunci',
-                        html: (data.message || 'Browser modifikasi terdeteksi.') + '<br><br>Menuju halaman login...',
-                        icon: 'error',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        showConfirmButton: false,
-                        timer: 5000,
-                        timerProgressBar: true
-                    });
-                    await logoutAndRedirect(API + '/login');
-                }
-            } catch (err) {
-                console.error('Failed to report integrity violation:', err);
-            }
-        }
-
-        // Main integrity check — runs every 10 seconds
-        setInterval(function() {
-            if (integrityReported || !examStarted || window.isSubmitting) return;
-            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
-            var now = Date.now();
-
-            // ── Layer 1: Window Dimension Integrity ──
-            if (document.fullscreenElement && expectedScreenW > 0) {
-                var wDiff = Math.abs(window.innerWidth - expectedScreenW);
-                var hDiff = Math.abs(window.innerHeight - expectedScreenH);
-                if (wDiff > 100 || hDiff > 100) {
-                    reportModifiedBrowser('dimension_mismatch:' + window.innerWidth + 'x' + window.innerHeight + '_vs_' + expectedScreenW + 'x' + expectedScreenH);
-                    return;
-                }
-            }
-
-            // ── Layer 2: Event Suppression Cross-Check ──
-            if (!document.hasFocus() && (now - eventLog.blur > 15000)) {
-                reportModifiedBrowser('focus_loss_no_blur_event');
-                return;
-            }
-            if (document.visibilityState === 'hidden' && (now - eventLog.visibilitychange > 15000)) {
-                reportModifiedBrowser('hidden_no_visibility_event');
-                return;
-            }
-            if (expectedScreenW > 0 && !document.fullscreenElement && (now - eventLog.fullscreenchange > 15000)) {
-                reportModifiedBrowser('fullscreen_exit_no_event');
-                return;
-            }
-
-            // ── Layer 3: rAF Timing Analysis ──
-            if (rafTimestamps.length >= 10) {
-                var sum = 0;
-                for (var i = 0; i < rafTimestamps.length; i++) sum += rafTimestamps[i];
-                var avgDelta = sum / rafTimestamps.length;
-                if (avgDelta > 200) {
-                    slowRafCount++;
-                    if (slowRafCount >= 3) {
-                        reportModifiedBrowser('raf_timing_anomaly:avg_' + Math.round(avgDelta) + 'ms');
-                        return;
-                    }
-                } else {
-                    slowRafCount = 0;
-                }
-            }
-        }, 10000);
-    })();
-
-    // ═══ BOOT ═══
-    document.addEventListener('DOMContentLoaded', function() {
-        initExam();
-
-        const lightbox = document.getElementById('imageLightbox');
-        const lightboxImg = document.getElementById('imageLightboxImg');
-        
-        const qContainer = document.querySelector('.question-container');
-        if (qContainer) {
-            qContainer.addEventListener('click', function(e) {
-                if (e.target.tagName === 'IMG') {
-                    lightboxImg.src = e.target.src;
-                    lightbox.classList.add('active');
+                    q.matchingOptions = rights.sort(function () { return 0.5 - Math.random(); });
                 }
             });
-        }
-        
-        lightbox.addEventListener('click', function(e) {
-            if (e.target !== lightboxImg) {
-                lightbox.classList.remove('active');
-                lightboxImg.src = '';
+
+            state.questions = mergedQuestions;
+            state.answers = mergedAnswers;
+
+            var savedIdx = localStorage.getItem('current_question_index_' + state.attemptId);
+            if (savedIdx !== null) {
+                var parsed = parseInt(savedIdx, 10);
+                if (!isNaN(parsed) && parsed >= 0 && parsed < mergedQuestions.length) state.idx = parsed;
             }
-        });
-    });
+
+            state.endTimeMs = (data.test && data.test.begin_time_ms) || Date.now();
+            state.timeOffset = ((data.test && data.test.server_now_ms) || Date.now()) - Date.now();
+            if (EXAM_CFG.durationMinutes > 0) {
+                state.endTimeMs += EXAM_CFG.durationMinutes * 60000;
+            } else {
+                state.endTimeMs = 0;
+            }
+
+            document.getElementById('examContent').style.display = 'none';
+            var loading = document.getElementById('loadingScreen');
+            if (loading) loading.style.display = 'none';
+
+            renderShell();
+            renderQuestion();
+            startHeartbeat();
+
+            if (state.endTimeMs > 0) {
+                timerInterval = setInterval(tick, 1000);
+                tick();
+            }
+            setSaveStatus('Mode ringan — ' + mergedQuestions.length + ' soal dimuat — jawaban tersimpan otomatis', 'info');
+        }
+
+        function renderShell() {
+            root = document.createElement('div');
+            root.id = 'fallbackRoot';
+            root.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#f1f4f9;overflow:auto;font-family:system-ui,-apple-system,sans-serif;';
+            root.innerHTML =
+                '<div class="fb-header" style="position:sticky;top:0;background:#fff;border-bottom:1px solid #dee2e6;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
+                    '<strong id="fbTestName" style="font-size:15px;color:#1f2937;"></strong>' +
+                    '<span id="fbTimer" style="font-size:15px;font-weight:700;color:#dc3545;font-variant-numeric:tabular-nums;"></span>' +
+                    '<span id="fbSaveStatus" style="font-size:13px;color:#6c757d;"></span>' +
+                '</div>' +
+                '<div class="fb-body" style="max-width:860px;margin:16px auto;padding:0 16px 120px;">' +
+                    '<div class="fb-card" style="background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(0,0,0,.07);margin-bottom:14px;border:2px solid transparent;" id="fbCard">' +
+                        '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #f1f3f5;">' +
+                            '<span style="font-size:13px;font-weight:600;color:#495057;">Soal <span id="fbNo"></span> dari <span id="fbTotal"></span></span>' +
+                            '<button id="fbFlag" type="button" style="border:none;background:none;font-size:13px;color:#6c757d;padding:4px 8px;border-radius:6px;">⚑ Tandai</button>' +
+                        '</div>' +
+                        '<div style="padding:18px;" id="fbBody"></div>' +
+                    '</div>' +
+                    '<div id="fbGrid" style="display:flex;flex-wrap:wrap;gap:6px;"></div>' +
+                '</div>' +
+                '<div class="fb-nav" style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #dee2e6;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;z-index:5;">' +
+                    '<button id="fbPrev" type="button" style="padding:9px 18px;border-radius:10px;border:1px solid #dee2e6;background:#fff;color:#374151;font-weight:600;">← Sebelumnya</button>' +
+                    '<button id="fbNext" type="button" style="padding:9px 18px;border-radius:10px;border:none;background:#4f46e5;color:#fff;font-weight:600;">Selanjutnya →</button>' +
+                '</div>';
+            document.body.appendChild(root);
+            root.querySelector('#fbTestName').textContent = EXAM_CFG.testName || 'Ujian';
+            root.querySelector('#fbTotal').textContent = state.questions.length;
+            root.querySelector('#fbPrev').addEventListener('click', function () { goTo(state.idx - 1); });
+            root.querySelector('#fbNext').addEventListener('click', onNext);
+            root.querySelector('#fbFlag').addEventListener('click', toggleFlag);
+            root.addEventListener('change', onRootChange);
+            root.addEventListener('input', onRootInput);
+            saveStatusEl = root.querySelector('#fbSaveStatus');
+        }
+
+        function currentQ() { return state.questions[state.idx]; }
+
+        function escapeHtml(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        function renderQuestion() {
+            var q = currentQ();
+            if (!q) return;
+            try {
+                renderQuestionInner(q);
+            } catch (e) {
+                var fbBody = root.querySelector('#fbBody');
+                if (fbBody) {
+                    fbBody.innerHTML = '<div style="color:#dc3545;font-size:14px;">Gagal merender soal: ' +
+                        escapeHtml(String((e && e.message) || e)) + '</div>';
+                }
+                setSaveStatus('Gagal merender soal — muat ulang halaman', 'err');
+            }
+        }
+
+        function renderQuestionInner(q) {
+            var card = root.querySelector('#fbCard');
+            card.style.borderColor = flagged[q.question_id] ? '#e11d48' : 'transparent';
+            root.querySelector('#fbFlag').textContent = flagged[q.question_id] ? '⚑ Tandai (aktif)' : '⚑ Tandai';
+            root.querySelector('#fbNo').textContent = state.idx + 1;
+            root.querySelector('#fbPrev').style.visibility = state.idx === 0 ? 'hidden' : 'visible';
+            root.querySelector('#fbNext').innerHTML = (state.idx === state.questions.length - 1)
+                ? '<span>Selesai</span> ✓' : 'Selanjutnya →';
+
+            var html = '<div style="font-size:15.5px;line-height:1.65;color:#111827;min-height:60px;">' + q.question_text + '</div>';
+            var ansList = state.answers[q.question_id] || [];
+
+            if (q.question_type == 3) {
+                var val = escapeHtml(q.answer_text || '');
+                html += '<textarea data-qid="' + q.question_id + '" id="fbEssay" rows="8" style="width:100%;margin-top:16px;border:1px solid #d1d5db;border-radius:10px;padding:12px;font-size:14.5px;line-height:1.6;">' + val + '</textarea>';
+            } else if (q.question_type == 4 || q.question_type == 5) {
+                html += '<div style="margin-top:16px;">';
+                (q.matchingPairs || []).forEach(function (pair, i) {
+                    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #f1f3f5;">';
+                    html += '<div style="flex:1;font-size:14.5px;color:#111827;">' + pair.left + '</div>';
+                    if (q.question_type == 5) {
+                        html += '<div style="display:flex;gap:16px;">' +
+                            '<label style="font-size:14px;"><input type="radio" name="fb_tf_' + i + '" value="Benar" data-qid="' + q.question_id + '" data-match="' + i + '"' + (pair.selected === 'Benar' ? ' checked' : '') + '> Benar</label>' +
+                            '<label style="font-size:14px;"><input type="radio" name="fb_tf_' + i + '" value="Salah" data-qid="' + q.question_id + '" data-match="' + i + '"' + (pair.selected === 'Salah' ? ' checked' : '') + '> Salah</label>' +
+                        '</div>';
+                    } else {
+                        html += '<select data-qid="' + q.question_id + '" data-match="' + i + '" style="flex:1;max-width:280px;border:1px solid #d1d5db;border-radius:8px;padding:8px;font-size:14px;">' +
+                            '<option value="">-- Pilih Jawaban --</option>';
+                        (q.matchingOptions || []).forEach(function (opt) {
+                            html += '<option value="' + escapeHtml(opt) + '"' + (pair.selected === opt ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+                        });
+                        html += '</select>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+            } else {
+                html += '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">';
+                ansList.forEach(function (a) {
+                    var multi = (q.question_type == 2);
+                    var checked = a.is_selected == 1;
+                    var input = multi
+                        ? '<input type="checkbox" data-qid="' + q.question_id + '" data-aid="' + a.answer_id + '"' + (checked ? ' checked' : '') + ' style="width:18px;height:18px;flex-shrink:0;">'
+                        : '<input type="radio" name="fb_opt_' + q.question_id + '" data-qid="' + q.question_id + '" data-aid="' + a.answer_id + '"' + (checked ? ' checked' : '') + ' style="width:18px;height:18px;flex-shrink:0;">';
+                    html += '<label style="display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#fafbfc;font-size:14.5px;line-height:1.55;cursor:pointer;">' +
+                        input + '<span>' + a.answer_text + '</span></label>';
+                });
+                html += '</div>';
+            }
+
+            root.querySelector('#fbBody').innerHTML = html;
+            renderGrid();
+
+            var essay = document.getElementById('fbEssay');
+            if (essay) essay.value = q.answer_text || '';
+
+            if (window.ensureKatex) {
+                window.ensureKatex(function () {
+                    var body = root.querySelector('#fbBody');
+                    if (!body) return;
+                    body.querySelectorAll('.ql-formula').forEach(function (el) {
+                        var math = el.getAttribute('data-value');
+                        if (math && window.katex) {
+                            try { katex.render(math, el, { throwOnError: false }); } catch (e) {}
+                        }
+                    });
+                    if (window.renderMathInElement) {
+                        renderMathInElement(body, {
+                            delimiters: [
+                                { left: '$$', right: '$$', display: true },
+                                { left: '\\(', right: '\\)', display: false },
+                                { left: '\\[', right: '\\]', display: true }
+                            ],
+                            throwOnError: false
+                        });
+                    }
+                });
+            }
+        }
+
+        function renderGrid() {
+            var grid = root.querySelector('#fbGrid');
+            var html = '';
+            state.questions.forEach(function (q, i) {
+                var answered = isAnswered(q);
+                var cls = answered ? '#10b981' : '#d1d5db';
+                var txt = answered ? '#fff' : '#4b5563';
+                if (i === state.idx) cls = '#4f46e5';
+                html += '<button type="button" data-goto="' + i + '" style="width:42px;height:42px;border-radius:10px;border:none;background:' + cls + ';color:' + txt + ';font-weight:700;font-size:14px;' + (flagged[q.question_id] ? 'outline:3px solid #e11d48;' : '') + '">' + (i + 1) + '</button>';
+            });
+            grid.innerHTML = html;
+            grid.querySelectorAll('[data-goto]').forEach(function (btn) {
+                btn.addEventListener('click', function () { goTo(parseInt(btn.getAttribute('data-goto'), 10)); });
+            });
+        }
+
+        function isAnswered(q) {
+            if (q.question_type == 3) return !!(q.answer_text && q.answer_text.trim() !== '');
+            if (q.question_type == 4 || q.question_type == 5) {
+                return (q.matchingPairs || []).length > 0 && q.matchingPairs.every(function (p) { return p.selected !== ''; });
+            }
+            return (state.answers[q.question_id] || []).some(function (a) { return a.is_selected == 1; });
+        }
+
+        function goTo(idx) {
+            if (idx < 0 || idx >= state.questions.length) return;
+            state.idx = idx;
+            localStorage.setItem('current_question_index_' + state.attemptId, idx);
+            renderQuestion();
+        }
+
+        function toggleFlag() {
+            var q = currentQ();
+            if (!q) return;
+            flagged[q.question_id] = !flagged[q.question_id];
+            renderQuestion();
+        }
+
+        function onRootChange(e) {
+            var t = e.target;
+            var qid = t.getAttribute('data-qid');
+            if (!qid) return;
+            var q = state.questions.find(function (x) { return String(x.question_id) === qid; });
+            if (!q) return;
+
+            if (q.question_type == 2) {
+                var a = state.answers[qid].find(function (x) { return String(x.answer_id) === t.getAttribute('data-aid'); });
+                if (a) a.is_selected = t.checked ? 1 : 0;
+            } else if (q.question_type == 4 || q.question_type == 5) {
+                var i = parseInt(t.getAttribute('data-match'), 10);
+                if (q.matchingPairs[i]) q.matchingPairs[i].selected = t.value;
+            } else {
+                state.answers[qid].forEach(function (x) {
+                    x.is_selected = (String(x.answer_id) === t.getAttribute('data-aid') && t.checked) ? 1 : 0;
+                });
+            }
+            renderGrid();
+            scheduleSave();
+        }
+
+        function onRootInput(e) {
+            var t = e.target;
+            if (t.id !== 'fbEssay') return;
+            var q = currentQ();
+            if (q) {
+                q.answer_text = t.value;
+                renderGrid();
+                scheduleSave();
+            }
+        }
+
+        function scheduleSave() {
+            if (!engaged || finishing) return;
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(doSave, 800);
+            setSaveStatus('Menyimpan…', '');
+        }
+
+        function doSave() {
+            saveTimer = null;
+            if (!engaged || finishing) return;
+            var q = currentQ();
+            if (!q) return;
+
+            var payload = { attempt_id: state.attemptId, question_id: q.question_id, question_type: q.question_type, generated_at: GENERATED_AT };
+            if (q.question_type == 3) {
+                payload.answer_text = q.answer_text || '';
+            } else if (q.question_type == 4 || q.question_type == 5) {
+                var matches = {};
+                q.matchingPairs.forEach(function (p) { matches[p.left] = p.selected; });
+                payload.matching_answers_json = JSON.stringify(matches);
+            } else {
+                payload.selected_answers = (state.answers[q.question_id] || [])
+                    .filter(function (a) { return a.is_selected == 1; })
+                    .map(function (a) { return a.answer_id; });
+            }
+
+            savePending = true;
+            return postJson('/api/exam/autosave', payload)
+                .then(function (res) {
+                    if (res.status === 'kicked') {
+                        window.location.href = API_BASE + '/login';
+                        return;
+                    }
+                    lastSaveAt = Date.now();
+                    saveFailed = false;
+                    setSaveStatus('Tersimpan ' + new Date().toLocaleTimeString(), 'ok');
+                })
+                .catch(function (err) {
+                    if (String(err && err.message).indexOf('session-expired') !== -1) return;
+                    saveFailed = true;
+                    setSaveStatus('Gagal menyimpan — mencoba ulang…', 'err');
+                    setTimeout(function () {
+                        if (engaged && !finishing && saveFailed) doSave();
+                    }, 2500);
+                })
+                .finally(function () { savePending = false; });
+        }
+
+        function startHeartbeat() {
+            setInterval(function () {
+                if (!engaged || !state.attemptId) return;
+                postJson('/api/exam/auto-sync', { attempt_id: state.attemptId })
+                    .then(function (res) {
+                        if (res.exam_mode !== undefined) {
+                            if (res.exam_mode !== 'static' || !res.static_page_path) {
+                                window.location.href = API_BASE + '/student/exam/take/' + TEST_ID;
+                            }
+                        }
+                    })
+                    .catch(function () {});
+            }, 60000);
+        }
+
+        function tick() {
+            var now = Date.now() + state.timeOffset;
+            var distance = state.endTimeMs - now;
+            if (distance <= 0) {
+                clearInterval(timerInterval);
+                root.querySelector('#fbTimer').textContent = '00:00:00';
+                finishExam(true);
+                return;
+            }
+            var h = Math.floor(distance / 3600000);
+            var m = Math.floor((distance % 3600000) / 60000);
+            var s = Math.floor((distance % 60000) / 1000);
+            root.querySelector('#fbTimer').textContent =
+                (h < 10 ? '0' + h : h) + ':' + (m < 10 ? '0' + m : m) + ':' + (s < 10 ? '0' + s : s);
+            if (distance <= 300000 && !warningShown) {
+                warningShown = true;
+                setSaveStatus('⚠ Waktu tersisa 5 menit!', 'warn');
+            }
+        }
+
+        function onNext() {
+            if (state.idx < state.questions.length - 1) {
+                goTo(state.idx + 1);
+            } else {
+                finishExam(false);
+            }
+        }
+
+        function finishExam(auto) {
+            if (finishing) return;
+            finishing = true;
+
+            if (!auto) {
+                var unanswered = state.questions.filter(function (q) { return !isAnswered(q); }).length;
+                if (EXAM_CFG.allowNoanswer === 0 && unanswered > 0) {
+                    alert('Masih ada ' + unanswered + ' soal yang belum dijawab.');
+                    finishing = false;
+                    return;
+                }
+                if (!confirm('Apakah Anda yakin ingin mengakhiri ujian?')) {
+                    finishing = false;
+                    return;
+                }
+            }
+
+            postJson('/api/exam/check-score', { attempt_id: state.attemptId })
+                .then(function (res) {
+                    var proceed = true;
+                    if (res.status === 'success' && res.score < PASSING_SCORE) {
+                        proceed = confirm('Nilai Anda ' + res.score + ' (di bawah nilai minimal ' + PASSING_SCORE + '). Apakah tetap ingin mengakhiri ujian?');
+                    }
+                    if (!proceed) {
+                        finishing = false;
+                        return;
+                    }
+                    return postJson('/api/exam/finish', { test_id: TEST_ID, attempt_id: state.attemptId })
+                        .then(function (res2) {
+                            if (window.CommsBridge) window.CommsBridge.requestExit('');
+                            if (res2.redirect) window.location.href = res2.redirect;
+                            else window.location.href = API_BASE + '/student/results/view/' + TEST_ID;
+                        });
+                })
+                .catch(function () {
+                    finishing = false;
+                    alert('Gagal menyelesaikan ujian. Periksa koneksi dan coba lagi.');
+                });
+        }
+
+        function setSaveStatus(msg, kind) {
+            if (!saveStatusEl) return;
+            saveStatusEl.textContent = msg;
+            if (kind === 'ok') saveStatusEl.style.color = '#10b981';
+            else if (kind === 'err') saveStatusEl.style.color = '#dc3545';
+            else if (kind === 'warn') saveStatusEl.style.color = '#b45309';
+            else saveStatusEl.style.color = '#6c757d';
+        }
+
+        function assetsReady() {
+            return !!(window.jQuery && window.Alpine && window.__appReady);
+        }
+
+        function tryEngage() {
+            if (engaged || !window.__boot) return;
+            if (window.__boot.state === 'ok' && window.__boot.data && window.__boot.data.status === 'success') {
+                engage(window.__boot.data);
+            } else if (window.__boot.state === 'error' && !window.jQuery) {
+                // Boot gagal DAN jQuery tidak ada (tidak bisa tampilkan Swal)
+                document.getElementById('examContent').style.display = 'none';
+                var loading = document.getElementById('loadingScreen');
+                if (loading) loading.style.display = 'none';
+                var el = document.createElement('div');
+                el.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#fff;display:flex;align-items:center;justify-content:center;font-family:system-ui;padding:24px;text-align:center;';
+                el.innerHTML = '<div><h4 style="color:#dc3545;margin-bottom:12px;">Tidak dapat terhubung ke server</h4>' +
+                    '<p style="color:#6b7280;font-size:14px;">Periksa koneksi Anda, lalu muat ulang halaman.</p>' +
+                    '<button onclick="location.reload()" style="margin-top:8px;padding:9px 20px;border:none;border-radius:10px;background:#4f46e5;color:#fff;font-weight:600;">Muat Ulang</button></div>';
+                document.body.appendChild(el);
+                if (watchTimer) clearInterval(watchTimer);
+            }
+        }
+
+        window.__checkFallback = function () {
+            if (engaged) return;
+            tryEngage();
+        };
+
+        // Pemburu: tunggu boot sukses; beri kesempatan aset 12 detik, atau
+        // segera bergabung jika salah satu aset dinyatakan GAGAL via onerror.
+        (function poll() {
+            if (window.__boot && window.__boot.state !== 'pending') {
+                var t0 = (window.__boot._t || (window.__boot._t = Date.now()));
+                if (window.__assetsFailed || (window.__boot.state === 'ok' && Date.now() - t0 > ENGAGE_AFTER_MS && !assetsReady())) {
+                    tryEngage();
+                    return;
+                }
+                if (assetsReady()) return; // UI penuh berfungsi — tidak perlu fallback
+            }
+            watchTimer = setTimeout(poll, 500);
+        })();
+    })();
     </script>
 </body>
 </html>

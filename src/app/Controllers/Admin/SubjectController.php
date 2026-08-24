@@ -53,9 +53,21 @@ class SubjectController extends BaseController
         // Check unique constraint (module_id + name)
         $moduleId = $this->request->getPost('module_id');
         $name     = $this->request->getPost('name');
-        
-        $exists = $this->subjectModel->where('module_id', $moduleId)->where('name', $name)->first();
+        $exists = $this->subjectModel->withDeleted()->where('module_id', $moduleId)->where('name', $name)->first();
         if ($exists) {
+            if ($exists->deleted_at !== null) {
+                // Restore the soft-deleted subject
+                $data = [
+                    'description' => $this->request->getPost('description'),
+                    'is_enabled'  => $this->request->getPost('is_enabled') ? 1 : 0,
+                    'user_id'     => session('user_id'),
+                ];
+                if ($this->subjectModel->reuseDeletedSubject($exists->id, $data)) {
+                    $this->activityLog->log('update', session('user_id'), 'subject', $exists->id, "Me-restore subjek: {$name}");
+                    return redirect()->to('/admin/subjects')->with('success', 'Subjek berhasil direstore dan ditambahkan.');
+                }
+                return redirect()->back()->withInput()->with('error', 'Gagal merestore subjek.');
+            }
             return redirect()->back()->withInput()->with('error', 'Subjek dengan nama yang sama sudah ada di modul ini.');
         }
 
@@ -103,11 +115,15 @@ class SubjectController extends BaseController
         $moduleId = $this->request->getPost('module_id');
         $name     = $this->request->getPost('name');
         
-        $exists = $this->subjectModel->where('module_id', $moduleId)
+        $exists = $this->subjectModel->withDeleted()
+                                     ->where('module_id', $moduleId)
                                      ->where('name', $name)
                                      ->where('id !=', $id)
                                      ->first();
         if ($exists) {
+            if ($exists->deleted_at !== null) {
+                return redirect()->back()->withInput()->with('error', 'Subjek dengan nama yang sama sudah pernah dibuat dan dihapus. Hubungi admin atau buat dengan nama lain untuk menghindari konflik database.');
+            }
             return redirect()->back()->withInput()->with('error', 'Subjek dengan nama yang sama sudah ada di modul ini.');
         }
 

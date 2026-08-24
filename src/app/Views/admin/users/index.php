@@ -3,13 +3,33 @@
 <?= $this->section('page_title') ?>Manajemen Pengguna<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="card mb-4">
+<!-- Page Head -->
+<div class="page-head rise">
+    <div>
+        <div class="eyebrow">Manajemen Pengguna</div>
+        <h1>Pengguna</h1>
+        <p class="sub">Kelola akun admin, guru, dan siswa — filter, impor massal, atau cetak kartu ujian.</p>
+    </div>
+    <div class="actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
+            <i class="bi bi-file-earmark-excel me-1"></i> Import
+        </button>
+        <a href="<?= base_url('/admin/users/print-cards') ?>" class="btn btn-ghost btn-sm">
+            <i class="bi bi-printer me-1"></i> Cetak Kartu
+        </a>
+        <a href="<?= base_url('/admin/users/create') ?>" class="btn btn-accent btn-sm">
+            <i class="bi bi-person-plus me-1"></i> Tambah Pengguna
+        </a>
+    </div>
+</div>
+
+<div class="card mb-4 rise" style="--d:60ms">
     <div class="card-body py-3">
         <form action="<?= base_url('/admin/users') ?>" method="GET" class="row g-3 align-items-center">
             <div class="col-md-5">
                 <div class="input-group">
-                    <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
-                    <input type="text" class="form-control border-start-0 ps-0" name="search" value="<?= esc($search ?? '') ?>" placeholder="Cari username, nama, email...">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" name="search" value="<?= esc($search ?? '') ?>" placeholder="Cari username, nama, email..." style="border-left: 0;">
                 </div>
             </div>
             <div class="col-md-3">
@@ -21,9 +41,9 @@
                 </select>
             </div>
             <div class="col-md-4 d-flex gap-2">
-                <button type="submit" class="btn btn-primary px-3">Filter</button>
+                <button type="submit" class="btn btn-accent btn-sm px-3"><i class="bi bi-funnel me-1"></i> Filter</button>
                 <?php if (!empty($search) || !empty($role)): ?>
-                    <a href="<?= base_url('/admin/users') ?>" class="btn btn-light px-3">Reset</a>
+                    <a href="<?= base_url('/admin/users') ?>" class="btn btn-ghost btn-sm px-3">Reset</a>
                 <?php endif; ?>
             </div>
         </form>
@@ -32,21 +52,15 @@
 
 <form action="<?= base_url('/admin/users/bulk-delete') ?>" method="POST" id="bulkDeleteForm">
     <?= csrf_field() ?>
-    <div class="card">
-        <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-            <h6 class="m-0 fw-bold"><i class="bi bi-people me-1"></i> Daftar Pengguna</h6>
+    <div class="card rise" style="--d:120ms">
+        <div class="card-body py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <h6 class="m-0 fw-bold" style="letter-spacing:-0.01em;">Daftar Pengguna</h6>
+                <span class="chip ghost num"><?= $pager ? $pager->getTotal() : count($users) ?></span>
+            </div>
             <div class="d-flex gap-2">
-                <button type="button" class="btn btn-sm btn-danger d-none" id="btnBulkDelete" onclick="confirmBulkDelete()">
+                <button type="button" class="btn btn-sm btn-danger-soft d-none" id="btnBulkDelete" onclick="confirmBulkDelete()">
                     <i class="bi bi-trash me-1"></i> Hapus Terpilih (<span id="bulkCount">0</span>)
-                </button>
-                <a href="<?= base_url('/admin/users/create') ?>" class="btn btn-primary btn-sm rounded-pill">
-                    <i class="bi bi-person-plus me-1"></i> Tambah Pengguna
-                </a>
-                <a href="<?= base_url('/admin/users/print-cards') ?>" class="btn btn-outline-primary btn-sm rounded-pill">
-                    <i class="bi bi-printer me-1"></i> Cetak Kartu
-                </a>
-                <button type="button" class="btn btn-outline-success btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#importModal">
-                    <i class="bi bi-file-earmark-excel me-1"></i> Import
                 </button>
             </div>
         </div>
@@ -71,9 +85,12 @@
                 <tbody>
                     <?php if (empty($users)): ?>
                         <tr>
-                            <td colspan="5" class="text-center py-5 text-muted">
-                                <i class="bi bi-person-x fs-2 d-block mb-2 text-light"></i>
-                                Tidak ada pengguna yang ditemukan.
+                            <td colspan="6">
+                                <div class="empty">
+                                    <div class="empty-icon"><i class="bi bi-person-x"></i></div>
+                                    <h6>Tidak ada pengguna ditemukan</h6>
+                                    <p>Coba ubah kata kunci pencarian atau filter role, atau buat akun pengguna baru.</p>
+                                </div>
                             </td>
                         </tr>
                     <?php else: ?>
@@ -88,27 +105,27 @@
                                 </td>
                                 <td class="ps-2">
                                     <div class="d-flex align-items-center gap-3">
-                                        <div class="rounded-circle bg-light d-flex align-items-center justify-content-center fw-bold text-secondary" style="width: 40px; height: 40px;">
+                                        <div class="avatar-tile ink">
                                             <?= strtoupper(substr($user->firstname ?? $user->username, 0, 1)) ?>
                                         </div>
                                         <div>
-                                            <div class="fw-semibold text-dark">
+                                            <div class="fw-semibold" style="color: var(--text-primary);">
                                                 <?= esc($user->firstname . ' ' . $user->lastname) ?>
-                                                <span class="text-muted fw-normal fs-7">(<?= esc($user->username) ?>)</span>
+                                                <span class="mono" style="font-size:0.72rem; color: var(--text-tertiary); font-weight:400;">(@<?= esc($user->username) ?>)</span>
                                             </div>
-                                            <div class="text-muted small"><?= esc($user->email ?? '-') ?></div>
+                                            <div class="small" style="color: var(--text-secondary);"><?= esc($user->email ?? '-') ?></div>
                                         </div>
                                     </div>
                                 </td>
                                 <td>
                                     <?php
-                                        $roleBadge = match($user->role) {
-                                            'admin' => 'bg-danger text-white',
-                                            'guru'  => 'bg-primary text-white',
-                                            default => 'bg-light text-dark border',
+                                        $roleClass = match($user->role) {
+                                            'admin' => 'chip danger',
+                                            'guru'  => 'chip info',
+                                            default => 'chip ghost',
                                         };
                                     ?>
-                                    <span class="badge rounded-pill <?= $roleBadge ?> px-3">
+                                    <span class="<?= $roleClass ?>">
                                         <?= ucfirst(esc($user->role)) ?>
                                     </span>
                                 </td>
@@ -116,29 +133,29 @@
                                     <?php if (!empty($user->groups)): ?>
                                         <div class="d-flex flex-wrap gap-1">
                                             <?php foreach (array_slice($user->groups, 0, 2) as $g): ?>
-                                                <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2" style="font-weight: 500;">
+                                                <span class="chip ghost" style="font-size:0.7rem; padding:0.22rem 0.6rem;">
                                                     <?= esc($g->name) ?>
                                                 </span>
                                             <?php endforeach; ?>
                                             <?php if (count($user->groups) > 2): ?>
-                                                <span class="badge bg-light text-muted border rounded-pill px-2">
+                                                <span class="chip ghost num" style="font-size:0.7rem; padding:0.22rem 0.6rem;">
                                                     +<?= count($user->groups) - 2 ?>
                                                 </span>
                                             <?php endif; ?>
                                         </div>
                                     <?php else: ?>
-                                        <span class="text-muted small">-</span>
+                                        <span class="row-meta">—</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ($user->is_locked): ?>
-                                        <span class="badge bg-warning-subtle text-warning rounded-pill px-2" title="Terkunci hingga <?= date('H:i', strtotime($user->locked_until)) ?>">
+                                        <span class="chip warn" title="Terkunci hingga <?= date('H:i', strtotime($user->locked_until)) ?>">
                                             <i class="bi bi-lock-fill"></i> Terkunci
                                         </span>
                                     <?php elseif ($user->is_active): ?>
-                                        <span class="badge bg-success-subtle text-success rounded-pill px-2">Aktif</span>
+                                        <span class="chip ok"><span class="dot breathe"></span> Aktif</span>
                                     <?php else: ?>
-                                        <span class="badge bg-danger-subtle text-danger rounded-pill px-2">Nonaktif</span>
+                                        <span class="chip danger"><i class="bi bi-slash-circle"></i> Nonaktif</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-end pe-4">
@@ -150,13 +167,13 @@
                                             </button>
                                         </form>
                                     <?php endif; ?>
-                                    
+
                                     <a href="<?= base_url('/admin/users/edit/' . $user->id) ?>" class="btn btn-sm btn-outline-primary" title="Edit">
                                         <i class="bi bi-pencil"></i>
                                     </a>
-                                    
+
                                     <?php if ($user->id != 1 && $user->id != session('user_id')): ?>
-                                    <button type="button" class="btn btn-sm btn-outline-danger" title="Hapus" 
+                                    <button type="button" class="btn btn-sm btn-outline-danger" title="Hapus"
                                             onclick="confirmDelete(<?= $user->id ?>, '<?= esc(addslashes($user->username)) ?>')">
                                         <i class="bi bi-trash"></i>
                                     </button>
@@ -170,7 +187,7 @@
         </div>
     </div>
     <?php if ($pager): ?>
-    <div class="card-footer bg-white py-3 border-top d-flex justify-content-end">
+    <div class="card-footer py-3 border-top d-flex justify-content-end">
         <?= $pager->links('default', 'bootstrap_pagination') ?>
     </div>
     <?php endif; ?>

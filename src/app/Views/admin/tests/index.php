@@ -3,19 +3,21 @@
 <?= $this->section('page_title') ?>Manajemen Ujian<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="card mb-4">
-    <div class="card-body py-3 d-flex justify-content-between align-items-center">
-        <h6 class="m-0 fw-bold text-secondary"><i class="bi bi-info-circle me-1"></i> Atur definisi ujian dan pengaturan pelaksanaannya.</h6>
-        <a href="<?= base_url('/admin/tests/create') ?>" class="btn btn-primary btn-sm rounded-pill px-3">
+<!-- Page Head -->
+<div class="page-head rise">
+    <div>
+        <div class="eyebrow">Manajemen Ujian</div>
+        <h1>Daftar Ujian</h1>
+        <p class="sub">Atur definisi ujian, jadwal pelaksanaan, durasi, dan mode pelaksanaan di satu tempat.</p>
+    </div>
+    <div class="actions">
+        <a href="<?= base_url('/admin/tests/create') ?>" class="btn btn-accent">
             <i class="bi bi-plus-circle me-1"></i> Buat Ujian Baru
         </a>
     </div>
 </div>
 
-<div class="card shadow-sm">
-    <div class="card-header bg-white border-bottom py-3">
-        <h6 class="m-0 fw-bold"><i class="bi bi-clipboard-check me-1"></i> Daftar Ujian</h6>
-    </div>
+<div class="card rise" style="--d:80ms">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
@@ -31,53 +33,60 @@
                 <tbody>
                     <?php if (empty($tests)): ?>
                         <tr>
-                            <td colspan="5" class="text-center py-5 text-muted">
-                                <i class="bi bi-calendar-x fs-2 d-block mb-2 text-light"></i>
-                                Belum ada ujian yang dibuat.
+                            <td colspan="5">
+                                <div class="empty">
+                                    <div class="empty-icon"><i class="bi bi-calendar-x"></i></div>
+                                    <h6>Belum ada ujian yang dibuat</h6>
+                                    <p>Buat ujian pertama Anda untuk mulai menjadwalkan pelaksanaan dan mengundang peserta.</p>
+                                </div>
                             </td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($tests as $t): ?>
                             <tr>
                                 <td class="ps-4">
-                                    <div class="fw-bold text-dark"><?= esc($t->name) ?></div>
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="avatar-tile ink"><i class="bi bi-file-earmark-text"></i></div>
+                                        <div>
+                                            <div class="fw-bold" style="color: var(--text-primary);"><?= esc($t->name) ?></div>
+                                            <?php if ($t->exam_mode == 'static'): ?>
+                                                <span class="chip info mt-1"><i class="bi bi-lightning-charge-fill"></i> Static Mode</span>
+                                            <?php else: ?>
+                                                <span class="chip ghost mt-1">Normal Mode</span>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
                                 </td>
                                 <td>
                                     <?php if ($t->begin_time || $t->end_time): ?>
                                         <div class="small">
-                                            <span class="text-success"><i class="bi bi-play-circle"></i> <?= $t->begin_time ? date('d/m/Y H:i', strtotime($t->begin_time)) : 'Kapan saja' ?></span><br>
-                                            <span class="text-danger"><i class="bi bi-stop-circle"></i> <?= $t->end_time ? date('d/m/Y H:i', strtotime($t->end_time)) : 'Tanpa batas' ?></span>
+                                            <span class="text-success"><i class="bi bi-play-circle me-1"></i><?= $t->begin_time ? date('d/m/Y H:i', strtotime($t->begin_time)) : 'Kapan saja' ?></span><br>
+                                            <span class="text-danger"><i class="bi bi-stop-circle me-1"></i><?= $t->end_time ? date('d/m/Y H:i', strtotime($t->end_time)) : 'Tanpa batas' ?></span>
                                         </div>
                                     <?php else: ?>
-                                        <span class="badge bg-light text-dark border">Kapan saja</span>
+                                        <span class="chip ghost">Kapan saja</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ($t->duration_minutes > 0): ?>
-                                        <span class="badge bg-info text-white"><?= $t->duration_minutes ?> Menit</span>
+                                        <span class="chip info"><i class="bi bi-hourglass-split"></i> <?= $t->duration_minutes ?> Menit</span>
                                     <?php else: ?>
-                                        <span class="badge bg-secondary">Tanpa Batas</span>
+                                        <span class="chip ghost">Tanpa Batas</span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
                                     <?php if ($t->is_enabled): ?>
-                                        <span class="badge bg-success-subtle text-success rounded-pill px-2">Aktif</span>
+                                        <span class="chip ok"><span class="dot breathe"></span> Aktif</span>
                                     <?php else: ?>
-                                        <span class="badge bg-danger-subtle text-danger rounded-pill px-2">Nonaktif</span>
-                                    <?php endif; ?>
-                                    <br>
-                                    <?php if ($t->exam_mode == 'static'): ?>
-                                        <span class="badge bg-primary mt-1" title="Digenerate: <?= $t->static_generated_at ?>"><i class="bi bi-lightning-charge-fill"></i> Static Mode</span>
-                                    <?php else: ?>
-                                        <span class="badge bg-secondary mt-1">Normal Mode</span>
+                                        <span class="chip danger"><i class="bi bi-slash-circle"></i> Nonaktif</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-end pe-4">
                                     <div class="btn-group">
-                                        <a href="<?= base_url('/admin/tests/config/' . $t->id) ?>" class="btn btn-sm btn-outline-info" title="Konfigurasi Soal & Peserta">
-                                            <i class="bi bi-gear"></i> Konfig
+                                        <a href="<?= base_url('/admin/tests/config/' . $t->id) ?>" class="btn btn-sm btn-ghost" title="Konfigurasi Soal & Peserta">
+                                            <i class="bi bi-gear me-1"></i> Konfig
                                         </a>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle-split"
+                                        <button type="button" class="btn btn-sm btn-ghost dropdown-toggle-split"
                                             data-bs-toggle="offcanvas" data-bs-target="#actionSheet"
                                             data-id="<?= $t->id ?>"
                                             data-name="<?= esc($t->name) ?>"
@@ -96,7 +105,7 @@
         </div>
     </div>
     <?php if ($pager): ?>
-    <div class="card-footer bg-white py-3 border-top d-flex justify-content-end">
+    <div class="card-footer py-3 border-top d-flex justify-content-end">
         <?= $pager->links('default', 'bootstrap_pagination') ?>
     </div>
     <?php endif; ?>

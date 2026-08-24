@@ -3,13 +3,21 @@
 <?= $this->section('page_title') ?>Manajemen Modul<?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
-<div class="card">
-    <div class="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-        <h6 class="m-0 fw-bold"><i class="bi bi-folder2 me-1"></i> Daftar Modul</h6>
-        <a href="<?= base_url('/admin/modules/create') ?>" class="btn btn-primary btn-sm rounded-pill">
+<!-- Page Head -->
+<div class="page-head rise">
+    <div>
+        <div class="eyebrow">Struktur Kurikulum</div>
+        <h1>Manajemen Modul</h1>
+        <p class="sub">Kelompokkan subjek menjadi modul untuk mempermudah pengorganisasian bank soal.</p>
+    </div>
+    <div class="actions">
+        <a href="<?= base_url('/admin/modules/create') ?>" class="btn btn-accent btn-sm">
             <i class="bi bi-plus-circle me-1"></i> Tambah Modul
         </a>
     </div>
+</div>
+
+<div class="card rise" style="--d:80ms">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
@@ -25,28 +33,32 @@
                 <tbody>
                     <?php if (empty($modules)): ?>
                         <tr>
-                            <td colspan="5" class="text-center py-4 text-muted">Belum ada modul yang ditambahkan.</td>
+                            <td colspan="5">
+                                <div class="empty">
+                                    <div class="empty-icon"><i class="bi bi-folder2"></i></div>
+                                    <h6>Belum ada modul</h6>
+                                    <p>Buat modul pertama untuk mulai mengelompokkan subjek dan soal.</p>
+                                </div>
+                            </td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($modules as $module): ?>
                             <tr>
-                                <td class="ps-4 fw-medium text-dark">
-                                    <i class="bi bi-folder text-warning me-2 fs-5"></i>
+                                <td class="ps-4 fw-medium">
+                                    <i class="bi bi-folder me-2 fs-5" style="color: var(--warn);"></i>
                                     <?= esc($module->name) ?>
                                 </td>
                                 <td>
                                     <a href="<?= base_url('/admin/subjects?module_id=' . $module->id) ?>" class="text-decoration-none">
-                                        <span class="badge bg-secondary-subtle text-secondary rounded-pill px-3">
-                                            <?= $module->subject_count ?> Subjek
-                                        </span>
+                                        <span class="chip info num"><?= $module->subject_count ?> Subjek</span>
                                     </a>
                                 </td>
-                                <td class="text-muted small"><?= esc($module->author_name ?? 'System') ?></td>
+                                <td class="small" style="color: var(--text-secondary);"><?= esc($module->author_name ?? 'System') ?></td>
                                 <td>
                                     <?php if ($module->is_enabled): ?>
-                                        <span class="badge bg-success-subtle text-success rounded-pill px-2">Aktif</span>
+                                        <span class="chip ok"><span class="dot breathe"></span> Aktif</span>
                                     <?php else: ?>
-                                        <span class="badge bg-danger-subtle text-danger rounded-pill px-2">Nonaktif</span>
+                                        <span class="chip danger"><i class="bi bi-slash-circle"></i> Nonaktif</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-end pe-4">
@@ -68,7 +80,7 @@
         </div>
     </div>
     <?php if ($pager): ?>
-    <div class="card-footer bg-white py-3 border-top d-flex justify-content-end">
+    <div class="card-footer py-3 border-top d-flex justify-content-end">
         <?= $pager->links('default', 'bootstrap_pagination') ?>
     </div>
     <?php endif; ?>

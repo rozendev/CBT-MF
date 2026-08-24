@@ -1,0 +1,420 @@
+/* Static exam styling (sector 2 — persistent cache).
+ * Salah satu dari dua bagian; sisanya (root vars, body, loading
+ * screen) inline di HTML agar shell tetap tampil sebelum ini tiba.
+ * Jangan edit manual — hasil ekstraksi static_exam_template.php. */
+    /* Sidebar Layout */
+    .exam-layout {
+        display: flex;
+        min-height: 100vh;
+    }
+    .exam-main {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    /* Beautiful Desktop Drawer */
+    /* Laci desktop: SEMBUNYI di layar sempit. Sebelumnya wadah ini selalu
+       aktif -- pita selebar 40px setinggi layar penuh di tepi kanan dengan
+       z-index 1040, menutupi tepi kanan setiap halaman dan menelan sentuhan
+       di sana. Di HP navigasinya sudah lewat tombol ☰ di topbar. */
+    .desktop-drawer-wrapper {
+        display: none;
+        position: fixed;
+        right: 0;
+        top: 0;
+        height: 100vh;
+        width: 40px;
+        z-index: 1040;
+    }
+    @media (min-width: 992px) {
+        .desktop-drawer-wrapper { display: block; }
+    }
+    .desktop-drawer-trigger {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        background: var(--color-surface);
+        border: 1px solid rgba(0,0,0,0.08);
+        border-right: none;
+        border-radius: 16px 0 0 16px;
+        padding: 20px 8px;
+        box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    .desktop-drawer-wrapper:hover .desktop-drawer-trigger {
+        transform: translateY(-50%) translateX(100%);
+        opacity: 0;
+    }
+    .desktop-drawer {
+        position: absolute;
+        right: -360px;
+        top: 0;
+        width: 360px;
+        height: 100vh;
+        background: var(--color-surface);
+        box-shadow: -10px 0 30px rgba(0,0,0,0.1);
+        transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        display: flex;
+        flex-direction: column;
+        padding: 30px 24px;
+        overflow-y: auto;
+        border-left: 1px solid rgba(0,0,0,0.05);
+    }
+    .desktop-drawer-wrapper:hover .desktop-drawer {
+        right: 0;
+    }
+    .desktop-drawer-wrapper:hover {
+        width: 360px;
+    }
+    
+
+    .suspend-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: #000000;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: white; text-align: center;
+    }
+
+    /* Top Navigation */
+    /* Topbar + progress menempel sebagai satu blok, jadi tidak ada lagi
+       offset tebakan di antara keduanya. */
+    .exam-stickyhead {
+        position: sticky;
+        top: 0;
+        z-index: 1020;
+    }
+    .exam-topbar {
+        background: var(--color-surface);
+        border-bottom: 1px solid rgba(0,0,0,0.08);
+        /* Padding atas mengikuti poni/status bar perangkat. */
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+    }
+    .exam-topbar__logo {
+        width: 30px; height: 30px; flex: 0 0 auto;
+        object-fit: contain; border-radius: 6px;
+    }
+    .exam-title-area {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        max-width: 60%;
+    }
+    .exam-title-text {
+        font-weight: 700;
+        font-size: 16px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--color-text);
+    }
+    .exam-student-text {
+        font-size: 12px;
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .exam-timer-chip {
+        background: rgba(var(--color-primary-rgb), 0.1);
+        color: var(--color-primary);
+        padding: 6px 12px;
+        border-radius: 9999px;
+        font-weight: 700;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .exam-timer-chip.danger {
+        background: rgba(220,53,69,0.1);
+        color: var(--color-danger);
+    }
+    
+    /* Progress Bar */
+    .progress-wrapper {
+        width: 100%;
+        height: 4px;
+        background: rgba(0,0,0,0.05);
+    }
+    .progress-fill {
+        height: 100%;
+        background: var(--color-primary);
+        transition: width 0.3s ease;
+    }
+
+    /* Question Area */
+    .question-container {
+        padding: 24px 32px;
+        max-width: 900px;
+        margin: 0 auto;
+    }
+    .question-label {
+        font-size: 13px;
+        color: var(--color-text-muted);
+        font-weight: 600;
+        margin-bottom: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .question-text {
+        font-size: 16px;
+        line-height: 1.6;
+        margin-bottom: 16px;
+        color: var(--color-text);
+    }
+    .question-text img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 12px 0;
+        border: 1px solid rgba(0,0,0,0.18);
+        border-radius: 10px;
+        background: #fff;
+    }
+    /* Tabel data pada soal (mis. hasil import Word) digulir di dalam kotaknya
+       sendiri; tanpa ini halaman ujian ikut bergeser ke samping di layar sempit. */
+    .question-text table { max-width: 100%; }
+    .question-text .table-responsive { max-width: 100%; overflow-x: auto; }
+    
+    /* Answer Options */
+    .answer-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 14px;
+        margin-bottom: 8px;
+        border: 2px solid rgba(0,0,0,0.08);
+        border-radius: 10px;
+        background: var(--color-surface);
+        cursor: pointer;
+        transition: all 150ms ease;
+        min-height: 48px;
+    }
+    .answer-option:hover {
+        border-color: rgba(var(--color-primary-rgb), 0.3);
+    }
+    .answer-option.selected {
+        border-color: var(--color-primary);
+        background: rgba(var(--color-primary-rgb), 0.05);
+    }
+    .answer-option .form-check-input {
+        margin-top: 3px;
+        transform: scale(1.2);
+        cursor: pointer;
+    }
+    .answer-content {
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--color-text);
+        flex-grow: 1;
+    }
+    .answer-content img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 8px 0;
+        border: 1px solid rgba(0,0,0,0.18);
+        border-radius: 8px;
+        background: #fff;
+    }
+
+    /* Bottom Navigation */
+    .bottom-nav {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--color-surface);
+        border-top: 1px solid rgba(0,0,0,0.08);
+        /* Bilah gestur Android duduk di atas bar ini; tanpa inset, tombol
+           "Selanjutnya" separuh tertutup di perangkat tanpa tombol fisik. */
+        padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        z-index: 1020;
+        box-shadow: 0 -4px 12px rgba(0,0,0,0.05);
+    }
+    .btn-nav {
+        height: 48px;
+        border-radius: 9999px;
+        font-weight: 600;
+        padding: 0 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 150ms ease;
+        border: none;
+        cursor: pointer;
+    }
+    .btn-nav.ghost {
+        background: transparent;
+        color: var(--color-text-muted);
+    }
+    .btn-nav.ghost:active { background: rgba(0,0,0,0.05); }
+    .btn-nav.filled {
+        background: var(--color-primary);
+        color: #fff;
+    }
+    .btn-nav.filled:active { transform: scale(0.96); }
+    
+    .btn-flag {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 2px solid rgba(0,0,0,0.08);
+        background: var(--color-surface);
+        color: var(--color-text-muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        transition: all 150ms ease;
+        cursor: pointer;
+    }
+    .btn-flag.active {
+        border-color: var(--color-warning);
+        color: var(--color-warning);
+        background: rgba(255,193,7,0.1);
+    }
+
+    /* End Exam Button */
+    .end-exam-container {
+        margin-top: 48px;
+        padding-top: 32px;
+        border-top: 1px dashed rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .btn-end-exam {
+        background: transparent;
+        border: 2px solid var(--color-text-muted);
+        color: var(--color-text-muted);
+        height: 48px;
+        border-radius: 9999px;
+        padding: 0 32px;
+        font-weight: 600;
+        transition: all 150ms ease;
+    }
+    .btn-end-exam:hover {
+        border-color: var(--color-danger);
+        color: var(--color-danger);
+    }
+
+    /* Sidebar Offcanvas (Mobile) */
+    .offcanvas-end {
+        width: 300px;
+    }
+    .q-grid-container {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 8px;
+    }
+    .q-grid-btn {
+        width: 100%;
+        height: 48px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        border-radius: 12px;
+        border: 2px solid transparent;
+        font-size: 14px;
+        transition: all 150ms ease;
+        cursor: pointer;
+    }
+    .q-grid-btn.answered {
+        background-color: var(--color-primary);
+        color: white;
+    }
+    .q-grid-btn.flagged {
+        background-color: var(--color-warning);
+        color: #000;
+    }
+    .q-grid-btn.unanswered {
+        background-color: rgba(0,0,0,0.04);
+        border-color: rgba(0,0,0,0.12);
+        color: var(--color-text-muted);
+    }
+    .q-grid-btn.current {
+        border-color: var(--color-text) !important;
+    }
+    .sidebar-legend {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 12px;
+        margin-top: 16px;
+        padding: 12px;
+        background: rgba(0,0,0,0.03);
+        border-radius: 12px;
+    }
+    .sidebar-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-text-muted);
+    }
+    .legend-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 4px;
+        flex-shrink: 0;
+    }
+
+    /* Auto-save chip */
+    .autosave-chip {
+        position: fixed;
+        bottom: 80px;
+        left: 16px;
+        background: var(--color-surface);
+        color: var(--color-text);
+        padding: 6px 12px;
+        border-radius: 9999px;
+        font-size: 12px;
+        font-weight: 600;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        z-index: 1010;
+    }
+    /* Hide sidebar toggle on desktop */
+    @media (min-width: 992px) {
+        .btn-sidebar-toggle {
+            display: none !important;
+        }
+    }
+
+
+    /* Image Lightbox Overlay */
+    .image-lightbox {
+        position: fixed; inset: 0; z-index: 1050;
+        background: rgba(0,0,0,0.9);
+        display: none; flex-direction: column; align-items: center; justify-content: center;
+        backdrop-filter: blur(5px);
+    }
+    .image-lightbox.active { display: flex; }
+    .image-lightbox img {
+        max-width: 90vw; max-height: 90vh;
+        border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        object-fit: contain;
+    }
+    .image-lightbox-close {
+        position: absolute; top: 20px; right: 20px;
+        color: white; font-size: 40px; line-height: 1; cursor: pointer;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+    .question-container img { cursor: zoom-in; }
+    .question-container { overflow-wrap: anywhere; }

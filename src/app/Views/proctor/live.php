@@ -82,7 +82,7 @@
                     </thead>
                     <tbody class="border-top-0">
                         <template x-for="student in students" :key="student.user_id">
-                            <tr :class="{ 'table-danger': student.flashing, 'table-warning': student.banned, 'table-success': student.status === 3 }">
+                            <tr :class="{ 'table-danger': student.flashing, 'table-warning': student.banned, 'table-success': student.status === ((window.APP_CONFIG||{}).status||{}).finished }">
                                 <td class="ps-4">
                                     <div class="fw-bold" x-text="student.name"></div>
                                     <div class="text-muted small" x-text="student.username"></div>
@@ -93,10 +93,10 @@
                                             'bg-success': student.is_online && !student.banned && student.status !== 3, 
                                             'bg-secondary': !student.is_online && !student.banned && student.status !== 3,
                                             'bg-danger': student.banned,
-                                            'bg-info': student.status === 3
+                                            'bg-info': student.status === ((window.APP_CONFIG||{}).status||{}).finished
                                           }">
-                                        <i class="bi" :class="student.status === 3 ? 'bi-check-circle-fill' : (student.is_online ? 'bi-wifi' : 'bi-wifi-off')"></i> 
-                                        <span x-text="student.banned ? 'Terkunci' : (student.status === 3 ? 'Selesai (Auto-Submit)' : (student.is_online ? 'Online' : 'Offline'))"></span>
+                                        <i class="bi" :class="student.status === ((window.APP_CONFIG||{}).status||{}).finished ? 'bi-check-circle-fill' : (student.is_online ? 'bi-wifi' : 'bi-wifi-off')"></i> 
+                                        <span x-text="student.banned ? 'Terkunci' : (student.status === ((window.APP_CONFIG||{}).status||{}).finished ? 'Selesai (Auto-Submit)' : (student.is_online ? 'Online' : 'Offline'))"></span>
                                     </span>
                                 </td>
                                 <td>
@@ -160,16 +160,13 @@
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+const APP_CFG = window.APP_CONFIG || {};
 function proctorLiveDashboard() {
     return {
         get wsUrl() {
-            let url = '<?= esc($wsUrl ?? '') ?>';
-            if (!url || url.includes('localhost')) {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.host;
-                url = `${protocol}//${host}/ws`;
-            }
-            return url.replace(/\/+$/, '') + '/?proctor_token=<?= esc($proctorToken) ?>';
+            // URL ditentukan server (App\Libraries\WebSocketUrl).
+            const base = '<?= esc($wsUrl ?? '') ?>' || APP_CFG.websocket_url || '';
+            return base.replace(/\/+$/, '') + '/?proctor_token=<?= esc($proctorToken) ?>';
         },
         ws: null,
         isConnected: false,
@@ -207,7 +204,7 @@ function proctorLiveDashboard() {
                 username: a.username,
                 is_online: Boolean(a.is_online), // Hydrated from backend
                 strikes: parseInt(a.cheat_strikes),
-                banned: parseInt(a.status) === 2, // 2 = locked/banned
+                banned: parseInt(a.status) === ((window.APP_CONFIG||{}).status||{}).banned, // banned status
                 status: parseInt(a.status),
                 flashing: false
             }));
@@ -240,7 +237,7 @@ function proctorLiveDashboard() {
 
                 this.ws.onclose = () => {
                     this.isConnected = false;
-                    this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
+                    this.reconnectTimer = setTimeout(() => this.connectWebSocket(), APP_CFG.proctor_reconnect_ms || 3000);
                 };
 
                 this.ws.onerror = (err) => {
@@ -400,11 +397,27 @@ function proctorLiveDashboard() {
                         timer: 3000
                     });
                 } else {
-                    alert(res.message || 'Gagal mengirim laporan.');
+                    Swal.fire({
+                        title: 'Gagal Mengirim',
+                        text: res.message || 'Gagal mengirim laporan.',
+                        icon: 'error',
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 3000
+                    });
                 }
             }).catch(() => {
                 this.isSubmittingReport = false;
-                alert('Terjadi kesalahan jaringan.');
+                Swal.fire({
+                    title: 'Gagal Mengirim',
+                    text: 'Terjadi kesalahan jaringan.',
+                    icon: 'error',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 3000
+                });
             });
         },
 

@@ -18,7 +18,7 @@ class ModuleModel extends Model
     ];
 
     protected $validationRules = [
-        'name' => 'required|max_length[255]|is_unique[modules.name,id,{id}]',
+        'name' => 'required|max_length[255]',
     ];
 
     /**
@@ -31,5 +31,14 @@ class ModuleModel extends Model
                     ->join('subjects', 'subjects.module_id = modules.id AND subjects.deleted_at IS NULL', 'left')
                     ->groupBy('modules.id')
                     ->orderBy('modules.name', 'ASC');
+    }
+
+    /**
+     * Restore and update a soft-deleted module
+     */
+    public function reuseDeletedModule($id, $data)
+    {
+        $data['deleted_at'] = null;
+        return $this->db->table($this->table)->where('id', $id)->update($data);
     }
 }

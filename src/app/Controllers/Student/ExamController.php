@@ -35,6 +35,15 @@ class ExamController extends BaseController
             return redirect()->to('/student/dashboard')->with('error', 'Ujian tidak tersedia.');
         }
 
+        // prepare()/start() adalah pintu masuk web desktop; aplikasi kiosk tidak
+        // pernah lewat sini (bundle langsung ke /api/exam/init + /api/exam/start).
+        // Jadi ujian ber-require_kiosk ditolak di sini tanpa perlu menunggu
+        // heartbeat -- siswa dapat pesannya sebelum menjawab satu soal pun.
+        if (\App\Libraries\KioskPresence::isRequired($test)) {
+            \App\Libraries\KioskPresence::audit((int) $id, (int) session('user_id'), 'web_entry', 'student/exam/prepare');
+            return redirect()->to('/student/dashboard')->with('error', \App\Libraries\KioskPresence::message());
+        }
+
         // Check for active attempt
         $activeAttempt = $this->attemptModel->getActiveAttemptCached($id, session('user_id'));
         if ($activeAttempt) {
@@ -78,6 +87,11 @@ class ExamController extends BaseController
         $test = $this->testModel->findCached($id);
         if (!$test || !$test->is_enabled) {
             return redirect()->to('/student/dashboard')->with('error', 'Ujian tidak valid.');
+        }
+
+        if (\App\Libraries\KioskPresence::isRequired($test)) {
+            \App\Libraries\KioskPresence::audit((int) $id, (int) session('user_id'), 'web_entry', 'student/exam/start');
+            return redirect()->to('/student/dashboard')->with('error', \App\Libraries\KioskPresence::message());
         }
 
         $userId = session('user_id');
@@ -132,6 +146,12 @@ class ExamController extends BaseController
 
         $test = $this->testModel->findCached($id);
 
+        $gate = \App\Libraries\KioskPresence::check($test, $attempt, (int) $userId);
+        if (!$gate['ok']) {
+            \App\Libraries\KioskPresence::audit((int) $id, (int) $userId, $gate['reason'], 'student/exam/take');
+            return redirect()->to('/student/dashboard')->with('error', \App\Libraries\KioskPresence::message());
+        }
+
         if ($test->exam_mode == 'static' && !empty($test->static_page_path)) {
             return redirect()->to(base_url($test->static_page_path));
         }
@@ -143,8 +163,11 @@ class ExamController extends BaseController
         $questionsKey = "attempt_questions_{$attempt->id}";
         $questions = $cache->get($questionsKey);
         if (empty($questions)) {
+            // Whitelist kolom: jangan pernah expose score/reaction_time/comment ke client
             $sql = "
-                SELECT tl.*, tl.id as log_id
+                SELECT tl.id as log_id, tl.test_attempt_id, tl.question_id,
+                       tl.question_text, tl.question_type, tl.question_difficulty,
+                       tl.display_order, tl.num_answers, tl.answer_text, tl.is_unsure
                 FROM test_logs tl
                 WHERE tl.test_attempt_id = ?
                 ORDER BY tl.display_order ASC
@@ -168,8 +191,10 @@ class ExamController extends BaseController
             $answersKey = "attempt_answers_{$attempt->id}";
             $answers = $cache->get($answersKey);
             if (empty($answers)) {
+                // Whitelist kolom: is_correct (kunci jawaban) tidak boleh pernah sampai ke client
                 $ansSql = "
-                    SELECT tla.*, tla.id as log_answer_id
+                    SELECT tla.id as log_answer_id, tla.test_log_id, tla.answer_id,
+                           tla.answer_text, tla.is_selected, tla.display_order, tla.position
                     FROM test_log_answers tla
                     WHERE tla.test_log_id IN ?
                     ORDER BY tla.display_order ASC
@@ -248,7 +273,7 @@ class ExamController extends BaseController
             'answers' => $answers,
             'isAntiCheatEnabled' => $isAntiCheatEnabled,
             'wsToken' => $wsToken,
-            'wsUrl' => $settingModel->getValue('websocket_url', '')
+            'wsUrl' => \App\Libraries\WebSocketUrl::resolve($settingModel)
         ]);
     }
 
@@ -275,7 +300,22 @@ class ExamController extends BaseController
             return $this->response->setJSON(['status' => 'error', 'message' => 'Unauthorized']);
         }
 
+        if (!$this->passesKioskGate((int) $attempt->test_id, $attempt, (int) session('user_id'), 'student/exam/autosave')) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'status'  => 'error',
+                'message' => \App\Libraries\KioskPresence::message(),
+                'reason'  => 'kiosk_required',
+            ]);
+        }
+
         // Check if student was kicked/banned/finished
+        if ((int) $attempt->status === 2) {
+            return $this->response->setJSON([
+                'status'  => 'kicked',
+                'reason'  => 'locked',
+                'message' => 'Ujian Anda dihentikan oleh pengawas.',
+            ]);
+        }
         if ($attempt->status == 3) {
             return $this->response->setJSON(['status' => 'kicked', 'message' => 'Ujian Anda telah diselesaikan (waktu habis/dikumpulkan).']);
         }
@@ -322,11 +362,19 @@ class ExamController extends BaseController
                 // Set expiry of the entire hash to 24 hours just in case of orphaned attempts
                 $redis->expire($redisKey, 86400); 
             } else {
-                return $this->response->setJSON(['status' => 'error', 'message' => 'Redis connection failed']);
+                // FAIL-CLOSED: Redis unavailable — refuse to silently drop the answer.
+                log_message('critical', "[FAIL-CLOSED] saveAnswer: Redis unavailable for attempt #{$attemptId}, log #{$logId}. Answer NOT saved.");
+                return $this->response->setStatusCode(503)->setJSON([
+                    'status'  => 'error',
+                    'message' => 'Sistem penyimpanan sementara tidak dapat diakses. Jawaban Anda belum tersimpan. Mohon tunggu sebentar dan coba kirim ulang.',
+                ]);
             }
         } catch (\Exception $e) {
-            log_message('error', 'Redis error in exam save answer: ' . $e->getMessage());
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Failed to save answer due to internal error.']);
+            log_message('critical', "[FAIL-CLOSED] saveAnswer: Redis exception for attempt #{$attemptId}, log #{$logId}: " . $e->getMessage());
+            return $this->response->setStatusCode(503)->setJSON([
+                'status'  => 'error',
+                'message' => 'Sistem penyimpanan sementara tidak dapat diakses. Jawaban Anda belum tersimpan. Mohon tunggu sebentar dan coba kirim ulang.',
+            ]);
         }
 
         // Update answered_at timestamp directly on DB for simple tracking
@@ -350,6 +398,10 @@ class ExamController extends BaseController
         $userId = session('user_id');
         $attempt = $this->attemptModel->getActiveAttemptCached($id, $userId);
         
+        if ($attempt && !$this->passesKioskGate((int) $id, $attempt, (int) $userId, 'student/exam/finish')) {
+            return redirect()->to('/student/dashboard')->with('error', \App\Libraries\KioskPresence::message());
+        }
+
         if ($attempt) {
             $this->flushRedisAnswersToDb($attempt->id);
 
@@ -388,6 +440,23 @@ class ExamController extends BaseController
 
 
     /**
+     * Gerbang kiosk untuk jalur web desktop. Lihat App\Libraries\KioskPresence.
+     *
+     * $userId dioper eksplisit: autoSync() memanggil session_write_close() lebih
+     * dulu, jadi jangan mengandalkan helper session di dalam sini.
+     */
+    private function passesKioskGate(int $testId, $attempt, int $userId, string $endpoint): bool
+    {
+        $test = $this->testModel->findCached($testId);
+        $gate = \App\Libraries\KioskPresence::check($test, $attempt, $userId);
+        if (!$gate['ok']) {
+            \App\Libraries\KioskPresence::audit($testId, $userId, $gate['reason'], $endpoint);
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Helper to automatically flush Redis cached answers to MySQL every 1 minute
      */
     public function autoSync()
@@ -401,6 +470,14 @@ class ExamController extends BaseController
         $attempt = $this->attemptModel->findCached($attemptId);
         if (!$attempt || (string)$attempt->user_id !== (string)$userId) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Invalid attempt.']);
+        }
+
+        if (!$this->passesKioskGate((int) $attempt->test_id, $attempt, (int) $userId, 'student/exam/auto-sync')) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'status'  => 'error',
+                'message' => \App\Libraries\KioskPresence::message(),
+                'reason'  => 'kiosk_required',
+            ]);
         }
 
         // Flush redis cache 
