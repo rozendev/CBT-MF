@@ -107,6 +107,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         // Kiosk Live Monitoring
         $routes->get('kiosk/live', 'Admin\KioskLiveController::index');
         $routes->get('kiosk/live-data', 'Admin\KioskLiveController::data');
+        $routes->post('kiosk/live/action', 'Admin\KioskLiveController::action');
 
         // Analytics
         $routes->get('analytics', 'Admin\AnalyticsController::index');

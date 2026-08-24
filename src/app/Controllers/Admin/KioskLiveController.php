@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Libraries\ProctorAction;
 use App\Libraries\RedisClient;
 use App\Models\TestModel;
 
@@ -91,6 +92,61 @@ class KioskLiveController extends BaseController
             'test_id'  => $testId,
             'now'      => $now,
             'students' => $students,
+        ]);
+    }
+
+    /**
+     * Tindakan pengawas terhadap satu peserta.
+     * POST { test_id, user_id, action: eject|lock|eject_lock, reason? }
+     */
+    public function action()
+    {
+        $body = $this->request->getJSON(true);
+        if (!is_array($body)) {
+            $body = $this->request->getPost();
+        }
+
+        $testId = (int) ($body['test_id'] ?? 0);
+        $userId = (int) ($body['user_id'] ?? 0);
+        $action = (string) ($body['action'] ?? '');
+        $reason = (string) ($body['reason'] ?? '');
+
+        if ($testId <= 0 || $userId <= 0) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'status' => 'error', 'message' => 'test_id dan user_id wajib.',
+            ]);
+        }
+
+        if (!ProctorAction::isValidAction($action)) {
+            return $this->response->setStatusCode(400)->setJSON([
+                'status' => 'error', 'message' => 'Aksi tidak dikenal.',
+            ]);
+        }
+
+        $actorId  = (int) session('user_id');
+        $proctor  = new ProctorAction();
+        $messages = [];
+        $ok       = true;
+
+        if ($action === 'eject' || $action === 'eject_lock') {
+            $result = $proctor->eject($testId, $userId, $actorId, $reason);
+            $messages[] = $result['message'];
+            // Gagal eject (mis. siswa tidak sedang ujian) TIDAK membatalkan lock:
+            // pengawas yang memilih eject_lock tetap ingin akunnya terkunci.
+            if ($action === 'eject') {
+                $ok = $result['ok'];
+            }
+        }
+
+        if ($action === 'lock' || $action === 'eject_lock') {
+            $result = $proctor->lockAccount($userId, $actorId);
+            $messages[] = $result['message'];
+            $ok = $ok && $result['ok'];
+        }
+
+        return $this->response->setJSON([
+            'status'  => $ok ? 'success' : 'error',
+            'message' => implode(' ', $messages),
         ]);
     }
 }
