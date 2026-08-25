@@ -40,7 +40,8 @@ class Session extends BaseConfig
 
     /**
      * Session Save Path — Redis connection string
-     * Password is dynamically injected from env('REDIS_PASSWORD') in __construct()
+     * Host, port, dan password dirakit dari env di __construct(). Nilai di sini
+     * cuma cadangan kalau env-nya tidak ada sama sekali.
      */
     public string $savePath = 'tcp://redis:6379';
 
@@ -81,9 +82,25 @@ class Session extends BaseConfig
     {
         parent::__construct();
 
-        $password = env('REDIS_PASSWORD', '');
-        if (!empty($password)) {
-            $this->savePath = 'tcp://redis:6379?auth=' . $password;
+        // Host dan port ikut dibaca dari env, sejajar dengan Config\Cache.
+        // Sebelumnya host 'redis' tertulis mati di sini dan ditimpa ulang tiap
+        // kali REDIS_PASSWORD terisi, jadi Redis di host lain -- layanan
+        // terkelola, server terpisah -- tidak pernah terpakai dan sesi gagal
+        // dengan gejala yang tidak menunjuk ke Redis sama sekali.
+        //
+        // session.savePath yang ditulis eksplisit di .env tetap menang: perakitan
+        // di bawah hanya jalan kalau tidak ada yang menyetelnya.
+        if (empty(env('session.savePath'))) {
+            // ?: dipakai, bukan argumen default env(), supaya variabel yang ada
+            // tapi bernilai kosong tidak menghasilkan 'tcp://:6379'.
+            $host = env('session.redis.host') ?: env('REDIS_HOST') ?: 'redis';
+            $port = (int) (env('session.redis.port') ?: env('REDIS_PORT') ?: 6379);
+            $password = env('session.redis.password') ?: env('REDIS_PASSWORD') ?: '';
+
+            $this->savePath = 'tcp://' . $host . ':' . $port;
+            if ($password !== '') {
+                $this->savePath .= '?auth=' . rawurlencode((string) $password);
+            }
         }
 
         // Dynamically set session cookie secure flag based on base_url scheme
