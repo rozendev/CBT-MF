@@ -11,12 +11,23 @@ use App\Libraries\WordImport\WordBlockExtractor;
 use App\Libraries\WordImport\WordQuestionParser;
 use App\Libraries\WordImport\WordImportValidator;
 use App\Libraries\WordImport\WordImportException;
+use App\Libraries\WordImport\WordImportTriage;
 use PhpOffice\PhpWord\IOFactory;
 
 class WordImportController extends BaseController
 {
     /** Sepanjang kolom name di tabel modules maupun subjects. */
     private const MAX_NAME_LENGTH = 255;
+
+    /**
+     * Banyaknya soal per sekali insert. Dokumen berisi ratusan soal ditulis
+     * per rombongan supaya database tidak menerima ratusan statement terpisah
+     * dalam satu transaksi panjang.
+     */
+    private const BATCH_SIZE = 100;
+
+    /** Batas jumlah baris yang dikirim ke modal hasil, supaya responsnya wajar. */
+    private const MAX_REPORTED_ROWS = 100;
 
     protected $moduleModel;
     protected $subjectModel;
@@ -73,10 +84,22 @@ class WordImportController extends BaseController
             return $this->failure('File Word tidak bisa dibaca. Pastikan file benar-benar berformat .docx dan tidak rusak.');
         }
 
-        // ─── DRY-RUN VALIDATION ───
-        $validationErrors = (new WordImportValidator())->validate($parsedQuestions);
-        if (!empty($validationErrors)) {
-            return $this->validationError($validationErrors);
+        // Dokumen yang sama sekali tidak berisi soal tetap ditolak utuh: tidak
+        // ada yang bisa dilaporkan per soal.
+        if ($parsedQuestions === []) {
+            return $this->validationError((new WordImportValidator())->validate([]));
+        }
+
+        // ─── DRY-RUN: pilah mana yang masuk, kembar, dan ditolak ───
+        $triage = (new WordImportTriage())->classify(
+            $parsedQuestions,
+            $this->existingQuestionTexts($this->findTargetSubjectId($moduleId, $newModuleName, $subjectName))
+        );
+
+        // Tidak ada satu pun soal yang bisa masuk: jangan sentuh database, jangan
+        // tulis gambar, dan jangan bikin modul/subjek baru hanya untuk diisi nol.
+        if ($triage['accepted'] === []) {
+            return $this->summary($subjectName, 0, $triage);
         }
 
         $db = \Config\Database::connect();
@@ -87,12 +110,12 @@ class WordImportController extends BaseController
             // Gambar baru menyentuh disk setelah dokumennya dinyatakan sah, dan
             // sebelum soalnya disimpan: soal yang tersimpan tidak boleh menunjuk
             // gambar yang gagal ditulis.
-            $writtenImages = $extractor->flushImages();
+            $writtenImages = $extractor->flushImages($this->referencedImages($triage['accepted']));
 
             $moduleId  = $moduleId === 'new' ? $this->resolveNewModule($newModuleName) : (int) $moduleId;
             $subjectId = $this->resolveSubject($moduleId, $subjectName);
 
-            $insertedCount = $this->insertQuestions($subjectId, $parsedQuestions);
+            $insertedCount = $this->insertQuestions($subjectId, $triage['accepted']);
 
             $db->transCommit();
         } catch (WordImportException $e) {
@@ -106,10 +129,76 @@ class WordImportController extends BaseController
             return $this->failure('Terjadi kesalahan saat menyimpan ke database. Tidak ada data yang tersimpan.');
         }
 
+        return $this->summary($subjectName, $insertedCount, $triage);
+    }
+
+    /**
+     * Ringkasan hasil impor untuk modal: berapa yang masuk, kembar, dan ditolak,
+     * lengkap dengan daftarnya.
+     *
+     * @param array{duplicates: array, rejected: array} $triage
+     */
+    private function summary(string $subjectName, int $inserted, array $triage)
+    {
+        $duplicates = $triage['duplicates'];
+        $rejected = $triage['rejected'];
+
         return $this->response->setJSON([
             'status'  => 'success',
-            'message' => "$insertedCount soal berhasil diimport ke Subjek '$subjectName'."
+            'subject' => $subjectName,
+            'summary' => [
+                'total'    => $inserted + count($duplicates) + count($rejected),
+                'masuk'    => $inserted,
+                'duplikat' => count($duplicates),
+                'ditolak'  => count($rejected),
+            ],
+            'duplicates'      => array_slice($duplicates, 0, self::MAX_REPORTED_ROWS),
+            'rejected'        => array_slice($rejected, 0, self::MAX_REPORTED_ROWS),
+            'duplicates_more' => max(0, count($duplicates) - self::MAX_REPORTED_ROWS),
+            'rejected_more'   => max(0, count($rejected) - self::MAX_REPORTED_ROWS),
         ]);
+    }
+
+    /**
+     * Id subjek yang akan diisi, kalau subjeknya memang sudah ada. Termasuk saat
+     * guru memilih "buat modul baru" tapi nama modulnya ternyata sudah dipakai:
+     * impornya mendarat di modul yang sama, jadi soal kembarnya harus tetap
+     * ketahuan.
+     *
+     * Modul atau subjek yang sudah dihapus sengaja tidak dihitung -- soal di
+     * dalamnya ikut terhapus dan tidak kelihatan lagi oleh guru, jadi
+     * mengunggahnya ulang bukan penggandaan.
+     */
+    private function findTargetSubjectId($moduleId, string $newModuleName, string $subjectName): ?int
+    {
+        if ($moduleId === 'new') {
+            $module = $this->moduleModel->where('name', $newModuleName)->first();
+            if ($module === null) {
+                return null;
+            }
+            $moduleId = (int) $module->id;
+        }
+
+        $subject = $this->subjectModel->where('module_id', (int) $moduleId)->where('name', $subjectName)->first();
+
+        return $subject === null ? null : (int) $subject->id;
+    }
+
+    /**
+     * Teks soal yang sudah ada di subjek tujuan, untuk pembanding kembar.
+     *
+     * @return string[]
+     */
+    private function existingQuestionTexts(?int $subjectId): array
+    {
+        if ($subjectId === null) {
+            return [];
+        }
+
+        return array_column(
+            $this->questionModel->select('description')->where('subject_id', $subjectId)->findAll(),
+            'description'
+        );
     }
 
     /**
@@ -152,6 +241,29 @@ class WordImportController extends BaseController
         $blocks = $extractor->extract($phpWord, $filepath);
 
         return (new WordQuestionParser())->parse($blocks);
+    }
+
+    /**
+     * Nama file gambar yang benar-benar diacu soal yang akan disimpan. Gambar
+     * milik soal yang ditolak atau kembar tidak perlu ikut ditulis ke disk.
+     *
+     * @param array<int, array<string, mixed>> $questions
+     *
+     * @return string[]
+     */
+    private function referencedImages(array $questions): array
+    {
+        $names = [];
+        foreach ($questions as $q) {
+            $html = $q['question'] . ' ' . implode(' ', $q['options'] ?? []);
+            if (preg_match_all('/src="[^"]*\/([^\/"]+)"/', $html, $matches)) {
+                foreach ($matches[1] as $name) {
+                    $names[] = $name;
+                }
+            }
+        }
+
+        return $names;
     }
 
     /**
@@ -223,72 +335,130 @@ class WordImportController extends BaseController
         return (int) $id;
     }
 
-    /** @param array<int, array<string, mixed>> $questions */
+    /**
+     * Menyimpan soal per rombongan BATCH_SIZE: satu statement untuk soalnya,
+     * satu statement untuk seluruh jawabannya. Dokumen berisi ratusan soal jadi
+     * beberapa statement, bukan ratusan.
+     *
+     * @param array<int, array<string, mixed>> $questions
+     */
     private function insertQuestions(int $subjectId, array $questions): int
     {
         $insertedCount = 0;
+        foreach (array_chunk($questions, self::BATCH_SIZE) as $chunk) {
+            $insertedCount += $this->insertChunk($subjectId, $chunk);
+        }
 
-        foreach ($questions as $q) {
-            $questionId = $this->questionModel->insert([
+        return $insertedCount;
+    }
+
+    /** @param array<int, array<string, mixed>> $chunk */
+    private function insertChunk(int $subjectId, array $chunk): int
+    {
+        $db = \Config\Database::connect();
+
+        $rows = [];
+        foreach ($chunk as $q) {
+            $rows[] = [
                 'subject_id'  => $subjectId,
                 'type'        => $q['type'],
                 'answer_mode' => $q['answer_mode'] ?? 'exact',
                 'description' => $q['question'],
                 'difficulty'  => 1,
                 'is_enabled'  => 1
-            ]);
+            ];
+        }
 
-            if ($questionId === false) {
+        // Batas atas id sebelum insert: id auto-increment selalu menaik, jadi
+        // semua baris hasil rombongan ini pasti berada di atasnya. Baris dari
+        // transaksi lain yang belum commit tidak terlihat dari sini.
+        $maxIdBefore = (int) ($db->table('questions')->selectMax('id')->get()->getRow()->id ?? 0);
+
+        if ($this->questionModel->insertBatch($rows, null, self::BATCH_SIZE) === false) {
+            throw new WordImportException(
+                'Gagal menyimpan soal ke database: ' . implode(', ', $this->questionModel->errors())
+            );
+        }
+
+        // insertBatch tidak mengembalikan id per baris, jadi soal yang baru masuk
+        // dipetakan lagi lewat teksnya. Aman karena soal berteks kembar sudah
+        // disingkirkan lebih dulu oleh triase.
+        $idByDescription = [];
+        $newRows = $db->table('questions')
+            ->select('id, description')
+            ->where('subject_id', $subjectId)
+            ->where('id >', $maxIdBefore)
+            ->get()
+            ->getResult();
+        foreach ($newRows as $row) {
+            $idByDescription[$row->description] = (int) $row->id;
+        }
+
+        $answers = [];
+        foreach ($chunk as $q) {
+            $questionId = $idByDescription[$q['question']] ?? null;
+            if ($questionId === null) {
                 throw new WordImportException(
-                    'Gagal menyimpan soal ke database: ' . implode(', ', $this->questionModel->errors())
+                    'Soal yang baru disimpan tidak bisa dicocokkan dengan jawabannya. Impor dibatalkan.'
                 );
             }
-
-            $position = 1;
-
-            if ($q['type'] == 1 || $q['type'] == 2) {
-                foreach ($q['options'] as $letter => $text) {
-                    $this->insertAnswer([
-                        'question_id' => $questionId,
-                        'description' => $text,
-                        'is_correct'  => in_array($letter, $q['correct'], true) ? 1 : 0,
-                        'is_enabled'  => 1,
-                        'position'    => $position
-                    ]);
-                    $position++;
-                }
-            } elseif ($q['type'] == 3) {
-                $this->insertAnswer([
-                    'question_id' => $questionId,
-                    'description' => $q['answer_key'],
-                    'is_correct'  => 1,
-                    'is_enabled'  => 1,
-                    'position'    => 1
-                ]);
-            } elseif ($q['type'] == 4 || $q['type'] == 5) {
-                foreach ($q['matches'] as $pair) {
-                    $this->insertAnswer([
-                        'question_id' => $questionId,
-                        'description' => $pair['left'] . '|::|' . $pair['right'],
-                        'is_correct'  => 1,
-                        'is_enabled'  => 1,
-                        'position'    => $position
-                    ]);
-                    $position++;
-                }
+            foreach ($this->answerRows($questionId, $q) as $answer) {
+                $answers[] = $answer;
             }
-
-            $insertedCount++;
         }
 
-        return $insertedCount;
-    }
-
-    private function insertAnswer(array $data): void
-    {
-        if ($this->answerModel->skipValidation(true)->insert($data) === false) {
+        if ($answers !== [] && $this->answerModel->skipValidation(true)->insertBatch($answers, null, self::BATCH_SIZE) === false) {
             throw new WordImportException('Gagal menyimpan pilihan jawaban ke database.');
         }
+
+        return count($chunk);
+    }
+
+    /**
+     * Baris tabel answers untuk satu soal, sesuai tipenya.
+     *
+     * @param array<string, mixed> $q
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function answerRows(int $questionId, array $q): array
+    {
+        $rows = [];
+        $position = 1;
+
+        if ($q['type'] == 1 || $q['type'] == 2) {
+            foreach ($q['options'] as $letter => $text) {
+                $rows[] = [
+                    'question_id' => $questionId,
+                    'description' => $text,
+                    'is_correct'  => in_array($letter, $q['correct'], true) ? 1 : 0,
+                    'is_enabled'  => 1,
+                    'position'    => $position
+                ];
+                $position++;
+            }
+        } elseif ($q['type'] == 3) {
+            $rows[] = [
+                'question_id' => $questionId,
+                'description' => $q['answer_key'],
+                'is_correct'  => 1,
+                'is_enabled'  => 1,
+                'position'    => 1
+            ];
+        } elseif ($q['type'] == 4 || $q['type'] == 5) {
+            foreach ($q['matches'] as $pair) {
+                $rows[] = [
+                    'question_id' => $questionId,
+                    'description' => $pair['left'] . '|::|' . $pair['right'],
+                    'is_correct'  => 1,
+                    'is_enabled'  => 1,
+                    'position'    => $position
+                ];
+                $position++;
+            }
+        }
+
+        return $rows;
     }
 
     /** @param string[] $errors */

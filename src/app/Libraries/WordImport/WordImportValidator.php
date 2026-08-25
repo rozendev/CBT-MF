@@ -20,9 +20,22 @@ class WordImportValidator
             return ['Tidak ada soal yang terdeteksi. Pastikan format dokumen sesuai (contoh: "1. Teks Soal").'];
         }
 
+        return array_merge(...array_values($this->validateEach($questions))) ?: [];
+    }
+
+    /**
+     * Sama seperti validate(), tapi errornya tetap menempel pada soalnya
+     * masing-masing -- dipakai supaya soal yang bermasalah bisa dilaporkan satu
+     * per satu, bukan cuma sebagai satu daftar panjang tanpa pemilik.
+     *
+     * @return array<int, string[]> indeks soal => daftar error (soal yang lolos
+     *                              tetap muncul dengan array kosong)
+     */
+    public function validateEach(array $questions): array
+    {
         $errors = [];
-        foreach ($questions as $q) {
-            $errors = array_merge($errors, $this->validateQuestion($q));
+        foreach ($questions as $index => $q) {
+            $errors[$index] = $this->validateQuestion($q);
         }
         return $errors;
     }
@@ -126,7 +139,8 @@ class WordImportValidator
         return preg_replace('/[\pZ\s]+/u', '', strip_tags($html)) === '';
     }
 
-    private function snippet(string $html): string
+    /** Cuplikan teks soal untuk dikutip di pesan, tanpa tag dan tanpa gambar. */
+    public function snippet(string $html): string
     {
         $text = trim(preg_replace('/\s+/', ' ', strip_tags($html)) ?? '');
         if ($text === '') {

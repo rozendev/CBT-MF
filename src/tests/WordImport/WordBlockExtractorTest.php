@@ -317,4 +317,45 @@ class WordBlockExtractorTest extends TestCase
 
         return $imgPath;
     }
+
+    public function testOnlyReferencedImagesAreWritten(): void
+    {
+        $imgPath = $this->onePixelPng();
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $blocks = $extractor->extract($phpWord);
+        unlink($path);
+
+        // Cuma gambar milik soal yang benar-benar disimpan yang ditulis; gambar
+        // milik soal yang ditolak atau kembar tidak perlu mendarat di disk.
+        preg_match('/src="[^"]*\/([^\/"]+)"/', $blocks[0]['text'], $m);
+        $written = $extractor->flushImages([$m[1]]);
+
+        $this->assertCount(1, $written);
+        $this->assertSame($this->uploadDir . $m[1], $written[0]);
+        $this->assertCount(1, glob($this->uploadDir . '*.png'));
+    }
+
+    public function testFlushWithoutMatchingReferenceWritesNothing(): void
+    {
+        $imgPath = $this->onePixelPng();
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $extractor->extract($phpWord);
+        unlink($path);
+
+        $this->assertSame([], $extractor->flushImages([]));
+        $this->assertSame([], glob($this->uploadDir . '*.png') ?: []);
+    }
 }

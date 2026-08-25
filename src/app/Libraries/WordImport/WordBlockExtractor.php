@@ -266,7 +266,12 @@ class WordBlockExtractor
     }
 
     /**
-     * Menulis semua gambar hasil extract() ke folder upload.
+     * Menulis gambar hasil extract() ke folder upload.
+     *
+     * @param string[]|null $onlyFilenames Kalau diisi, hanya nama file inilah
+     *                                     yang ditulis -- dipakai supaya gambar
+     *                                     milik soal yang ditolak atau kembar
+     *                                     tidak ikut mendarat di folder upload.
      *
      * @return string[] Path file yang berhasil ditulis, supaya pemanggilnya
      *                  bisa menghapusnya lagi kalau langkah berikutnya gagal.
@@ -275,8 +280,12 @@ class WordBlockExtractor
      *                             baik impornya dibatalkan daripada soal
      *                             tersimpan menunjuk gambar yang tidak ada.
      */
-    public function flushImages(): array
+    public function flushImages(?array $onlyFilenames = null): array
     {
+        if ($onlyFilenames !== null) {
+            $this->pendingImages = array_intersect_key($this->pendingImages, array_flip($onlyFilenames));
+        }
+
         if ($this->pendingImages === []) {
             return [];
         }
