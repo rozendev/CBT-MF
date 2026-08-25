@@ -64,8 +64,10 @@ class WordImportController extends BaseController
             return $this->validationError($targetErrors);
         }
 
+        $extractor = new WordBlockExtractor();
+
         try {
-            $parsedQuestions = $this->readQuestions($this->request->getFile('word_file'));
+            $parsedQuestions = $this->readQuestions($this->request->getFile('word_file'), $extractor);
         } catch (\Throwable $e) {
             log_message('critical', 'WordImportController::process gagal membaca dokumen: {exception}', ['exception' => $e]);
             return $this->failure('File Word tidak bisa dibaca. Pastikan file benar-benar berformat .docx dan tidak rusak.');
@@ -79,8 +81,14 @@ class WordImportController extends BaseController
 
         $db = \Config\Database::connect();
         $db->transBegin();
+        $writtenImages = [];
 
         try {
+            // Gambar baru menyentuh disk setelah dokumennya dinyatakan sah, dan
+            // sebelum soalnya disimpan: soal yang tersimpan tidak boleh menunjuk
+            // gambar yang gagal ditulis.
+            $writtenImages = $extractor->flushImages();
+
             $moduleId  = $moduleId === 'new' ? $this->resolveNewModule($newModuleName) : (int) $moduleId;
             $subjectId = $this->resolveSubject($moduleId, $subjectName);
 
@@ -89,9 +97,11 @@ class WordImportController extends BaseController
             $db->transCommit();
         } catch (WordImportException $e) {
             $db->transRollback();
+            $this->discardImages($writtenImages);
             return $this->failure($e->getMessage());
         } catch (\Throwable $e) {
             $db->transRollback();
+            $this->discardImages($writtenImages);
             log_message('critical', 'WordImportController::process gagal menyimpan: {exception}', ['exception' => $e]);
             return $this->failure('Terjadi kesalahan saat menyimpan ke database. Tidak ada data yang tersimpan.');
         }
@@ -134,14 +144,29 @@ class WordImportController extends BaseController
     }
 
     /** @return array<int, array<string, mixed>> */
-    private function readQuestions($file): array
+    private function readQuestions($file, WordBlockExtractor $extractor): array
     {
         $filepath = $file->getTempName();
         $phpWord = IOFactory::load($filepath);
 
-        $blocks = (new WordBlockExtractor())->extract($phpWord, $filepath);
+        $blocks = $extractor->extract($phpWord, $filepath);
 
         return (new WordQuestionParser())->parse($blocks);
+    }
+
+    /**
+     * Membuang gambar yang terlanjur ditulis waktu impornya batal, supaya
+     * folder upload tidak menyimpan file yang tidak diacu soal mana pun.
+     *
+     * @param string[] $paths
+     */
+    private function discardImages(array $paths): void
+    {
+        foreach ($paths as $path) {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
     }
 
     private function resolveNewModule(string $name): int
@@ -395,11 +420,29 @@ class WordImportController extends BaseController
         $section->addText('C. 20 Tahun', $fontNormal);
 
         $fileName = 'Template_Import_Soal_CBT.docx';
-        $tempFile = tempnam(sys_get_temp_dir(), 'phpword');
 
-        $objWriter = IOFactory::createWriter($phpWord, 'Word2007');
-        $objWriter->save($tempFile);
+        // Ditulis ke buffer, bukan ke tempnam(): file sementaranya tidak pernah
+        // dihapus dan menumpuk di direktori temp setiap kali template diunduh.
+        // PhpWord tetap memakai temp file internal untuk zip-nya, tapi yang itu
+        // dibersihkan sendiri olehnya.
+        ob_start();
+        try {
+            IOFactory::createWriter($phpWord, 'Word2007')->save('php://output');
+        } catch (\Throwable $e) {
+            ob_end_clean();
+            log_message('critical', 'WordImportController::downloadTemplate gagal: {exception}', ['exception' => $e]);
+            return redirect()->back()->with('error', 'Gagal membuat file template. Silakan coba lagi.');
+        }
+        $content = (string) ob_get_clean();
 
-        return $this->response->download($tempFile, null)->setFileName($fileName);
+        // download() mengembalikan null kalau datanya string kosong, dan
+        // controller yang balas null bikin browser menerima halaman kosong
+        // tanpa penjelasan apa pun.
+        if ($content === '') {
+            log_message('critical', 'WordImportController::downloadTemplate menghasilkan dokumen kosong.');
+            return redirect()->back()->with('error', 'Gagal membuat file template. Silakan coba lagi.');
+        }
+
+        return $this->response->download($fileName, $content);
     }
 }

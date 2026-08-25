@@ -191,7 +191,16 @@ class WordQuestionParser
 
     private function nextLetter(array $options): string
     {
-        return chr(65 + count($options));
+        // Setelah Z lanjut ke AA, AB, ... seperti kolom spreadsheet: chr(65 + n)
+        // sendirian menghasilkan '[', '\\', ']' begitu opsinya lewat 26.
+        $index = count($options);
+        $letter = '';
+        do {
+            $letter = chr(65 + $index % 26) . $letter;
+            $index = intdiv($index, 26) - 1;
+        } while ($index >= 0);
+
+        return $letter;
     }
 
     private function emptyQuestion(): array

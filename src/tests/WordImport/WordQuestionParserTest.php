@@ -392,4 +392,21 @@ class WordQuestionParserTest extends TestCase
 
         $this->assertSame([], $questions[0]['duplicate_letters']);
     }
+
+    public function testOptionLettersContinueToAaAfterZ(): void
+    {
+        $blocks = [$this->line('1. Soal dengan 28 opsi')];
+        for ($i = 0; $i < 28; $i++) {
+            $blocks[] = $this->line(($i === 0 ? '*' : '') . 'opsi ' . $i, true, 1);
+        }
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+        $letters = array_keys($questions[0]['options']);
+
+        // chr(65 + n) menghasilkan '[', '\\', ']' setelah Z.
+        $this->assertSame('Z', $letters[25]);
+        $this->assertSame('AA', $letters[26]);
+        $this->assertSame('AB', $letters[27]);
+        $this->assertSame([], $questions[0]['duplicate_letters']);
+    }
 }
