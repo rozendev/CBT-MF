@@ -184,8 +184,9 @@ function kioskLive() {
             fetch('<?= base_url('/maintenance-check.php') ?>', { cache: 'no-store' })
                 .then(r => r.json())
                 .then(d => {
-                    if (d.mode === 'redis') {
-                        this.outageMessage = 'Redis tidak tersedia — data mungkin kedaluwarsa hingga layanan pulih.';
+                    if (d.mode === 'deps') {
+                        this.outageMessage = (d.message || 'Layanan inti tidak tersedia')
+                            + ' — data mungkin kedaluwarsa hingga layanan pulih.';
                     } else if (d.mode === 'manual') {
                         this.outageMessage = 'Mode pemeliharaan manual aktif — data saat ini mungkin tidak lengkap.';
                     } else {
