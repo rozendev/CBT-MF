@@ -226,14 +226,41 @@ class DeviceBan
         // isBanned() tetap true karena baris aktif yang lain masih ada —
         // pengawas dibohongi, dan perangkat yang "sudah dibuka" itu
         // dikembalikan ke siswa tapi tetap terkunci.
-        $model->where('device_id', $deviceId)
-            ->where('unlocked_at', null)
-            ->update(null, [
-                'unlocked_by' => $actorId,
-                'unlocked_at' => date('Y-m-d H:i:s'),
-            ]);
+        //
+        // Nilai kembalian update() DIPERIKSA, bukan dibuang, dan dua bentuk
+        // kegagalan ditangkap: exception (DBDebug menyala, lingkungan
+        // pengembangan) maupun return false (DBDebug mati di produksi —
+        // lihat Config\Database::DBDebug). Kalau ini diabaikan, lock
+        // timeout atau koneksi yang putus akan membuat kode ini lolos ke
+        // jalur sukses: cache terhapus, audit "device_unban" tertulis, dan
+        // fungsi menjawab ok:true — padahal barisnya masih unlocked_at IS
+        // NULL. Itu persis kebohongan "melaporkan sukses padahal masih
+        // terblokir" yang tadi diperbaiki di level baris ganda, muncul lagi
+        // satu lapis di atas.
+        try {
+            $updated = $model->where('device_id', $deviceId)
+                ->where('unlocked_at', null)
+                ->update(null, [
+                    'unlocked_by' => $actorId,
+                    'unlocked_at' => date('Y-m-d H:i:s'),
+                ]);
+        } catch (\Throwable $e) {
+            $updated = false;
+            log_message('error', 'DeviceBan: gagal menulis unlock: ' . $e->getMessage());
+        }
 
+        // Cache tetap dihapus di kedua kasus, sukses maupun gagal. Kalau
+        // penulisannya gagal dan barisnya ternyata masih aktif, menghapus
+        // kunci cache tidak membuka blokir yang sesungguhnya: isBanned()
+        // berikutnya jatuh ke database (cache dingin) dan tetap benar
+        // membaca true. Membiarkan cache basi di sana tidak ada untungnya,
+        // jadi dihapus saja supaya pembacaan berikutnya dijamin dari sumber
+        // kebenaran, bukan dari nilai lama yang sudah tidak bisa dipercaya.
         self::forget($deviceId);
+
+        if ($updated === false) {
+            return ['ok' => false, 'message' => 'Gagal membuka blokir perangkat.'];
+        }
 
         try {
             (new \App\Models\ActivityLogModel())->log(
