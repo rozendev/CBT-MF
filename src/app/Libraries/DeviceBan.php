@@ -131,8 +131,12 @@ class DeviceBan
     }
 
     /**
-     * Blokir satu perangkat. Idempoten: perangkat yang sudah terblokir hanya
-     * diperbarui alasannya, tidak menghasilkan baris aktif kedua.
+     * Blokir satu perangkat. Kalau sudah ada baris aktif untuk perangkat ini,
+     * baris itu diperbarui alasannya di tempat — tapi ini bukan jaminan
+     * idempoten tanpa syarat: di bawah konkurensi, dua pemanggilan bisa
+     * sama-sama tidak melihat baris aktif yang lain dan sama-sama insert.
+     * unlock() menutup SEMUA baris aktif sekaligus, jadi duplikat semacam
+     * itu tidak berbahaya.
      *
      * @return array{ok:bool, message:string}
      */
@@ -215,10 +219,19 @@ class DeviceBan
             return ['ok' => true, 'message' => 'Perangkat memang tidak terblokir.'];
         }
 
-        $model->update($existing->id, [
-            'unlocked_by' => $actorId,
-            'unlocked_at' => date('Y-m-d H:i:s'),
-        ]);
+        // Menutup SEMUA baris aktif untuk perangkat ini, bukan cuma baris
+        // $existing yang barusan ditemukan: kalau ban() pernah race dan
+        // sempat menghasilkan dua baris aktif untuk perangkat yang sama,
+        // menutup satu baris saja membuat unlock() melaporkan sukses padahal
+        // isBanned() tetap true karena baris aktif yang lain masih ada —
+        // pengawas dibohongi, dan perangkat yang "sudah dibuka" itu
+        // dikembalikan ke siswa tapi tetap terkunci.
+        $model->where('device_id', $deviceId)
+            ->where('unlocked_at', null)
+            ->update(null, [
+                'unlocked_by' => $actorId,
+                'unlocked_at' => date('Y-m-d H:i:s'),
+            ]);
 
         self::forget($deviceId);
 
