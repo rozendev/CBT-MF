@@ -73,6 +73,68 @@ try {
         'ts'          => (string) $now,
     ];
 
+    // Perangkat terblokir: jangan tulis kiosk_live sama sekali. Selain
+    // menjawab 403 supaya aplikasi menampilkan layar terkunci, berhentinya
+    // tulisan membuat heartbeat menjadi basi, sehingga KioskPresence menolak
+    // tulisan jawaban setelah STALE_SECONDS. Lapis itu datang gratis.
+    //
+    // Bebas framework dengan sengaja, jadi tabelnya dibaca lewat PDO yang
+    // sudah dipakai di berkas ini — bukan lewat App\Libraries\DeviceBan.
+    $deviceId = $fields['device_id'];
+    // \A dan \z, bukan ^ dan $ — lihat alasannya di DeviceBan::isValidDeviceId().
+    if ($deviceId !== '' && preg_match('/\A[A-Za-z0-9_-]+\z/', $deviceId) === 1) {
+        $banCacheKey = 'kiosk_device_ban:' . $deviceId;
+        $cached      = $redis->get($banCacheKey);
+
+        $isBanned = null;
+        if ($cached === '1') {
+            $isBanned = true;
+        } elseif ($cached === '0') {
+            $isBanned = false;
+        }
+
+        if ($isBanned === null) {
+            // Cache dingin atau rusak: tanya database. TIDAK boleh dianggap
+            // "tidak terblokir" — itu jalur gagal-terbuka yang sunyi.
+            try {
+                $pdoBan = new PDO(
+                    'mysql:host=' . (getenv('DB_HOST') ?: '127.0.0.1')
+                    . ';port=' . (getenv('DB_PORT') ?: '3306')
+                    . ';dbname=' . (getenv('DB_DATABASE') ?: 'cbt')
+                    . ';charset=utf8mb4',
+                    getenv('DB_USERNAME') ?: 'root',
+                    getenv('DB_PASSWORD') ?: '',
+                    [PDO::ATTR_TIMEOUT => 2, PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+                );
+                $stmt = $pdoBan->prepare(
+                    'SELECT reason FROM kiosk_banned_devices
+                     WHERE device_id = ? AND unlocked_at IS NULL
+                     ORDER BY id DESC LIMIT 1'
+                );
+                $stmt->execute([$deviceId]);
+                $row      = $stmt->fetch(PDO::FETCH_ASSOC);
+                $isBanned = $row !== false;
+                $banReason = $isBanned ? (string) $row['reason'] : '';
+
+                $redis->setex($banCacheKey, 30, $isBanned ? '1' : '0');
+            } catch (Throwable $e) {
+                // Database tidak terjangkau: seluruh situs sudah masuk
+                // maintenance lewat deps:probe. Jangan menahan heartbeat.
+                error_log('[kiosk-heartbeat] cek ban gagal: ' . $e->getMessage());
+                $isBanned = false;
+                $banReason = '';
+            }
+        } else {
+            $banReason = '';
+        }
+
+        if ($isBanned) {
+            http_response_code(403);
+            echo json_encode(['status' => 'device_banned', 'reason' => $banReason]);
+            exit;
+        }
+    }
+
     // Race-free audit of first heartbeat of a session:
     // HSETNX returns 1 only when the key is created.
     $isNew = $redis->hSetNx($key, 'ts', (string) $now);
