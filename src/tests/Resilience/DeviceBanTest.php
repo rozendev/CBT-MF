@@ -24,7 +24,10 @@ class DeviceBanTest extends TestCase
         // PCRE: $ ikut cocok TEPAT SEBELUM newline di ujung, jadi pola yang
         // dijangkar dengan ^...$ meloloskan ini. Harus \A...\z.
         $this->assertFalse(DeviceBan::isValidDeviceId("abc\n"), 'newline di ujung');
-        $this->assertFalse(DeviceBan::isValidDeviceId(str_repeat('a', 64) . "\n"), 'newline sesudah 64 karakter');
+        // 63 karakter + newline = 64 byte: LOLOS gerbang panjang, jadi hanya
+        // jangkar yang bisa menolaknya. Versi 64+newline tidak menguji apa pun
+        // karena sudah tertangkap gerbang panjang sebelum regex dijalankan.
+        $this->assertFalse(DeviceBan::isValidDeviceId(str_repeat('a', 63) . "\n"), 'newline tepat di batas 64 byte');
     }
 
     public function testCacheKeyIsNamespacedAndStable(): void

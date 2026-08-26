@@ -1483,6 +1483,11 @@ object DeviceIdentity {
 
     private const val NAMESPACE = "cbt-mf|"
 
+    // ^...$ di sini AMAN dan sengaja tidak diubah jadi \A...\z seperti di sisi
+    // PHP. Regex.matches() Kotlin memanggil Matcher.matches(), yang menuntut
+    // seluruh masukan cocok, jadi newline di ujung tetap ditolak. Yang rentan
+    // adalah API bergaya find() seperti preg_match PHP. Diverifikasi di JVM 21:
+    // Pattern.matches(pola, hex+"\n") = false, tetapi .find() = true.
     private val HEX16 = Regex("^[0-9a-fA-F]{16}$")
 
     fun isUsableAndroidId(raw: String?): Boolean {
