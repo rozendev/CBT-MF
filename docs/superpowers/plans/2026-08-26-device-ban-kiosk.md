@@ -130,13 +130,17 @@ class CreateKioskBannedDevicesTable extends Migration
 
         // Ban aktif = unlocked_at IS NULL. MariaDB tidak punya indeks unik
         // parsial, jadi jaminan "paling banyak satu ban aktif per perangkat"
-        // ditegakkan di DeviceBan::ban() di dalam transaksi.
-        $this->forge->addKey(['device_id', 'unlocked_at']);
+        // ditegakkan di DeviceBan::ban() di dalam transaksi. Indeksnya WAJIB
+        // non-unik: satu perangkat boleh punya banyak baris riwayat.
+        $this->forge->addKey(['device_id', 'unlocked_at'], false, false, 'idx_device_active');
 
         $this->forge->createTable('kiosk_banned_devices', false, [
             'ENGINE'          => 'InnoDB',
             'DEFAULT CHARSET' => 'utf8mb4',
-            'COLLATE'         => 'utf8mb4_general_ci',
+            // Samakan dengan 19 migrasi lain di repo ini. Collation campur
+            // memicu "Illegal mix of collations" saat device_id dibandingkan
+            // dengan kolom di tabel lain.
+            'COLLATE'         => 'utf8mb4_unicode_ci',
         ]);
     }
 
