@@ -724,8 +724,21 @@ Di `src/public/kiosk-heartbeat.php`, tepat **setelah** blok yang membangun `$fie
 
                 $redis->setex($banCacheKey, 30, $isBanned ? '1' : '0');
             } catch (Throwable $e) {
-                // Database tidak terjangkau: seluruh situs sudah masuk
-                // maintenance lewat deps:probe. Jangan menahan heartbeat.
+                // Gagal-terbuka DENGAN SENGAJA, dan alasannya blast radius,
+                // bukan mode maintenance. Gagal-tertutup di sini akan menjawab
+                // 403 untuk SETIAP perangkat pada gangguan database sekejap
+                // apa pun — presence seluruh armada runtuh gara-gara masalah
+                // yang tak ada hubungannya dengan status ban siapa pun.
+                //
+                // Paparannya terbatas: cabang ini sengaja TIDAK menulis '0' ke
+                // cache, jadi verdict keliru tidak bertahan melewati gangguan.
+                //
+                // Jangan menuliskan alasan "situsnya toh sudah maintenance" di
+                // sini — itu terbalik. Berkas ini justru dikecualikan dari
+                // gerbang maintenance nginx dan tetap menjawab saat sisa situs
+                // tidak. Lagi pula catch ini menyala untuk kegagalan apa pun,
+                // termasuk timeout dan max_connections habis, bukan hanya
+                // gangguan menyeluruh yang sudah ditandai deps:probe.
                 error_log('[kiosk-heartbeat] cek ban gagal: ' . $e->getMessage());
                 $isBanned = false;
                 $banReason = '';
@@ -742,23 +755,51 @@ Di `src/public/kiosk-heartbeat.php`, tepat **setelah** blok yang membangun `$fie
     }
 ```
 
-- [ ] **Step 2: Lint**
+- [ ] **Step 2: Lengkapi kontrak di docblock header**
+
+Berkas ini mendokumentasikan kode responsnya di docblock paling atas. Tambahkan 403 supaya kontraknya utuh:
+
+```php
+ *   200 {"status":"ok"} | 401 {"status":"invalid_token"} | 403 {"status":"device_banned"} | 503 {"status":"maintenance","mode":"redis"}
+```
+
+- [ ] **Step 3: Lint**
 
 Run: `docker compose exec php php -l /var/www/html/public/kiosk-heartbeat.php`
 Expected: `No syntax errors detected`
 
-- [ ] **Step 3: Verifikasi perangkat bersih masih lolos**
+- [ ] **Step 4: Verifikasi jalur ban BENAR-BENAR menyala**
 
-Perlu token `ws_student_token` yang sah, yang hanya ada saat ada ujian berjalan. Tanpa itu endpoint menjawab 401 sebelum sampai ke pemeriksaan ban — itu sendiri sudah membuktikan pemeriksaan tidak dijalankan terlalu awal:
+Menguji dengan token tidak sah tidak membuktikan apa pun: endpoint menjawab 401 jauh sebelum sampai ke pemeriksaan ban. Jalur aslinya harus dijalankan.
+
+Heartbeat mengautentikasi lewat kunci Redis `ws_student_token:{token}` berisi JSON dengan `user_id`, `attempt_id`, dan `test_id`. Semai satu:
 
 ```bash
-curl -s -X POST http://localhost:8080/kiosk-heartbeat.php \
-  -H 'Content-Type: application/json' \
-  -d '{"token":"tidak-sah","device_id":"aaaa"}' -w '\nHTTP %{http_code}\n'
+docker compose exec php php -r '
+$r = new Redis();
+$r->connect(getenv("REDIS_HOST") ?: "redis", (int)(getenv("REDIS_PORT") ?: 6379), 2);
+$p = (string) getenv("REDIS_PASSWORD"); if ($p !== "") $r->auth($p);
+$r->setex("ws_student_token:UJITOKEN123", 600, json_encode(["user_id"=>1,"attempt_id"=>1,"test_id"=>1]));
+echo "token uji dibuat\n";'
 ```
-Expected: `{"status":"invalid_token"}` dan `HTTP 401`.
 
-- [ ] **Step 4: Commit**
+Lalu buktikan keempatnya:
+
+**(a) Perangkat bersih lolos** — harap `HTTP 200 {"status":"ok"}`:
+```bash
+curl -s -X POST http://localhost:8080/kiosk-heartbeat.php -H 'Content-Type: application/json' \
+  -d '{"token":"UJITOKEN123","device_id":"perangkatbersih","battery":50,"network":"wifi"}' -w '\nHTTP %{http_code}\n'
+```
+
+**(b) Perangkat terblokir ditolak** — harap `HTTP 403 {"status":"device_banned","reason":"uji coba"}`. Sisipkan ban lewat SQL, dan **hapus dulu kunci cache** `kiosk_device_ban:perangkatbersih` karena langkah (a) sudah menyimpan `'0'` di sana — persis yang dilakukan `DeviceBan::ban()` di alur sebenarnya.
+
+**(c) `kiosk_live` tidak ditulis saat terblokir** — catat `HGET kiosk_live:1:1 ts` sebelum dan sesudah heartbeat yang terblokir. Nilainya tidak boleh berubah.
+
+**(d) Cache dingin tidak gagal-terbuka** — hapus kunci cache sementara baris DB masih menyatakan terblokir, lalu pukul endpoint lagi. Harus TETAP 403, karena jatuh ke database. **Ini assertion terpenting di task ini.**
+
+Bersihkan sesudahnya: baris ban uji, kunci `kiosk_device_ban:perangkatbersih`, `ws_student_token:UJITOKEN123`, dan `kiosk_live:1:1`. Verifikasi pembersihannya.
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/public/kiosk-heartbeat.php
