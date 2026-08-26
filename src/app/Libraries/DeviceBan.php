@@ -22,6 +22,10 @@ class DeviceBan
      * Umur cache. Pendek karena satu-satunya yang dibayar saat kedaluwarsa
      * adalah satu kueri primary-key. Ban dan unlock tidak menunggu TTL ini:
      * keduanya menghapus kunci cache-nya langsung.
+     *
+     * src/public/kiosk-heartbeat.php menyalin angka ini sebagai literal 30
+     * pada setex()-nya sendiri, karena berkas itu bebas framework dan tidak
+     * bisa memakai konstanta ini. Ubah salah satu, cek yang lain.
      */
     public const CACHE_TTL_SECONDS = 30;
 

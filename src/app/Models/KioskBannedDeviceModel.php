@@ -23,6 +23,10 @@ class KioskBannedDeviceModel extends Model
 
     /**
      * Ban yang sedang berlaku untuk satu perangkat, atau null.
+     *
+     * src/public/kiosk-heartbeat.php menyimpan salinan kueri mentah dari
+     * method ini lewat PDO — berkas itu bebas framework dengan sengaja,
+     * jadi tidak bisa memanggil model ini. Ubah salah satu, cek yang lain.
      */
     public function activeFor(string $deviceId): ?object
     {
