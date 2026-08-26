@@ -1707,7 +1707,47 @@ Expected: `BUILD SUCCESSFUL`
 Run: `git status --short && ls src/app/Commands/Tmp* 2>/dev/null || echo "bersih"`
 Expected: tidak ada berkas `Tmp*`, tidak ada perubahan yang belum di-commit selain `strix_runs/` yang memang tidak dilacak.
 
-- [ ] **Step 4: Verifikasi manual di perangkat nyata**
+- [ ] **Step 4: Verifikasi baris aktif ganda benar-benar tidak berbahaya**
+
+Ini regresi yang sudah pernah terjadi sekali dan tidak dijaga tes mana pun,
+karena suite `Resilience` berjalan tanpa framework sehingga tidak bisa
+menyentuh database. Siapa pun yang kelak "menyederhanakan" `unlock()` kembali
+menjadi `update($existing->id, ...)` akan memunculkannya lagi tanpa satu pun
+tes berubah warna. Jadi langkah ini wajib dijalankan.
+
+Paksa tiga baris aktif untuk satu perangkat, tambah satu baris riwayat yang
+SUDAH terbuka, dan satu perangkat lain sebagai kontrol:
+
+```bash
+docker compose exec mariadb sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e "
+INSERT INTO kiosk_banned_devices (device_id,reason,banned_by,banned_at,unlocked_by,unlocked_at)
+  VALUES (REPEAT(\"e\",64),\"riwayat lama\",1,\"2026-01-01 00:00:00\",9,\"2026-01-02 00:00:00\");
+INSERT INTO kiosk_banned_devices (device_id,reason,banned_by,banned_at) VALUES (REPEAT(\"e\",64),\"ban 1\",1,NOW());
+INSERT INTO kiosk_banned_devices (device_id,reason,banned_by,banned_at) VALUES (REPEAT(\"e\",64),\"ban 2\",1,NOW());
+INSERT INTO kiosk_banned_devices (device_id,reason,banned_by,banned_at) VALUES (REPEAT(\"e\",64),\"ban 3\",1,NOW());
+INSERT INTO kiosk_banned_devices (device_id,reason,banned_by,banned_at) VALUES (REPEAT(\"f\",64),\"perangkat LAIN\",1,NOW());"'
+```
+
+Lalu panggil `DeviceBan::unlock()` untuk perangkat `e` lewat perintah spark
+sementara, dan periksa keempatnya:
+
+1. Satu panggilan unlock menutup **ketiga** baris aktif — bukan hanya yang terbaru.
+2. `isBanned('eee…')` menjadi `false`.
+3. Baris `riwayat lama` **tidak tersentuh**: `unlocked_by` tetap 9 dan
+   `unlocked_at` tetap `2026-01-02` — bukan tertimpa aktor yang membuka sekarang.
+4. Perangkat `f` **tetap terblokir**.
+
+Butir 3 dan 4 sama pentingnya dengan butir 1: `unlock()` yang menyapu terlalu
+lebar akan merusak riwayat atau membuka perangkat yang tidak diminta.
+
+Bersihkan sesudahnya:
+```bash
+docker compose exec mariadb sh -c 'mariadb -u root -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e "
+DELETE FROM kiosk_banned_devices WHERE device_id IN (REPEAT(\"e\",64), REPEAT(\"f\",64));"'
+```
+dan hapus kunci cache Redis kedua perangkat uji itu.
+
+- [ ] **Step 5: Verifikasi manual di perangkat nyata**
 
 Ini tidak bisa diotomatiskan dan **harus dijalankan pengguna**, bukan agen — berikan sebagai instruksi bernomor:
 
@@ -1719,7 +1759,7 @@ Ini tidak bisa diotomatiskan dan **harus dijalankan pengguna**, bukan agen — b
 6. Di `/admin/kiosk/devices`, tekan **Buka Kunci** pada perangkat itu.
 7. Buka lagi aplikasi di perangkat pertama — harus kembali normal tanpa perlu memasang ulang apa pun.
 
-- [ ] **Step 5: Commit apa pun yang tersisa**
+- [ ] **Step 6: Commit apa pun yang tersisa**
 
 ```bash
 git status --short
