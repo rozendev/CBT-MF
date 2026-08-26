@@ -10,7 +10,8 @@
  *
  * Contract (POST, JSON body):
  *   {token, device_id, battery, charging, network, app_version}
- *   200 {"status":"ok"} | 401 {"status":"invalid_token"} | 503 {"status":"maintenance","mode":"redis"}
+ *   200 {"status":"ok"} | 401 {"status":"invalid_token"} |
+ *   403 {"status":"device_banned"} | 503 {"status":"maintenance","mode":"redis"}
  */
 
 header('Content-Type: application/json');
@@ -118,8 +119,20 @@ try {
 
                 $redis->setex($banCacheKey, 30, $isBanned ? '1' : '0');
             } catch (Throwable $e) {
-                // Database tidak terjangkau: seluruh situs sudah masuk
-                // maintenance lewat deps:probe. Jangan menahan heartbeat.
+                // Gagal-tertutup di sini akan menolak SETIAP perangkat
+                // saat database bermasalah sekejap, bukan hanya yang
+                // terblokir — presence seluruh armada ujian ikut runtuh
+                // karena masalah yang tak ada hubungannya dengan status
+                // ban perangkat mana pun. Cabang ini sengaja tidak menulis
+                // '0' ke cache, jadi verdict keliru itu tidak bertahan
+                // melewati gangguan — heartbeat berikutnya menanyakan
+                // ulang ke database. Alasan "situsnya toh sudah
+                // maintenance" TIDAK berlaku di sini: berkas ini sengaja
+                // dikecualikan dari gerbang maintenance nginx dan tetap
+                // menjawab saat sisa situs tidak, dan catch (Throwable)
+                // ini menyala untuk kegagalan apa pun — timeout,
+                // max_connections habis, blip jaringan — bukan hanya
+                // gangguan menyeluruh yang sudah ditandai deps:probe.
                 error_log('[kiosk-heartbeat] cek ban gagal: ' . $e->getMessage());
                 $isBanned = false;
                 $banReason = '';
