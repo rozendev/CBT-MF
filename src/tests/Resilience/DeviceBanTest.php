@@ -21,6 +21,10 @@ class DeviceBanTest extends TestCase
         $this->assertFalse(DeviceBan::isValidDeviceId('spasi tidak boleh'));
         $this->assertFalse(DeviceBan::isValidDeviceId("a\nb"));
         $this->assertFalse(DeviceBan::isValidDeviceId('titik.koma;'));
+        // PCRE: $ ikut cocok TEPAT SEBELUM newline di ujung, jadi pola yang
+        // dijangkar dengan ^...$ meloloskan ini. Harus \A...\z.
+        $this->assertFalse(DeviceBan::isValidDeviceId("abc\n"), 'newline di ujung');
+        $this->assertFalse(DeviceBan::isValidDeviceId(str_repeat('a', 64) . "\n"), 'newline sesudah 64 karakter');
     }
 
     public function testCacheKeyIsNamespacedAndStable(): void

@@ -33,7 +33,10 @@ class DeviceBan
     {
         return $raw !== ''
             && strlen($raw) <= 64
-            && preg_match('/^[A-Za-z0-9_-]+$/', $raw) === 1;
+            // \A dan \z, bukan ^ dan $: dalam PCRE, $ ikut cocok TEPAT SEBELUM
+            // newline di ujung, sehingga "abc\n" akan lolos sebagai id yang sah
+            // dan menyelundupkan newline ke dalam kunci Redis lewat cacheKey().
+            && preg_match('/\A[A-Za-z0-9_-]+\z/', $raw) === 1;
     }
 
     public static function cacheKey(string $deviceId): string
