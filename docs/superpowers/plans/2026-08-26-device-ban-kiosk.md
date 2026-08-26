@@ -722,7 +722,22 @@ Di `src/public/kiosk-heartbeat.php`, tepat **setelah** blok yang membangun `$fie
                 $isBanned = $row !== false;
                 $banReason = $isBanned ? (string) $row['reason'] : '';
 
-                $redis->setex($banCacheKey, 30, $isBanned ? '1' : '0');
+                // try BERSARANG, di dalam cabang sukses. Kalau setex ikut
+                // berada di try baca-DB, kegagalan menulis cache akan jatuh ke
+                // catch di bawah dan MEMBUANG verdict "terblokir" yang baru
+                // saja benar dari database. DeviceBan::isBanned() memisahkan
+                // keduanya justru untuk ini.
+                //
+                // Dan setex TIDAK boleh dipindah ke luar catch: di jalur
+                // gagal-terbuka ia akan menulis '0', meloloskan verdict palsu
+                // melewati gangguan.
+                try {
+                    // 30 = DeviceBan::CACHE_TTL_SECONDS, disalin karena berkas
+                    // ini bebas framework.
+                    $redis->setex($banCacheKey, 30, $isBanned ? '1' : '0');
+                } catch (Throwable $e) {
+                    error_log('[kiosk-heartbeat] gagal isi cache ban: ' . $e->getMessage());
+                }
             } catch (Throwable $e) {
                 // Gagal-terbuka DENGAN SENGAJA, dan alasannya blast radius,
                 // bukan mode maintenance. Gagal-tertutup di sini akan menjawab
@@ -755,7 +770,28 @@ Di `src/public/kiosk-heartbeat.php`, tepat **setelah** blok yang membangun `$fie
     }
 ```
 
-- [ ] **Step 2: Lengkapi kontrak di docblock header**
+- [ ] **Step 2: Pasang read timeout pada koneksi Redis berkas ini**
+
+Berkas ini tidak pernah menyetel `Redis::OPT_READ_TIMEOUT`, padahal
+`RedisClient` dan `maintenance-check.php` sudah. Terhadap Redis yang hidup
+tapi beku, `connect()` berhasil seketika dari backlog kernel dan setiap
+perintah lalu memblokir **selamanya** — di berkas yang justru seluruh gunanya
+adalah tetap menjawab saat yang lain mati. Langkah ini menambah dua perintah
+Redis lagi ke koneksi itu, jadi tanpa ini paparannya malah membesar.
+
+Tepat setelah blok `connect()`/`auth()` berhasil, sebelum perintah Redis
+pertama:
+
+```php
+    // Wajib, dan wajib sebelum perintah pertama. Redis yang beku tetap
+    // menyelesaikan handshake TCP, jadi timeout connect di atas tidak pernah
+    // menyala — tanpa baris ini heartbeat menggantung selamanya.
+    $redis->setOption(Redis::OPT_READ_TIMEOUT, 3);
+```
+
+Selaraskan dengan `RedisClient::READ_TIMEOUT_SECONDS`.
+
+- [ ] **Step 3: Lengkapi kontrak di docblock header**
 
 Berkas ini mendokumentasikan kode responsnya di docblock paling atas. Tambahkan 403 supaya kontraknya utuh:
 
@@ -763,12 +799,12 @@ Berkas ini mendokumentasikan kode responsnya di docblock paling atas. Tambahkan 
  *   200 {"status":"ok"} | 401 {"status":"invalid_token"} | 403 {"status":"device_banned"} | 503 {"status":"maintenance","mode":"redis"}
 ```
 
-- [ ] **Step 3: Lint**
+- [ ] **Step 4: Lint**
 
 Run: `docker compose exec php php -l /var/www/html/public/kiosk-heartbeat.php`
 Expected: `No syntax errors detected`
 
-- [ ] **Step 4: Verifikasi jalur ban BENAR-BENAR menyala**
+- [ ] **Step 5: Verifikasi jalur ban BENAR-BENAR menyala**
 
 Menguji dengan token tidak sah tidak membuktikan apa pun: endpoint menjawab 401 jauh sebelum sampai ke pemeriksaan ban. Jalur aslinya harus dijalankan.
 
@@ -799,7 +835,7 @@ curl -s -X POST http://localhost:8080/kiosk-heartbeat.php -H 'Content-Type: appl
 
 Bersihkan sesudahnya: baris ban uji, kunci `kiosk_device_ban:perangkatbersih`, `ws_student_token:UJITOKEN123`, dan `kiosk_live:1:1`. Verifikasi pembersihannya.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/public/kiosk-heartbeat.php
