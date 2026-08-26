@@ -351,7 +351,10 @@ class DeviceBan
     {
         return $raw !== ''
             && strlen($raw) <= 64
-            && preg_match('/^[A-Za-z0-9_-]+$/', $raw) === 1;
+            // \A dan \z, bukan ^ dan $: dalam PCRE, $ ikut cocok TEPAT SEBELUM
+            // newline di ujung, sehingga "abc\n" akan lolos sebagai id yang sah
+            // dan menyelundupkan newline ke dalam kunci Redis.
+            && preg_match('/\A[A-Za-z0-9_-]+\z/', $raw) === 1;
     }
 
     public static function cacheKey(string $deviceId): string
@@ -684,7 +687,8 @@ Di `src/public/kiosk-heartbeat.php`, tepat **setelah** blok yang membangun `$fie
     // Bebas framework dengan sengaja, jadi tabelnya dibaca lewat PDO yang
     // sudah dipakai di berkas ini — bukan lewat App\Libraries\DeviceBan.
     $deviceId = $fields['device_id'];
-    if ($deviceId !== '' && preg_match('/^[A-Za-z0-9_-]+$/', $deviceId) === 1) {
+    // \A dan \z, bukan ^ dan $ — lihat alasannya di DeviceBan::isValidDeviceId().
+    if ($deviceId !== '' && preg_match('/\A[A-Za-z0-9_-]+\z/', $deviceId) === 1) {
         $banCacheKey = 'kiosk_device_ban:' . $deviceId;
         $cached      = $redis->get($banCacheKey);
 
