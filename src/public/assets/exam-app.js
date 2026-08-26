@@ -47,12 +47,22 @@
 
     const FETCH_TIMEOUT_MS = APP_CFG.fetch_timeout_ms || 15000;
     const FETCH_MAX_RETRIES = 3;
+    /* Penyelesaian ujian menyiram Redis ke MariaDB lalu menilai seluruh
+       attempt — pekerjaan nyata yang boleh lama. Dipotong 15 detik akan
+       membuat siswa mengira gagal padahal servernya sedang bekerja. */
+    const FINISH_TIMEOUT_MS = 60000;
 
     /* Peredam aksi beruntun (tap cepat / spam) pada satu soal.
        AUTOSAVE_DEBOUNCE_MS menahan pengiriman sampai siswa berhenti mengubah,
        sehingga yang naik ke server adalah STATE TERAKHIR — bukan satu request
        per tap yang menumpuk di antrean. */
     const AUTOSAVE_DEBOUNCE_MS = 700;
+
+    /* Percobaan ulang saat penyimpanan server tidak terjangkau. Berbeda dari
+       retry biasa yang menyerah setelah tiga kali: yang ini TIDAK pernah
+       menyerah, karena menyerah berarti siswa lanjut mengisi ke ruang hampa. */
+    const STORAGE_RETRY_MIN_MS = 3000;
+    const STORAGE_RETRY_MAX_MS = 15000;
     const RATE_WINDOW_MS = 3000;
     const RATE_MAX_ACTIONS = 8;
     const RATE_TOAST_COOLDOWN_MS = 4000;
@@ -287,6 +297,14 @@
             sseErrorCount: 0,
             syncInterval: null,
             isOffline: !navigator.onLine,
+            /* Penyimpanan server tak terjangkau. Berbeda dari isOffline, yang
+               hanya membaca navigator.onLine: perangkat bisa online sempurna
+               sementara Redis di server membeku. */
+            storageDown: false,
+            storageDownMsg: '',
+            storageRetrying: false,
+            storageRetryTimer: null,
+            storageRetryDelay: STORAGE_RETRY_MIN_MS,
             ready: false,
             
             activeQueue: Promise.resolve(),
@@ -701,6 +719,7 @@
                     processData: false,
                     contentType: false,
                     dataType: 'json',
+                    timeout: FETCH_TIMEOUT_MS,
                     success: (res) => { 
                         updateCsrf(res); 
                         if (res.exam_mode !== undefined) {
@@ -777,7 +796,8 @@
                             data: fd,
                             processData: false,
                             contentType: false,
-                            dataType: 'json'
+                            dataType: 'json',
+                            timeout: FETCH_TIMEOUT_MS,
                         }).always((res) => {
                             if (res && res.csrf_hash) updateCsrf(res);
                             if (res && res.exam_mode !== undefined) {
@@ -831,6 +851,7 @@
                             processData: false,
                             contentType: false,
                             dataType: 'json',
+                            timeout: FETCH_TIMEOUT_MS,
                             success: (res) => {
                                 updateCsrf(res);
 
@@ -873,16 +894,26 @@
                                         window.location.href = API + '/login';
                                     });
                                     resolve();
+                                } else if (err.status === 503) {
+                                    /* Server menyatakan lapis penyimpanannya tidak
+                                       dapat dijangkau — atau nginx menyajikan halaman
+                                       maintenance. Tidak ada gunanya mencoba tiga kali
+                                       lalu membiarkan siswa lanjut: bekukan sekarang. */
+                                    this.markUnsaved(logId, 'Penyimpanan server tidak dapat dijangkau.');
+                                    this.enterStorageDown(this.readServerMessage(err));
+                                    resolve();
                                 } else {
                                     if (retries > 0) {
                                         setTimeout(() => {
                                             this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
                                         }, 2500);
                                     } else {
-                                        this.isSaving = false;
-                                        this.showErrorToast = true;
-                                        setTimeout(() => { this.showErrorToast = false; }, 4000);
+                                        /* Dulu berhenti di sini dengan toast 4 detik, dan
+                                           siswa lanjut mengisi tanpa satu pun jawabannya
+                                           sampai ke server. Sekarang dibekukan sampai ada
+                                           satu penyimpanan yang benar-benar berhasil. */
                                         this.markUnsaved(logId, 'Koneksi ke server gagal.');
+                                        this.enterStorageDown('Jawaban Anda tidak dapat dikirim ke server.');
                                         resolve();
                                     }
                                 }
@@ -897,6 +928,83 @@
             /* Status simpan menetap: 'failed' tidak pernah hilang sendiri selama
                masih ada jawaban yang belum tersimpan, supaya siswa tidak
                menyelesaikan ujian dengan mengira semuanya aman. */
+            /* Pesan dari server kalau ada dan terbaca; kalau tidak, pesan bawaan.
+               Saat nginx yang menjawab, badannya HTML, bukan JSON. */
+            readServerMessage(err) {
+                try {
+                    const body = err && err.responseJSON;
+                    if (body && typeof body.message === 'string' && body.message) {
+                        return body.message;
+                    }
+                } catch (e) { /* badan bukan JSON */ }
+                return 'Penyimpanan jawaban di server sedang tidak dapat dijangkau.';
+            },
+
+            /* Bekukan ujian di tempat. Sengaja TIDAK memindahkan halaman:
+               sesi tersimpan di Redis, jadi kalau Redis yang tumbang siswa
+               tidak akan bisa login kembali. Dengan tetap di halaman ini,
+               jawaban di memori utuh dan langsung menyusul begitu server pulih. */
+            enterStorageDown(message) {
+                this.storageDownMsg = message || 'Penyimpanan jawaban di server sedang tidak dapat dijangkau.';
+                this.isSaving = false;
+                this.showErrorToast = false;
+
+                if (this.storageDown) return;   // sudah beku, loop sudah jalan
+
+                this.storageDown = true;
+                this.storageRetryDelay = STORAGE_RETRY_MIN_MS;
+                this.scheduleStorageRetry();
+            },
+
+            scheduleStorageRetry() {
+                if (this.storageRetryTimer) clearTimeout(this.storageRetryTimer);
+                this.storageRetryTimer = setTimeout(() => {
+                    this.storageRetryTimer = null;
+                    this.storageRetryDelay = Math.min(
+                        Math.round(this.storageRetryDelay * 1.6),
+                        STORAGE_RETRY_MAX_MS
+                    );
+                    this.retryStorage();
+                }, this.storageRetryDelay);
+            },
+
+            retryStorage() {
+                if (!this.storageDown) return;
+
+                this.storageRetrying = true;
+                let pending = Object.keys(this.unsavedIds);
+
+                if (pending.length === 0) {
+                    /* Denyutnya harus autosave, bukan auto-sync: auto-sync
+                       menjawab 'success' walau penyiraman Redis ke MariaDB
+                       gagal, jadi ia akan mencabut status beku tanpa satu pun
+                       jawaban benar-benar tersimpan. Hanya autosave yang
+                       fail-closed terhadap Redis. */
+                    const current = this.currentQuestion ? this.qKey(this.currentQuestion) : null;
+                    if (current) pending = [current];
+                }
+
+                // retries 0: pengulangan diurus loop ini, bukan retry berlapis.
+                pending.forEach((id) => {
+                    this.enqueueRequest('autosave', { logId: isNaN(id) ? id : Number(id), retries: 0 });
+                });
+
+                this.scheduleStorageRetry();
+            },
+
+            exitStorageDown() {
+                if (!this.storageDown) return;
+
+                this.storageDown = false;
+                this.storageDownMsg = '';
+                this.storageRetrying = false;
+                this.storageRetryDelay = STORAGE_RETRY_MIN_MS;
+                if (this.storageRetryTimer) {
+                    clearTimeout(this.storageRetryTimer);
+                    this.storageRetryTimer = null;
+                }
+            },
+
             markUnsaved(logId, message) {
                 this.unsavedIds[logId] = true;
                 this.unsavedCount = Object.keys(this.unsavedIds).length;
@@ -905,6 +1013,9 @@
             },
 
             markSaved(logId) {
+                // Satu penyimpanan yang benar-benar berhasil adalah satu-satunya
+                // bukti yang sah bahwa penyimpanan server sudah pulih.
+                this.exitStorageDown();
                 if (this.unsavedIds[logId]) delete this.unsavedIds[logId];
                 this.unsavedCount = Object.keys(this.unsavedIds).length;
                 if (this.unsavedCount === 0) {
@@ -1128,7 +1239,8 @@
                     data: fd,
                     processData: false,
                     contentType: false,
-                    dataType: 'json'
+                    dataType: 'json',
+                    timeout: FETCH_TIMEOUT_MS,
                 })
                 .done((res) => {
                     this.isSaving = false;
@@ -1195,7 +1307,8 @@
                     data: fd,
                     processData: false,
                     contentType: false,
-                    dataType: 'json'
+                    dataType: 'json',
+                    timeout: FINISH_TIMEOUT_MS,
                 })
                 .done((res) => {
                     updateCsrf(res);

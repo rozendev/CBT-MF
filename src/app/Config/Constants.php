@@ -77,3 +77,32 @@ defined('EXIT_USER_INPUT')     || define('EXIT_USER_INPUT', 7);     // invalid u
 defined('EXIT_DATABASE')       || define('EXIT_DATABASE', 8);       // database error
 defined('EXIT__AUTO_MIN')      || define('EXIT__AUTO_MIN', 9);      // lowest automatically-assigned error code
 defined('EXIT__AUTO_MAX')      || define('EXIT__AUTO_MAX', 125);    // highest automatically-assigned error code
+
+/*
+ | --------------------------------------------------------------------------
+ | Batas Waktu Baca Soket
+ | --------------------------------------------------------------------------
+ |
+ | phpredis memakai default_socket_timeout sebagai batas waktu membaca balasan,
+ | dan bawaan PHP untuk nilai ini adalah 60 detik — jauh lebih lama daripada
+ | yang sanggup ditanggung ujian serentak.
+ |
+ | Yang tidak bisa dijangkau dari kode aplikasi adalah dua handler Redis milik
+ | CodeIgniter sendiri, yaitu penyimpan sesi dan cache: keduanya membuka
+ | koneksinya sendiri dan tidak menyediakan kaitan untuk menyetel
+ | Redis::OPT_READ_TIMEOUT. Menyetelnya di sini menutup keduanya sekaligus,
+ | untuk web maupun CLI, di semua environment, dan juga pada pemasangan non-
+ | Docker yang tidak pernah memuat docker/php-fpm/security.ini.
+ |
+ | Berkas ini dimuat paling awal di bootstrap, jauh sebelum sesi dimulai, jadi
+ | penyetelan di sini pasti sudah berlaku saat koneksi pertama dibuka.
+ |
+ | Selaraskan dengan App\Libraries\RedisClient::READ_TIMEOUT_SECONDS, yang
+ | menyetel Redis::OPT_READ_TIMEOUT secara eksplisit untuk koneksi milik
+ | aplikasi sendiri.
+ |
+ | Tidak menyentuh cURL (punya batas waktunya sendiri) maupun MariaDB, dan
+ | tidak mengganggu daemon WebSocket yang memakai klien Redis asinkron
+ | Clue\React — soketnya non-blocking, jadi tidak pernah menunggu balasan.
+ */
+ini_set('default_socket_timeout', '3');

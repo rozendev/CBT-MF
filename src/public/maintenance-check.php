@@ -56,6 +56,12 @@ $redisOk = false;
 try {
     $redis = new Redis();
     if ($redis->connect(getenv('REDIS_HOST') ?: 'redis', (int) (getenv('REDIS_PORT') ?: 6379), PROBE_TIMEOUT_SECONDS)) {
+        // Wajib, dan wajib sebelum AUTH. Redis yang beku tetap menyelesaikan
+        // handshake TCP, jadi timeout connect di atas tidak pernah menyala —
+        // tanpa baris ini halaman troubleshooting ikut menggantung, persis
+        // ketika ia satu-satunya halaman yang masih hidup.
+        $redis->setOption(Redis::OPT_READ_TIMEOUT, PROBE_TIMEOUT_SECONDS);
+
         $password = (string) getenv('REDIS_PASSWORD');
         if ($password === '' || $redis->auth($password)) {
             $redisOk = (bool) $redis->ping();
