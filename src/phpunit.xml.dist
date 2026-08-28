@@ -11,5 +11,8 @@
         <testsuite name="Realtime">
             <directory>tests/Realtime</directory>
         </testsuite>
+        <testsuite name="Resilience">
+            <directory>tests/Resilience</directory>
+        </testsuite>
     </testsuites>
 </phpunit>

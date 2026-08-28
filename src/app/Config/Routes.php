@@ -109,6 +109,10 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->get('kiosk/live-data', 'Admin\KioskLiveController::data');
         $routes->post('kiosk/live/action', 'Admin\KioskLiveController::action');
 
+        // Perangkat yang diblokir dari menjalankan aplikasi ujian
+        $routes->get('kiosk/devices', 'Admin\KioskDeviceController::index');
+        $routes->post('kiosk/devices/unlock', 'Admin\KioskDeviceController::unlock');
+
         // Analytics
         $routes->get('analytics', 'Admin\AnalyticsController::index');
         $routes->get('analytics/data', 'Admin\AnalyticsController::getData');

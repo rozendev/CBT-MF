@@ -42,7 +42,12 @@ class Session extends BaseConfig
      * Session Save Path — Redis connection string
      * Password is dynamically injected from env('REDIS_PASSWORD') in __construct()
      */
-    public string $savePath = 'tcp://redis:6379';
+    /**
+     * Timeout wajib ada. Tanpa parameter ini CodeIgniter memakai 0.0, dan
+     * phpredis membaca 0 sebagai "tunggu selamanya" — satu Redis yang
+     * menggantung akan mengunci worker php-fpm sampai habis.
+     */
+    public string $savePath = 'tcp://redis:6379?timeout=2';
 
     /**
      * Whether to match the user's IP address when reading the session data.
@@ -83,7 +88,9 @@ class Session extends BaseConfig
 
         $password = env('REDIS_PASSWORD', '');
         if (!empty($password)) {
-            $this->savePath = 'tcp://redis:6379?auth=' . $password;
+            // urlencode: savePath diurai dengan parse_str, jadi password yang
+            // memuat & = % + akan tercabik kalau ditempel mentah.
+            $this->savePath = 'tcp://redis:6379?timeout=2&auth=' . urlencode($password);
         }
 
         // Dynamically set session cookie secure flag based on base_url scheme

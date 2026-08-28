@@ -518,6 +518,35 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 </div>
             </div>
         </div>
+
+        <!-- Penyimpanan server tak terjangkau: ujian dibekukan di tempat.
+             Sengaja tidak memindahkan halaman — sesi ada di Redis, jadi kalau
+             Redis yang tumbang siswa tidak akan bisa login kembali. Dengan
+             bertahan di sini, jawaban di memori utuh dan menyusul sendiri
+             begitu server pulih. -->
+        <div x-show="storageDown" style="display: none; position: fixed; inset: 0; z-index: 100000; background: rgba(15, 23, 42, 0.97); backdrop-filter: blur(8px); align-items: center; justify-content: center; flex-direction: column;" :class="{'d-flex': storageDown}">
+            <div class="bg-white rounded-4 shadow-lg p-5 text-center" style="max-width: 480px; width: 90%;">
+                <div class="mb-4 d-flex justify-content-center">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; background: rgba(255, 193, 7, 0.15);">
+                        <i class="bi bi-database-exclamation text-warning" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+                <h3 class="fw-bold text-dark mb-3">Ujian Dihentikan Sementara</h3>
+                <p class="text-secondary mb-2" x-text="storageDownMsg"></p>
+                <p class="text-secondary mb-4"><strong>Jangan tutup atau muat ulang halaman ini.</strong> Segera panggil pengawas.</p>
+                <div class="alert alert-success border-success-subtle py-3 text-start d-flex align-items-center mb-3">
+                    <i class="bi bi-shield-check text-success fs-3 me-3"></i>
+                    <div>
+                        <strong class="text-success d-block">Jawaban Anda tidak hilang</strong>
+                        <span class="text-success small">Semua jawaban masih tersimpan di perangkat ini dan akan dikirim otomatis begitu server pulih.</span>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center justify-content-center text-secondary small">
+                    <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+                    <span>Mencoba menyambung ulang otomatis…</span>
+                </div>
+            </div>
+        </div>
     <div class="exam-layout">
     <div class="exam-main">
         
@@ -820,6 +849,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         const APP_CFG = window.APP_CONFIG || {};
 
         const FETCH_TIMEOUT_MS = APP_CFG.fetch_timeout_ms || 15000;
+        /* Penyelesaian ujian menyiram Redis ke MariaDB lalu menilai seluruh
+           attempt — pekerjaan nyata yang boleh lama. */
+        const FINISH_TIMEOUT_MS = 60000;
+        /* Percobaan ulang saat penyimpanan server tak terjangkau. Tidak pernah
+           menyerah: menyerah berarti siswa lanjut mengisi ke ruang hampa. */
+        const STORAGE_RETRY_MIN_MS = 3000;
+        const STORAGE_RETRY_MAX_MS = 15000;
         const LOGIN_URL = '<?= base_url('/login') ?>';
 
         function redirectReplace(url) {
@@ -927,7 +963,15 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 timerInterval: null,
                 warningShown: false,
                 isOffline: !navigator.onLine,
-                
+                /* Penyimpanan server tak terjangkau. Berbeda dari isOffline,
+                   yang hanya membaca navigator.onLine: perangkat bisa online
+                   sempurna sementara Redis di server membeku. */
+                storageDown: false,
+                storageDownMsg: '',
+                storageRetryTimer: null,
+                storageRetryDelay: STORAGE_RETRY_MIN_MS,
+                storagePending: {},
+
                 activeQueue: Promise.resolve(),
                 syncTimeout: null,
                 lastSyncTime: Date.now(),
@@ -1211,6 +1255,88 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     this.saveAnswer();
                 },
 
+                /* Pesan dari server kalau terbaca; saat nginx yang menjawab,
+                   badannya HTML, bukan JSON. */
+                readServerMessage(err) {
+                    try {
+                        const body = err && err.responseJSON;
+                        if (body && typeof body.message === 'string' && body.message) {
+                            return body.message;
+                        }
+                    } catch (e) { /* badan bukan JSON */ }
+                    return 'Penyimpanan jawaban di server sedang tidak dapat dijangkau.';
+                },
+
+                /* Bekukan ujian di tempat. Sengaja TIDAK memindahkan halaman:
+                   sesi tersimpan di Redis, jadi kalau Redis yang tumbang siswa
+                   tidak akan bisa login kembali. Dengan bertahan di sini,
+                   jawaban di memori utuh dan langsung menyusul saat server pulih. */
+                enterStorageDown(logId, message) {
+                    if (logId !== undefined && logId !== null) {
+                        this.storagePending[logId] = true;
+                    }
+                    this.storageDownMsg = message || 'Penyimpanan jawaban di server sedang tidak dapat dijangkau.';
+                    this.isSaving = false;
+                    this.showErrorToast = false;
+
+                    if (this.storageDown) return;   // sudah beku, loop sudah jalan
+
+                    this.storageDown = true;
+                    this.storageRetryDelay = STORAGE_RETRY_MIN_MS;
+                    this.scheduleStorageRetry();
+                },
+
+                scheduleStorageRetry() {
+                    if (this.storageRetryTimer) clearTimeout(this.storageRetryTimer);
+                    this.storageRetryTimer = setTimeout(() => {
+                        this.storageRetryTimer = null;
+                        this.storageRetryDelay = Math.min(
+                            Math.round(this.storageRetryDelay * 1.6),
+                            STORAGE_RETRY_MAX_MS
+                        );
+                        this.retryStorage();
+                    }, this.storageRetryDelay);
+                },
+
+                retryStorage() {
+                    if (!this.storageDown) return;
+
+                    let pending = Object.keys(this.storagePending);
+                    if (pending.length === 0) {
+                        /* Denyutnya harus autosave, bukan auto-sync: auto-sync
+                           menjawab 'success' walau penyiraman Redis ke MariaDB
+                           gagal, jadi ia akan mencabut status beku tanpa satu
+                           pun jawaban benar-benar tersimpan. */
+                        const current = this.currentQuestion ? this.currentQuestion.log_id : null;
+                        if (current) pending = [current];
+                    }
+
+                    // retries 0: pengulangan diurus loop ini, bukan retry berlapis.
+                    pending.forEach((id) => {
+                        this.enqueueRequest('autosave', { logId: isNaN(id) ? id : Number(id), retries: 0 });
+                    });
+
+                    this.scheduleStorageRetry();
+                },
+
+                /* Satu penyimpanan yang benar-benar berhasil adalah satu-satunya
+                   bukti sah bahwa penyimpanan server sudah pulih. */
+                exitStorageDown(logId) {
+                    if (logId !== undefined && logId !== null) {
+                        delete this.storagePending[logId];
+                    }
+                    if (!this.storageDown) return;
+
+                    this.storageDown = false;
+                    this.storageDownMsg = '';
+                    this.storagePending = {};
+                    this.storageRetryDelay = STORAGE_RETRY_MIN_MS;
+                    if (this.storageRetryTimer) {
+                        clearTimeout(this.storageRetryTimer);
+                        this.storageRetryTimer = null;
+                    }
+                },
+
                 scheduleAutoSync() {
                     if (this.syncTimeout) clearTimeout(this.syncTimeout);
                     
@@ -1240,7 +1366,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     return new Promise((resolve) => {
                         if (action === 'sync') {
                             if (!ATTEMPT_ID) return resolve();
-                            $.post('<?= base_url('/student/exam/auto-sync') ?>', { attempt_id: ATTEMPT_ID })
+                            $.ajax({ url: '<?= base_url('/student/exam/auto-sync') ?>', type: 'POST', data: { attempt_id: ATTEMPT_ID }, timeout: FETCH_TIMEOUT_MS })
                              .always(() => {
                                  this.lastSyncTime = Date.now();
                                  this.scheduleAutoSync();
@@ -1269,9 +1395,19 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                             this.isSaving = true;
                             this.showErrorToast = false;
 
-                            $.post('<?= base_url('/student/exam/autosave') ?>', passedData)
+                            /* $.ajax, bukan $.post: hanya bentuk ini yang menerima
+                               timeout. Tanpa batas waktu, jQuery menunggu selamanya —
+                               done/fail tidak pernah terpanggil, isSaving tetap true,
+                               dan spinner autosave berputar tanpa akhir. */
+                            $.ajax({
+                                url: '<?= base_url('/student/exam/autosave') ?>',
+                                type: 'POST',
+                                data: passedData,
+                                timeout: FETCH_TIMEOUT_MS
+                            })
                              .done((res) => {
                                  this.isSaving = false;
+                                 this.exitStorageDown(logId);
                                  this.showSavedToast = true;
                                  setTimeout(() => { this.showSavedToast = false; }, 2000);
 
@@ -1291,6 +1427,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                                          redirectReplace(LOGIN_URL);
                                      });
                                      resolve();
+                                 } else if (err.status === 503) {
+                                     /* Server menyatakan lapis penyimpanannya tidak
+                                        terjangkau — atau nginx menyajikan halaman
+                                        maintenance. Percuma mencoba tiga kali lalu
+                                        membiarkan siswa lanjut: bekukan sekarang. */
+                                     this.enterStorageDown(logId, this.readServerMessage(err));
+                                     resolve();
                                  } else {
                                      if (retries > 0) {
                                          // Retry in 2.5s, menahan resolve() dari luar, sehingga meng-block antrean
@@ -1298,11 +1441,12 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                                              this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
                                          }, 2500);
                                      } else {
-                                         this.isSaving = false;
-                                         this.showErrorToast = true;
-                                         setTimeout(() => { this.showErrorToast = false; }, 4000);
-                                         console.error("Gagal menyimpan jawaban (offline)", err);
-                                         resolve(); // Lepas lock antrean setelah give up
+                                         /* Dulu berhenti di sini dengan toast 4 detik dan
+                                            siswa lanjut mengisi tanpa satu pun jawabannya
+                                            sampai ke server. */
+                                         console.error("Gagal menyimpan jawaban", err);
+                                         this.enterStorageDown(logId, 'Jawaban Anda tidak dapat dikirim ke server.');
+                                         resolve();
                                      }
                                  }
                              });
@@ -1374,7 +1518,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     }
 
                     this.isSaving = true;
-                    $.post('<?= base_url('/student/exam/check-score') ?>', { attempt_id: ATTEMPT_ID })
+                    $.ajax({ url: '<?= base_url('/student/exam/check-score') ?>', type: 'POST', data: { attempt_id: ATTEMPT_ID }, timeout: FETCH_TIMEOUT_MS })
                      .done((res) => {
                          this.isSaving = false;
                          if (res.status === 'success') {
@@ -1439,7 +1583,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         try { await this.activeQueue; } catch(e) {}
                     }
 
-                    $.post(FINISH_URL, { attempt_id: ATTEMPT_ID })
+                    $.ajax({ url: FINISH_URL, type: 'POST', data: { attempt_id: ATTEMPT_ID }, timeout: FINISH_TIMEOUT_MS })
                      .done((res) => {
                          if (window.CommsBridge) {
                              window.CommsBridge.requestExit("<?= esc($wsToken) ?>");
@@ -1569,6 +1713,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     type: 'POST',
                     data: { attempt_id: ATTEMPT_ID, type: 'tab_switch' },
                     dataType: 'json',
+                    timeout: FETCH_TIMEOUT_MS,
                     success: function(res) {
                         if (res.action === 'auto_submitted') {
                             window.isSubmitting = true;
@@ -1643,6 +1788,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     type: 'POST',
                     data: { attempt_id: ATTEMPT_ID, type: 'fullscreen_exit' },
                     dataType: 'json',
+                    timeout: FETCH_TIMEOUT_MS,
                     success: function(res) {
                         if (res.action === 'auto_submitted') {
                             overlay.style.display = 'none';
@@ -1742,6 +1888,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     type: 'POST',
                     data: { attempt_id: ATTEMPT_ID, type: 'modified_browser', detail: detail },
                     dataType: 'json',
+                    timeout: FETCH_TIMEOUT_MS,
                     success: function(res) {
                         if (res.action === 'lock') {
                             window.isSubmitting = true;

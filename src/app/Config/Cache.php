@@ -127,7 +127,8 @@ class Cache extends BaseConfig
         'host'       => '127.0.0.1',
         'password'   => null,
         'port'       => 6379,
-        'timeout'    => 0,
+        // 0 berarti menunggu selamanya. Lihat RedisClient::CONNECT_TIMEOUT_SECONDS.
+        'timeout'    => 2,
         'async'      => false, // specific to Predis and ignored by the native Redis extension
         'persistent' => false,
         'database'   => 0,

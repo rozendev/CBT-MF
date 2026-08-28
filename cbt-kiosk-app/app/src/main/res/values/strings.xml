@@ -37,4 +37,9 @@
     <string name="toast_root_blocked">Perangkat terdeteksi ROOT. Ujian diblokir.</string>
     <string name="toast_verify_failed">Gagal verifikasi ke server. Periksa koneksi.</string>
     <string name="toast_password_empty">Password kosong atau server belum diatur</string>
+
+    <string name="device_blocked_title">Perangkat Diblokir</string>
+    <string name="device_blocked_body">Perangkat ini diblokir oleh pengawas dan tidak dapat digunakan untuk ujian. Serahkan perangkat kepada pengawas.</string>
+    <string name="device_blocked_reason_prefix">Alasan:</string>
+    <string name="device_blocked_close">Tutup Aplikasi</string>
 </resources>
