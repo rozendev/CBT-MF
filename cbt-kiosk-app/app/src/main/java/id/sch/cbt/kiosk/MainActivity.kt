@@ -337,12 +337,75 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Penanda perangkat. Diturunkan dari ANDROID_ID supaya bertahan melewati
+     * hapus data aplikasi dan pasang ulang — UUID per-pemasangan yang dulu
+     * dipakai lenyap begitu data dihapus, friction yang terlalu murah untuk
+     * aplikasi yang memang biasa dipasang ulang.
+     *
+     * Hasilnya di-cache di prefs supaya tidak dihitung ulang tiap heartbeat.
+     * Kuncinya dibedakan per skema (v2): perangkat yang sudah menyimpan UUID
+     * lama harus naik ke penanda baru, bukan terus memakai yang lama.
+     */
     private fun getOrCreateDeviceId(): String {
-        val existing = prefs.getString("kiosk_device_id", "")
-        if (!existing.isNullOrBlank()) return existing
-        val newId = java.util.UUID.randomUUID().toString()
-        prefs.edit().putString("kiosk_device_id", newId).apply()
-        return newId
+        val cached = prefs.getString("kiosk_device_id_v2", "")
+        if (!cached.isNullOrBlank()) return cached
+
+        val androidId = try {
+            android.provider.Settings.Secure.getString(
+                contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID
+            )
+        } catch (e: Throwable) {
+            Log.w("MainActivity", "Gagal membaca ANDROID_ID", e)
+            null
+        }
+
+        val id = if (DeviceIdentity.isUsableAndroidId(androidId)) {
+            DeviceIdentity.derive(androidId!!)
+        } else {
+            // Jalur cadangan: blokir tetap berfungsi untuk perangkat ini, hanya
+            // kembali bisa dilepas dengan menghapus data aplikasi.
+            Log.w("MainActivity", "ANDROID_ID tidak dapat dipakai, memakai UUID per-pemasangan")
+            val legacy = prefs.getString("kiosk_device_id", "")
+            if (!legacy.isNullOrBlank()) legacy else java.util.UUID.randomUUID().toString()
+        }
+
+        prefs.edit().putString("kiosk_device_id_v2", id).apply()
+        return id
+    }
+
+    /**
+     * Layar akhir untuk perangkat yang diblokir. Tidak ada tombol coba lagi:
+     * ini keputusan pengawas, bukan gangguan jaringan, dan tombol coba lagi
+     * hanya mengundang siswa menekannya berkali-kali.
+     */
+    private fun showDeviceBlockedScreen(schoolName: String, reason: String) {
+        runOnUiThread {
+            try {
+                webView.loadUrl("about:blank")
+                webView.visibility = android.view.View.GONE
+            } catch (e: Throwable) {
+                Log.w("MainActivity", "Gagal menyembunyikan WebView", e)
+            }
+
+            val pesan = buildString {
+                append(getString(R.string.device_blocked_body))
+                if (reason.isNotBlank()) {
+                    append("\n\n")
+                    append(getString(R.string.device_blocked_reason_prefix))
+                    append(' ')
+                    append(reason)
+                }
+            }
+
+            AlertDialog.Builder(this)
+                .setTitle(if (schoolName.isBlank()) getString(R.string.device_blocked_title) else schoolName)
+                .setMessage(pesan)
+                .setCancelable(false)
+                .setPositiveButton(R.string.device_blocked_close) { _, _ -> finishAffinity() }
+                .show()
+        }
     }
 
     /**
@@ -728,7 +791,10 @@ class MainActivity : AppCompatActivity() {
                 if (baseUrl.startsWith("http://")) {
                     baseUrl = "https://" + baseUrl.removePrefix("http://")
                 }
-                val configUrl = "$baseUrl/api/kiosk/config"
+                // device_id dikirim supaya server bisa menjawab blocked SEBELUM
+                // WebView dijalankan — itulah yang membuat halaman ujian benar-
+                // benar tidak termuat, bukan sekadar ditolak setelah tampil.
+                val configUrl = "$baseUrl/api/kiosk/config?device_id=" + Uri.encode(getOrCreateDeviceId())
 
                 Log.d("MainActivity", "Fetching kiosk config from: $configUrl")
                 val url = java.net.URL(configUrl)
@@ -772,6 +838,18 @@ class MainActivity : AppCompatActivity() {
     fun applyKioskConfig(configJson: String, serverBaseUrl: String) {
         try {
             val json = org.json.JSONObject(configJson)
+
+            // Perangkat terblokir: berhenti di sini. WebView tidak pernah
+            // dijalankan, jadi halaman ujian benar-benar tidak termuat.
+            val blocked = json.optJSONObject("blocked")
+            if (blocked != null) {
+                showDeviceBlockedScreen(
+                    json.optString("school_name", ""),
+                    blocked.optString("reason", "")
+                )
+                return
+            }
+
             if (json.has("min_app_version")) {
                 val v = json.optString("min_app_version", "1.0.0")
                 if (v.isNotBlank()) prefs.edit().putString("kiosk_min_app_version", v).apply()
