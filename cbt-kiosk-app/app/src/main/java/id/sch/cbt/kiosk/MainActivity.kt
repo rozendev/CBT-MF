@@ -347,50 +347,13 @@ class MainActivity : AppCompatActivity() {
      * Kuncinya dibedakan per skema (v2): perangkat yang sudah menyimpan UUID
      * lama harus naik ke penanda baru, bukan terus memakai yang lama.
      */
-    private fun getOrCreateDeviceId(): String {
-        val cached = prefs.getString("kiosk_device_id_v2", "")
-        if (!cached.isNullOrBlank()) return cached
-
-        val androidId = try {
-            android.provider.Settings.Secure.getString(
-                contentResolver,
-                android.provider.Settings.Secure.ANDROID_ID
-            )
-        } catch (e: Throwable) {
-            Log.w("MainActivity", "Gagal membaca ANDROID_ID", e)
-            null
-        }
-
-        val id = if (DeviceIdentity.isUsableAndroidId(androidId)) {
-            DeviceIdentity.derive(androidId!!)
-        } else {
-            // Jalur cadangan: blokir tetap berfungsi untuk perangkat ini, hanya
-            // kembali bisa dilepas dengan menghapus data aplikasi.
-            Log.w("MainActivity", "ANDROID_ID tidak dapat dipakai, memakai UUID per-pemasangan")
-            val legacy = prefs.getString("kiosk_device_id", "")
-            if (!legacy.isNullOrBlank()) legacy else java.util.UUID.randomUUID().toString()
-        }
-
-        // DUA kunci ditulis, dan itu disengaja.
-        //
-        // kiosk_device_id_v2 berperan sebagai penanda "sudah migrasi": tanpa
-        // kunci terpisah, perangkat yang sudah menyimpan UUID lama akan terus
-        // memakai UUID itu selamanya karena pemeriksaan cache di atas langsung
-        // mengembalikannya.
-        //
-        // kiosk_device_id tetap ditulis karena itulah kunci yang dibaca
-        // HeartbeatManager, dan heartbeat adalah titik penegakan yang bekerja
-        // tanpa APK baru. Kalau hanya v2 yang ditulis, heartbeat mengirim
-        // penanda LAMA atau kosong sementara /api/kiosk/config mengirim
-        // penanda baru — dua titik penegakan memeriksa identitas berbeda,
-        // monitoring menampilkan yang salah, dan pengawas memblokir penanda
-        // yang tidak pernah dipakai aplikasi untuk memperkenalkan diri.
-        prefs.edit()
-            .putString("kiosk_device_id_v2", id)
-            .putString("kiosk_device_id", id)
-            .apply()
-        return id
-    }
+    /**
+     * Penanda perangkat. Seluruh logikanya ada di [DeviceIdentityStore] supaya
+     * hanya ada SATU tempat yang tahu cara mendapatkannya — HeartbeatManager
+     * memakai sumber yang sama, sehingga heartbeat dan /api/kiosk/config tidak
+     * bisa lagi memeriksa identitas yang berbeda.
+     */
+    private fun getOrCreateDeviceId(): String = DeviceIdentityStore.resolve(this)
 
     /**
      * Layar akhir untuk perangkat yang diblokir. Tidak ada tombol coba lagi:

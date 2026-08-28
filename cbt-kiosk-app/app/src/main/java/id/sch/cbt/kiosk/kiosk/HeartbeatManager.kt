@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import id.sch.cbt.kiosk.BuildConfig
+import id.sch.cbt.kiosk.DeviceIdentityStore
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -80,8 +81,12 @@ class HeartbeatManager(
             return
         }
 
-        val deviceId = activity.getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
-            .getString("kiosk_device_id", "") ?: ""
+        // Lewat DeviceIdentityStore, BUKAN membaca kunci prefs langsung.
+        // Membaca kunci sendiri di sini pernah membuat heartbeat mengirim
+        // penanda lama — atau kosong — sementara /api/kiosk/config mengirim
+        // penanda baru, sehingga kedua titik penegakan memeriksa identitas
+        // yang berbeda dan blokir yang dipasang pengawas tidak pernah menggigit.
+        val deviceId = DeviceIdentityStore.resolve(activity)
         val payload = buildPayload(deviceId)
 
         thread(start = true, isDaemon = true, name = "KioskHeartbeat") {
