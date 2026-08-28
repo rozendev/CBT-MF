@@ -371,7 +371,24 @@ class MainActivity : AppCompatActivity() {
             if (!legacy.isNullOrBlank()) legacy else java.util.UUID.randomUUID().toString()
         }
 
-        prefs.edit().putString("kiosk_device_id_v2", id).apply()
+        // DUA kunci ditulis, dan itu disengaja.
+        //
+        // kiosk_device_id_v2 berperan sebagai penanda "sudah migrasi": tanpa
+        // kunci terpisah, perangkat yang sudah menyimpan UUID lama akan terus
+        // memakai UUID itu selamanya karena pemeriksaan cache di atas langsung
+        // mengembalikannya.
+        //
+        // kiosk_device_id tetap ditulis karena itulah kunci yang dibaca
+        // HeartbeatManager, dan heartbeat adalah titik penegakan yang bekerja
+        // tanpa APK baru. Kalau hanya v2 yang ditulis, heartbeat mengirim
+        // penanda LAMA atau kosong sementara /api/kiosk/config mengirim
+        // penanda baru — dua titik penegakan memeriksa identitas berbeda,
+        // monitoring menampilkan yang salah, dan pengawas memblokir penanda
+        // yang tidak pernah dipakai aplikasi untuk memperkenalkan diri.
+        prefs.edit()
+            .putString("kiosk_device_id_v2", id)
+            .putString("kiosk_device_id", id)
+            .apply()
         return id
     }
 
