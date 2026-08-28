@@ -159,26 +159,62 @@ function kioskLive() {
                 .then(d => { this.students = d.students || []; })
                 .catch(e => console.error('kiosk live-data failed:', e));
         },
+        /* Nama siswa masuk ke opsi html: milik Swal, jadi harus di-escape.
+           Nama berasal dari basis data dan bisa memuat karakter apa pun. */
+        escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        },
         actionLabel(action) {
             if (action === 'eject') return 'mengeluarkan siswa ini dari ujian';
             if (action === 'lock') return 'mengunci akun siswa ini';
             if (action === 'ban_device') return 'MEMBLOKIR PERANGKAT ini dari menjalankan aplikasi ujian, dan mengeluarkan sesinya sekarang';
             return 'mengeluarkan siswa ini dari ujian DAN mengunci akunnya';
         },
-        runAction(student, action) {
+        /* SweetAlert2, bukan window.confirm/prompt. Dua alasan: prompt()
+           tidak dapat diandalkan di browser mobile — dan pengawas justru
+           sering memegang tablet atau HP saat mengawasi — dan seluruh view
+           admin lain di proyek ini sudah memakai Swal. */
+        async runAction(student, action) {
             const nama = (student.firstname + ' ' + student.lastname).trim() + ' (' + student.username + ')';
-            if (!window.confirm('Anda akan ' + this.actionLabel(action) + ':\n\n' + nama + '\n\nLanjutkan?')) return;
 
-            // Alasan wajib untuk blokir perangkat: ini keputusan yang akan
-            // dibaca orang lain saat memutuskan membukanya kembali.
             let reason = '';
+
             if (action === 'ban_device') {
-                reason = (window.prompt('Alasan memblokir perangkat ini (wajib):') || '').trim();
-                if (!reason) {
-                    this.actionOk = false;
-                    this.actionMessage = 'Blokir dibatalkan — alasan wajib diisi.';
-                    return;
-                }
+                // Alasan wajib: ini keputusan yang akan dibaca orang lain saat
+                // memutuskan membukanya kembali. Digabung ke satu dialog supaya
+                // pengawas tidak dihadapkan dua tahap saat sedang panik.
+                const res = await Swal.fire({
+                    icon: 'warning',
+                    title: 'Blokir Perangkat?',
+                    html: 'Perangkat milik <b>' + this.escapeHtml(nama) + '</b> akan diblokir dari '
+                        + 'menjalankan aplikasi ujian, dan sesinya dikeluarkan sekarang.'
+                        + '<br><br><span class="text-muted small">Akun siswanya TIDAK dikunci — '
+                        + 'dia masih bisa melanjutkan di perangkat lain.</span>',
+                    input: 'text',
+                    inputLabel: 'Alasan (wajib)',
+                    inputPlaceholder: 'mis. terpasang aplikasi perekam layar',
+                    inputValidator: (v) => (!v || !v.trim()) ? 'Alasan wajib diisi.' : undefined,
+                    showCancelButton: true,
+                    confirmButtonText: 'Blokir Perangkat',
+                    cancelButtonText: 'Batal',
+                    confirmButtonColor: '#dc3545'
+                });
+                if (!res.isConfirmed) return;
+                reason = (res.value || '').trim();
+            } else {
+                const res = await Swal.fire({
+                    icon: 'warning',
+                    title: 'Lanjutkan?',
+                    html: 'Anda akan ' + this.escapeHtml(this.actionLabel(action)) + ':<br><br><b>'
+                        + this.escapeHtml(nama) + '</b>',
+                    showCancelButton: true,
+                    confirmButtonText: 'Lanjutkan',
+                    cancelButtonText: 'Batal',
+                    confirmButtonColor: '#dc3545'
+                });
+                if (!res.isConfirmed) return;
             }
 
             this.busyUser = student.user_id;

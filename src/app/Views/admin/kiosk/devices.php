@@ -72,8 +72,19 @@ function kioskDevices() {
         busyDevice: null,
         actionMessage: '',
         actionOk: true,
-        unlock(deviceId) {
-            if (!window.confirm('Buka kunci perangkat ini?\n\nPerangkat akan langsung bisa menjalankan aplikasi ujian lagi.')) return;
+        /* SweetAlert2, bukan window.confirm — dialog bawaan browser tidak
+           dapat diandalkan di mobile, dan pengawas sering memegang tablet. */
+        async unlock(deviceId) {
+            const res = await Swal.fire({
+                icon: 'question',
+                title: 'Buka Kunci Perangkat?',
+                text: 'Perangkat ini akan langsung bisa menjalankan aplikasi ujian lagi.',
+                showCancelButton: true,
+                confirmButtonText: 'Buka Kunci',
+                cancelButtonText: 'Batal',
+                confirmButtonColor: '#198754'
+            });
+            if (!res.isConfirmed) return;
 
             this.busyDevice = deviceId;
             fetch('<?= base_url('/admin/kiosk/devices/unlock') ?>', {
