@@ -29,6 +29,9 @@ class KioskLiveController extends BaseController
         return view('admin/kiosk/live', [
             'title'       => 'Monitoring Kiosk Real-Time',
             'activeTests' => $activeTests,
+            // Perangkat sekolah dipakai bergilir. Blokir yang terlupakan akan
+            // mengunci siswa berikutnya, jadi jumlahnya harus selalu terlihat.
+            'bannedCount' => (new \App\Models\KioskBannedDeviceModel())->countActive(),
         ]);
     }
 

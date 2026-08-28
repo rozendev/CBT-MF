@@ -11,6 +11,15 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
+<?php if (($bannedCount ?? 0) > 0): ?>
+    <div class="alert alert-warning d-flex justify-content-between align-items-center">
+        <span>
+            <i class="bi bi-slash-circle me-2"></i>
+            <strong><?= (int) $bannedCount ?></strong> perangkat sedang terkunci dan tidak bisa menjalankan aplikasi ujian.
+        </span>
+        <a href="<?= base_url('/admin/kiosk/devices') ?>" class="btn btn-sm btn-outline-dark">Kelola</a>
+    </div>
+<?php endif; ?>
 <div x-data="kioskLive()" class="pb-5">
     <div class="row mb-4 align-items-center">
         <div class="col-md-8">
@@ -89,6 +98,12 @@
                                             <li><hr class="dropdown-divider"></li>
                                             <li><button class="dropdown-item text-danger fw-semibold" type="button" @click="runAction(s, 'eject_lock')">
                                                 <i class="bi bi-shield-exclamation me-2"></i>Keluarkan &amp; Kunci</button></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><button class="dropdown-item text-danger fw-semibold" type="button"
+                                                        :disabled="!s.device_id"
+                                                        :title="s.device_id ? '' : 'Perangkat ini belum melaporkan ID — aplikasinya perlu diperbarui'"
+                                                        @click="runAction(s, 'ban_device')">
+                                                <i class="bi bi-slash-circle me-2"></i>Blokir Perangkat</button></li>
                                         </ul>
                                     </div>
                                 </td>
@@ -147,11 +162,24 @@ function kioskLive() {
         actionLabel(action) {
             if (action === 'eject') return 'mengeluarkan siswa ini dari ujian';
             if (action === 'lock') return 'mengunci akun siswa ini';
+            if (action === 'ban_device') return 'MEMBLOKIR PERANGKAT ini dari menjalankan aplikasi ujian, dan mengeluarkan sesinya sekarang';
             return 'mengeluarkan siswa ini dari ujian DAN mengunci akunnya';
         },
         runAction(student, action) {
             const nama = (student.firstname + ' ' + student.lastname).trim() + ' (' + student.username + ')';
             if (!window.confirm('Anda akan ' + this.actionLabel(action) + ':\n\n' + nama + '\n\nLanjutkan?')) return;
+
+            // Alasan wajib untuk blokir perangkat: ini keputusan yang akan
+            // dibaca orang lain saat memutuskan membukanya kembali.
+            let reason = '';
+            if (action === 'ban_device') {
+                reason = (window.prompt('Alasan memblokir perangkat ini (wajib):') || '').trim();
+                if (!reason) {
+                    this.actionOk = false;
+                    this.actionMessage = 'Blokir dibatalkan — alasan wajib diisi.';
+                    return;
+                }
+            }
 
             this.busyUser = student.user_id;
             fetch('<?= base_url('/admin/kiosk/live/action') ?>', {
@@ -164,7 +192,9 @@ function kioskLive() {
                 body: JSON.stringify({
                     test_id: this.selectedTest,
                     user_id: student.user_id,
-                    action: action
+                    action: action,
+                    device_id: student.device_id || '',
+                    reason: reason
                 })
             })
                 .then(r => r.json())
