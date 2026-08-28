@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Libraries\DeviceBan;
 use App\Libraries\ProctorAction;
 use App\Libraries\RedisClient;
 use App\Models\TestModel;
@@ -97,7 +98,7 @@ class KioskLiveController extends BaseController
 
     /**
      * Tindakan pengawas terhadap satu peserta.
-     * POST { test_id, user_id, action: eject|lock|eject_lock, reason? }
+     * POST { test_id, user_id, action: eject|lock|eject_lock|ban_device, reason?, device_id? }
      */
     public function action()
     {
@@ -117,9 +118,45 @@ class KioskLiveController extends BaseController
             ]);
         }
 
-        if (!ProctorAction::isValidAction($action)) {
+        // ban_device bukan ProctorAction: ia menyasar perangkat, bukan akun,
+        // jadi sengaja tidak masuk ke ProctorAction::ACTIONS.
+        if ($action !== 'ban_device' && !ProctorAction::isValidAction($action)) {
             return $this->response->setStatusCode(400)->setJSON([
                 'status' => 'error', 'message' => 'Aksi tidak dikenal.',
+            ]);
+        }
+
+        if ($action === 'ban_device') {
+            $deviceId = (string) ($body['device_id'] ?? '');
+            $actorId  = (int) session('user_id');
+
+            if (!DeviceBan::isValidDeviceId($deviceId)) {
+                return $this->response->setStatusCode(400)->setJSON([
+                    'status'  => 'error',
+                    'message' => 'Perangkat ini belum melaporkan ID — aplikasinya perlu diperbarui.',
+                ]);
+            }
+
+            $banResult = DeviceBan::ban($deviceId, (string) ($body['reason'] ?? ''), $actorId, $userId, $testId);
+            if (!$banResult['ok']) {
+                return $this->response->setStatusCode(400)->setJSON([
+                    'status' => 'error', 'message' => $banResult['message'],
+                ]);
+            }
+
+            // Blokir perangkat SEKALIGUS mengeluarkan sesi berjalan: pengawas
+            // menekan tombol ini justru untuk menghentikan yang sedang terjadi.
+            // Akun TIDAK dikunci — "perangkat ini bermasalah" bukan "siswa ini
+            // dihukum", dan siswanya masih bisa dipindah ke perangkat lain.
+            //
+            // Eject yang gagal (mis. siswa memang tidak sedang ujian) TIDAK
+            // membatalkan ban: perangkatnya tetap terblokir, dan pesannya
+            // mengatakan apa adanya supaya pengawas tidak salah menyimpulkan.
+            $ejectResult = (new ProctorAction())->eject($testId, $userId, $actorId, 'Perangkat diblokir pengawas');
+
+            return $this->response->setJSON([
+                'status'  => 'success',
+                'message' => $banResult['message'] . ' ' . $ejectResult['message'],
             ]);
         }
 
