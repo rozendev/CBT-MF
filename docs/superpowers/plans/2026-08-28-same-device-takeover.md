@@ -232,12 +232,18 @@ final class SessionTakeover
             return self::BUSY;
         }
 
-        // === dan bukan hash_equals(): device_id bukan rahasia. Ia identifier
-        // yang dikirim klien terbuka di setiap permintaan, jadi tidak ada yang
-        // bisa bocor lewat perbedaan waktu perbandingan. Memakai hash_equals di
-        // sini akan menyesatkan pembaca berikutnya untuk mengira device_id
-        // dijaga kerahasiaannya, lalu membangun di atas asumsi yang keliru itu.
-        return $storedDevice === $incomingDevice ? self::TAKEOVER : self::BUSY;
+        // hash_equals(), bukan ===, dan ini disengaja.
+        //
+        // Keputusan ini berjalan SETELAH password terverifikasi, jadi pihak
+        // yang sampai ke sini sudah memegang kredensial korban — yang belum ia
+        // punya justru device_id korban. Bagi dia, $storedDevice adalah nilai
+        // rahasia yang ingin ditebak, dan perbandingan yang keluar lebih cepat
+        // saat byte pertama sudah beda memberi sinyal itu.
+        //
+        // "device_id bukan rahasia karena dikirim terbuka" menilai dari sudut
+        // pandang perangkat yang sah, bukan penyerang, jadi bukan alasan yang
+        // sah untuk melepas kendali ini.
+        return hash_equals($storedDevice, $incomingDevice) ? self::TAKEOVER : self::BUSY;
     }
 }
 ```
