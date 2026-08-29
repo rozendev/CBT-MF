@@ -40,6 +40,14 @@ class SessionTakeoverTest extends TestCase
             SessionTakeover::BUSY,
             SessionTakeover::decide('token-lama', 'perangkat-a', 'perangkat-b')
         );
+
+        // Dua string yang berbeda tapi "sama" di bawah perbandingan longgar PHP
+        // (keduanya diurai sebagai notasi ilmiah bernilai nol). Menegaskan ===,
+        // bukan ==, supaya refactor yang melonggarkannya tertangkap di sini.
+        $this->assertSame(
+            SessionTakeover::BUSY,
+            SessionTakeover::decide('token-lama', '0e123456789012345678901234567890', '0e999999999999999999999999999999')
+        );
     }
 
     /**
