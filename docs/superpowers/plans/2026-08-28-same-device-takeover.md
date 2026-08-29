@@ -98,6 +98,13 @@ class SessionTakeoverTest extends TestCase
             SessionTakeover::BUSY,
             SessionTakeover::decide('token-lama', 'perangkat-a', 'perangkat-b')
         );
+        // Dua string yang berbeda tapi "sama" di bawah perbandingan longgar PHP
+        // (keduanya diurai sebagai notasi ilmiah bernilai nol). Menegaskan ===,
+        // bukan ==, supaya refactor yang melonggarkannya tertangkap di sini.
+        $this->assertSame(
+            SessionTakeover::BUSY,
+            SessionTakeover::decide('token-lama', '0e123456789012345678901234567890', '0e999999999999999999999999999999')
+        );
     }
 
     /**
@@ -225,7 +232,12 @@ final class SessionTakeover
             return self::BUSY;
         }
 
-        return hash_equals($storedDevice, $incomingDevice) ? self::TAKEOVER : self::BUSY;
+        // === dan bukan hash_equals(): device_id bukan rahasia. Ia identifier
+        // yang dikirim klien terbuka di setiap permintaan, jadi tidak ada yang
+        // bisa bocor lewat perbedaan waktu perbandingan. Memakai hash_equals di
+        // sini akan menyesatkan pembaca berikutnya untuk mengira device_id
+        // dijaga kerahasiaannya, lalu membangun di atas asumsi yang keliru itu.
+        return $storedDevice === $incomingDevice ? self::TAKEOVER : self::BUSY;
     }
 }
 ```
