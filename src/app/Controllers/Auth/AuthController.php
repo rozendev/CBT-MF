@@ -132,7 +132,8 @@ class AuthController extends BaseController
         // DeviceIdentityStore — sumber yang sama dengan heartbeat dan
         // /api/kiosk/config. Browser biasa tidak mengirimnya, dan itu berarti
         // ia tidak pernah bisa merebut sesi milik perangkat lain.
-        $incomingDevice = (string) ($this->request->getPost('device_id') ?? '');
+        $rawDevice = $this->request->getPost('device_id');
+        $incomingDevice = is_string($rawDevice) ? $rawDevice : '';
         if (!DeviceBan::isValidDeviceId($incomingDevice)) {
             $incomingDevice = '';
         }
