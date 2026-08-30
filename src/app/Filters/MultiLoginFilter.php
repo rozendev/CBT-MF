@@ -81,8 +81,13 @@ class MultiLoginFilter implements FilterInterface
                     return redirect()->to('/login')->with('error', $message);
                 }
                 
-                // Keep the TTL alive for active sessions
+                // Keep the TTL alive for active sessions. Penanda perangkat
+                // ikut diperpanjang supaya umurnya tidak pernah menyimpang dari
+                // tokennya: pendamping yang mati lebih dulu akan mengunci siswa
+                // dari sesinya sendiri persis seperti sebelum fitur ini ada,
+                // justru di ujian panjang yang paling membutuhkannya.
                 $redis->expire($key, 7200);
+                $redis->expire("user_login_device:{$userId}", 7200);
             }
         } catch (\Exception $e) {
             // If Redis fails, log and continue (don't block user)
