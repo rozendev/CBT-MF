@@ -34,6 +34,25 @@ final class SessionTakeover
     public const CLEAR_BANNED = 'clear_banned';
 
     /**
+     * Umur token sesi sekaligus umur kunci pendampingnya. Setiap tempat yang
+     * menulis atau memperpanjang salah satu dari keduanya wajib memakai angka
+     * ini, karena seluruh fitur ini bersandar pada satu invarian: umur
+     * pendamping tidak boleh menyimpang dari umur tokennya.
+     *
+     * Kedua arah penyimpangan merugikan. Pendamping yang mati lebih dulu
+     * membuat perangkat pemegang sesi terlihat asing, lalu decide() menolaknya
+     * — siswa terkunci dari ujiannya sendiri, persis keadaan yang fitur ini
+     * ada untuk menghapusnya. Pendamping yang hidup lebih lama memberi hak
+     * ambil alih kepada perangkat yang sudah tidak memegang sesi.
+     *
+     * Sebelum konstanta ini ada, invarian tersebut hanya berupa angka 7200
+     * yang kebetulan sama di banyak tempat. Satu di antaranya — perpanjangan
+     * di MultiLoginFilter — memang sempat menyimpang, dan tidak ada tes yang
+     * bisa menangkapnya karena tidak ada yang menyatakan aturannya.
+     */
+    public const TTL_SECONDS = 7200;
+
+    /**
      * @param string|null $existingToken Isi user_login_token, null bila tidak ada.
      * @param string|null $storedDevice  Isi user_login_device, null bila tidak ada.
      * @param string      $incomingDevice device_id yang dikirim klien, '' bila tidak ada.
@@ -80,5 +99,23 @@ final class SessionTakeover
         // hash_equals tidak berbiaya, dan beban pembuktian ada pada yang ingin
         // MENGHAPUS kendali, bukan yang mempertahankannya.
         return hash_equals($storedDevice, $incomingDevice) ? self::TAKEOVER : self::BUSY;
+    }
+
+    /**
+     * Nama kunci pendamping untuk satu pengguna.
+     *
+     * Dirakit di sini, bukan diketik ulang di tiap pemanggil, karena kelas ini
+     * yang memegang aturan pendamping. Nama yang salah ketik tidak akan gagal
+     * dengan berisik: Redis akan menulis dan membaca kunci lain dengan patuh,
+     * decide() lalu melihat pendamping yang hilang, dan fitur ini mati
+     * diam-diam di jalur tersebut.
+     *
+     * Kunci tokennya sendiri sengaja tidak ikut pindah ke sini. `user_login_token`
+     * lebih tua dari fitur ini dan punya konsumen lain di luar berkas-berkas
+     * yang mengurus pengambilalihan.
+     */
+    public static function deviceKey(int|string $userId): string
+    {
+        return "user_login_device:{$userId}";
     }
 }
