@@ -34,10 +34,10 @@ final class SessionTakeover
     public const CLEAR_BANNED = 'clear_banned';
 
     /**
-     * Umur token sesi sekaligus umur kunci pendampingnya. Setiap tempat yang
-     * menulis atau memperpanjang salah satu dari keduanya wajib memakai angka
-     * ini, karena seluruh fitur ini bersandar pada satu invarian: umur
-     * pendamping tidak boleh menyimpang dari umur tokennya.
+     * Umur token SESI sekaligus umur kunci pendampingnya. Setiap tempat yang
+     * menulis atau memperpanjang salah satu dari keduanya sebagai sesi wajib
+     * memakai angka ini, karena seluruh fitur ini bersandar pada satu invarian:
+     * umur pendamping tidak boleh menyimpang dari umur tokennya.
      *
      * Kedua arah penyimpangan merugikan. Pendamping yang mati lebih dulu
      * membuat perangkat pemegang sesi terlihat asing, lalu decide() menolaknya
@@ -49,6 +49,15 @@ final class SessionTakeover
      * yang kebetulan sama di banyak tempat. Satu di antaranya — perpanjangan
      * di MultiLoginFilter — memang sempat menyimpang, dan tidak ada tes yang
      * bisa menangkapnya karena tidak ada yang menyatakan aturannya.
+     *
+     * Tiga penulis sentinel 'BANNED' sengaja BERADA DI LUAR aturan ini dan
+     * tetap memakai angkanya sendiri: ExamService.php:458, ExamService.php:662,
+     * dan ProctorAction.php:166. Yang mereka tulis bukan sesi, melainkan
+     * penanda ban, dan umur sebuah ban adalah konsep yang berbeda dari umur
+     * sebuah sesi — mengikatnya ke konstanta ini akan membuat perubahan pada
+     * salah satunya diam-diam menggeser yang lain. Mereka juga tidak menyentuh
+     * kunci pendamping, dan itu memang tidak perlu: decide() keluar lewat
+     * CLEAR_BANNED sebelum $storedDevice pernah dibaca.
      */
     public const TTL_SECONDS = 7200;
 

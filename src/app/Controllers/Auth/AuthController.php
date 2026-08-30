@@ -192,16 +192,33 @@ class AuthController extends BaseController
         } else {
             // Write it anyway (overwriting)
             try {
-                $redis->setex($tokenKey, SessionTakeover::TTL_SECONDS, $loginToken);
+                // Cabang ini TIDAK boleh berasumsi MultiLoginFilter ikut mati.
+                // Sakelar mati di filter membandingkan `$isEnabled === '0'`
+                // dengan sebuah string, sedangkan setelan prevent_multi_login
+                // bertipe boolean dan sampai ke sini sebagai bool. Begitu admin
+                // mematikannya, cabang ini yang jalan — selagi filter masih
+                // menegakkan, karena `false === '0'` bernilai false.
+                //
+                // Jadi kegagalan penulisan di sini punya akibat yang sama
+                // dengan di jalur TAKEOVER: sesi berjalan dengan login_token
+                // yang tidak pernah tersimpan, dan filter membaca token yang
+                // hilang sebagai "lanjutkan". Gagal tertutup. Benar atau
+                // tidaknya perbandingan di berkas lain bukan sesuatu yang
+                // pantas dijadikan sandaran di sini.
+                $stored = $redis->setex($tokenKey, SessionTakeover::TTL_SECONDS, $loginToken);
+                if (!$stored) {
+                    return $fail('Layanan sedang tidak tersedia. Coba lagi.');
+                }
             } catch (\Exception $e) {
                 log_message('error', 'Redis session store error: ' . $e->getMessage());
                 return $fail('Layanan sedang tidak tersedia. Coba lagi.');
             }
         }
 
-        // Catat pemegang sesi supaya perangkat yang sama bisa merebutnya
-        // kembali nanti. Dijalankan di kedua jalur di atas.
-        $this->rememberSessionDevice($redis, $user->id, $incomingDevice);
+        // Samakan penanda perangkat dengan pemegang sesi yang baru: ditulis
+        // kalau login ini membawa device_id, dihapus kalau tidak. Dijalankan di
+        // kedua jalur di atas.
+        $this->syncSessionDevice($redis, $user->id, $incomingDevice);
 
         // Regenerate session ID to prevent fixation
         session()->regenerate(true);
@@ -361,12 +378,20 @@ class AuthController extends BaseController
      *   persis keadaan sebelum fitur ini ada.
      * - Gagal menghapus justru melonggarkan: pendamping lama tetap hidup selagi
      *   token dipegang browser, jadi kiosk basi itu masih bisa merebut sesinya
-     *   kembali. Ini kebalikan arah dari cabang di atas. Tetap aman karena
-     *   pendamping hanya pernah berisi device_id milik pemilik akun yang sama:
-     *   yang bisa direbut hanyalah sesinya sendiri, dan tidak ada jalur
-     *   lintas-akun sama sekali (spec §4.3).
+     *   kembali. Ini kebalikan arah dari cabang di atas.
+     *
+     * Cabang kedua menyisakan risiko, dan risiko itu tidak nol. Di tingkat akun
+     * ia aman — pendamping hanya pernah berisi device_id milik pemilik akun yang
+     * sama, jadi tidak ada jalur lintas-akun sama sekali (spec §4.3). Tapi model
+     * ancaman fitur ini memang mencakup penyerang yang sudah melewati verifikasi
+     * password, dan bagi dia pendamping basi mengubah BUSY menjadi TAKEOVER bila
+     * ia kebetulan berada di kiosk yang dulu terdaftar. Sisa risikonya kecil:
+     * butuh gangguan Redis, penguasaan fisik atas kiosk itu, DAN password
+     * korban sekaligus. Dengan ketiganya terpenuhi, menggagalkan login pun tidak
+     * menolong. Karena itu tetap tidak menggagalkan login — tapi dicatat di sini
+     * sebagai sisa risiko, bukan sebagai nol.
      */
-    private function rememberSessionDevice(\Redis $redis, int|string $userId, string $deviceId): void
+    private function syncSessionDevice(\Redis $redis, int|string $userId, string $deviceId): void
     {
         $deviceKey = SessionTakeover::deviceKey($userId);
 
