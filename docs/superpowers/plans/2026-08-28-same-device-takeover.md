@@ -36,10 +36,11 @@ Ternyata tidak diperlukan. Jalur login baru tetap memakai `set nx`, sehingga dua
 
 | Berkas | Tanggung jawab |
 |---|---|
-| `src/app/Libraries/SessionTakeover.php` (baru) | Satu-satunya tempat aturan boleh-tidaknya ambil alih. Murni, tanpa I/O. |
+| `src/app/Libraries/SessionTakeover.php` (baru) | Satu-satunya tempat aturan boleh-tidaknya ambil alih. Murni, tanpa I/O. Juga memegang `TTL_SECONDS` dan `deviceKey()`. |
 | `src/tests/Resilience/SessionTakeoverTest.php` (baru) | Menjaga aturan itu |
 | `src/app/Controllers/Auth/AuthController.php` | Memakai aturan; menulis dan menghapus kunci pendamping |
 | `src/app/Controllers/Admin/SuspendController.php` | Menghapus kunci pendamping di dua tempat |
+| `src/app/Filters/MultiLoginFilter.php` | Memperpanjang kunci pendamping bersama tokennya di tiap permintaan |
 | `src/app/Views/bundle/login.php` | Menyertakan `device_id` di POST |
 | `cbt-kiosk-app/.../bridge/CommsBridge.kt` | Mengekspor `device_id` ke WebView |
 
@@ -504,17 +505,43 @@ menjadi:
                 $redis->zRem('login_queue', $userId);
 ```
 
-- [ ] **Step 4: Pastikan tidak ada penghapusan token yang terlewat**
+- [ ] **Step 4: Pastikan tidak ada sentuhan token yang terlewat**
 
-Run:
+Invariannya dua arah (spec §4.5): pendamping harus ikut **dihapus** di tiap
+tempat token dihapus, dan ikut **diperpanjang** di tiap tempat token
+diperpanjang. Dua-duanya perlu dicek — pemeriksaan penghapusan saja buta
+terhadap sisi perpanjangan, dan justru sisi itu yang pernah menyimpang tanpa
+tertangkap tes.
+
+**4a — penghapusan:**
 ```bash
 grep -rn 'del("user_login_token' src/app/
 ```
-Expected: tiga baris — logout di `AuthController`, dan dua di `SuspendController`. **Setiap** baris itu harus punya `del("user_login_device` tepat di bawahnya. Periksa satu per satu:
+Expected: tiga baris — logout di `AuthController`, dan dua di `SuspendController`. **Setiap** baris itu harus punya `del("user_login_device` (atau `del(SessionTakeover::deviceKey(...))`) tepat di bawahnya. Periksa satu per satu:
 
 ```bash
 grep -rn -A1 'del("user_login_token' src/app/
 ```
+
+**4b — perpanjangan:**
+```bash
+grep -rn 'expire(' src/app/ | grep -v '86400\|3600\|, 900\|\$window'
+```
+Expected: tepat dua baris, keduanya di `MultiLoginFilter.php` dan berpasangan —
+satu untuk token, satu untuk `SessionTakeover::deviceKey($userId)`. Filter
+`expire()` lain di `src/app/` memakai jendela waktu yang tidak ada hubungannya
+dengan sesi (86400/3600/900), jadi tersaring oleh `grep -v`. Kalau muncul baris
+ketiga, ada tempat baru yang menggeser TTL token: tempat itu wajib menggeser
+pendampingnya juga.
+
+**4c — tidak ada nama kunci atau TTL yang diketik ulang:**
+```bash
+grep -rn 'user_login_device' src/app/
+grep -rn '7200' src/app/Controllers/Auth/AuthController.php src/app/Filters/MultiLoginFilter.php
+```
+Expected: grep pertama hanya mengenai `SessionTakeover.php`; grep kedua tidak
+mengenai apa pun. Semua pemakai lewat `SessionTakeover::deviceKey()` dan
+`SessionTakeover::TTL_SECONDS`.
 
 - [ ] **Step 5: Lint dan commit**
 

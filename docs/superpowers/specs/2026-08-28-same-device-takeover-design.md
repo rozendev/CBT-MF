@@ -104,18 +104,42 @@ Jalur pengambilalihan tidak boleh membuka celah balapan itu. Penulisan pada
 jalur "perangkat sama" harus tetap tidak bisa dibalap — pemeriksaan
 `device_id` lalu penulisan biasa akan menciptakan jendela antara keduanya.
 
-### 4.5 Penghapusan harus ikut
+### 4.5 Penghapusan dan perpanjangan harus ikut
 
-Kunci pendamping wajib dihapus di setiap tempat token dihapus, kalau tidak akan
-tertinggal `device_id` basi yang memberi hak ambil alih kepada perangkat yang
-sudah tidak relevan:
+Umur kunci pendamping tidak boleh menyimpang dari umur tokennya. Dua arah
+penyimpangan, dua kerusakan yang berbeda, dan keduanya harus ditutup.
+
+**Pendamping hidup lebih lama dari token.** Tertinggal `device_id` basi yang
+memberi hak ambil alih kepada perangkat yang sudah tidak relevan. Karena itu
+kunci pendamping wajib dihapus di setiap tempat token dihapus:
 
 - `SuspendController:115` (release)
 - `SuspendController:140` (reset login)
 - `AuthController:272` (logout)
 
+**Pendamping mati lebih dulu dari token.** `decide()` melihat pendamping yang
+hilang dan menolak — perangkat pemegang sesi terlihat asing bagi sistem, dan
+siswa terkunci dari ujiannya sendiri sampai TTL token habis atau admin turun
+tangan. Itu persis lockout yang fitur ini ada untuk menghapusnya.
+
+Karena itu kunci pendamping wajib **diperpanjang** di setiap tempat token
+diperpanjang. Yang penting di sini adalah `MultiLoginFilter`: filter itu
+menggeser TTL token maju pada **setiap** permintaan siswa yang sedang login,
+sehingga token bisa hidup jauh melewati dua jam setelah login selama siswa
+masih aktif. Pendamping yang tidak ikut digeser akan mati di titik
+login+`TTL_SECONDS` tanpa suara, dan justru ujian panjang — yang paling
+membutuhkan fitur ini — yang paling pasti terkena.
+
+Supaya invarian ini tidak kembali menjadi kesepakatan tak tertulis antara
+angka-angka yang kebetulan sama, TTL-nya dan nama kunci pendampingnya dipegang
+`SessionTakeover::TTL_SECONDS` dan `SessionTakeover::deviceKey()`. Setiap
+penulisan, perpanjangan, dan penghapusan lewat keduanya.
+
 Sentinel `'BANNED'` tidak menulis kunci pendamping. Akun yang di-ban memang
-harus ditolak dari perangkat mana pun.
+harus ditolak dari perangkat mana pun. Penulis `'BANNED'` yang menggeser TTL
+token tanpa menyentuh pendamping karena itu tidak jadi masalah: `decide()`
+sudah keluar lebih dulu lewat `CLEAR_BANNED`, sebelum `$storedDevice` pernah
+dibaca.
 
 ## 5. Perubahan Aplikasi
 
@@ -163,6 +187,8 @@ lain selagi sesi pertama hidup — harus tetap ditolak.
 **Diubah**
 - `src/app/Controllers/Auth/AuthController.php` — gerbang login, dan logout
 - `src/app/Controllers/Admin/SuspendController.php` — dua penghapusan
+- `src/app/Filters/MultiLoginFilter.php` — memperpanjang kunci pendamping
+  bersama tokennya (§4.5)
 - `src/app/Views/bundle/login.php` — sertakan `device_id` di POST
 - `cbt-kiosk-app/.../bridge/CommsBridge.kt` — ekspor `device_id` ke JS
 
