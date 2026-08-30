@@ -3,6 +3,8 @@
 namespace App\Controllers\Auth;
 
 use App\Controllers\BaseController;
+use App\Libraries\DeviceBan;
+use App\Libraries\SessionTakeover;
 use App\Models\UserModel;
 use App\Models\ActivityLogModel;
 
@@ -124,25 +126,44 @@ class AuthController extends BaseController
 
         $loginToken = bin2hex(random_bytes(16));
         $tokenKey = "user_login_token:{$user->id}";
+        $deviceKey = "user_login_device:{$user->id}";
+
+        // Hanya diterima dari aplikasi kiosk, yang mengambilnya dari
+        // DeviceIdentityStore — sumber yang sama dengan heartbeat dan
+        // /api/kiosk/config. Browser biasa tidak mengirimnya, dan itu berarti
+        // ia tidak pernah bisa merebut sesi milik perangkat lain.
+        $incomingDevice = (string) ($this->request->getPost('device_id') ?? '');
+        if (!DeviceBan::isValidDeviceId($incomingDevice)) {
+            $incomingDevice = '';
+        }
 
         // Block second login for students if prevent_multi_login is enabled
         $preventMultiLogin = ($user->role === 'siswa' && $this->getSettingValue('prevent_multi_login', 1) == 1);
         if ($preventMultiLogin) {
             try {
-                $existingToken = $redis->get($tokenKey);
-                // If a token exists and isn't a BANNED marker, they are already logged in elsewhere
-                if ($existingToken && $existingToken !== 'BANNED') {
+                $existingRaw  = $redis->get($tokenKey);
+                $storedRaw    = $redis->get($deviceKey);
+                $existingToken = $existingRaw === false ? null : (string) $existingRaw;
+                $storedDevice  = $storedRaw === false ? null : (string) $storedRaw;
+
+                $decision = SessionTakeover::decide($existingToken, $storedDevice, $incomingDevice);
+
+                if ($decision === SessionTakeover::BUSY) {
                     return $fail('Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
                 }
-                
-                // Set the token atomically to prevent concurrent login bypass
-                if ($existingToken === 'BANNED') {
-                    $redis->setex($tokenKey, 7200, $loginToken);
-                } else {
+
+                if ($decision === SessionTakeover::FRESH) {
+                    // Tetap 'nx': dua perangkat yang login bersamaan saat tidak
+                    // ada token tidak boleh sama-sama menang.
                     $set = $redis->set($tokenKey, $loginToken, ['nx', 'ex' => 7200]);
                     if (!$set) {
                         return $fail('Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
                     }
+                } else {
+                    // TAKEOVER dan CLEAR_BANNED sama-sama menimpa. Tidak perlu
+                    // 'nx': perangkat lain yang mencoba bersamaan sudah ditolak
+                    // di pembacaannya sendiri, jadi ia tidak pernah menulis.
+                    $redis->setex($tokenKey, 7200, $loginToken);
                 }
             } catch (\Exception $e) {
                 log_message('error', 'Redis multi-login block/reserve error: ' . $e->getMessage());
@@ -155,6 +176,30 @@ class AuthController extends BaseController
             } catch (\Exception $e) {
                 log_message('error', 'Redis session store error: ' . $e->getMessage());
                 return $fail('Layanan sedang tidak tersedia. Coba lagi.');
+            }
+        }
+
+        // Catat pemegang sesi supaya perangkat yang sama bisa merebutnya
+        // kembali nanti. Ditulis di kedua jalur, dengan TTL yang sama persis
+        // dengan tokennya — pendamping yang hidup lebih lama dari tokennya akan
+        // memberi hak ambil alih kepada perangkat yang sudah tidak relevan.
+        //
+        // Kegagalan di sini tidak boleh menggagalkan login: akibat terburuknya
+        // hanya siswa harus menunggu TTL atau minta admin, persis seperti
+        // sebelum fitur ini ada.
+        if ($incomingDevice !== '') {
+            try {
+                $redis->setex($deviceKey, 7200, $incomingDevice);
+            } catch (\Exception $e) {
+                log_message('warning', 'Gagal menulis penanda perangkat sesi: ' . $e->getMessage());
+            }
+        } else {
+            // Login tanpa device_id (browser). Buang pendamping lama supaya
+            // tidak ada perangkat yang mengira masih memegang sesi ini.
+            try {
+                $redis->del($deviceKey);
+            } catch (\Exception $e) {
+                log_message('warning', 'Gagal membuang penanda perangkat sesi: ' . $e->getMessage());
             }
         }
 
