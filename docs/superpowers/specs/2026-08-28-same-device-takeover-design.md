@@ -115,7 +115,14 @@ kunci pendamping wajib dihapus di setiap tempat token dihapus:
 
 - `SuspendController:115` (release)
 - `SuspendController:140` (reset login)
-- `AuthController:272` (logout)
+- `AuthController:334` (logout)
+- `AuthController:268` (pembersihan ketika login gagal setelah token telanjur
+  ditulis) — situs keempat, yang tidak pernah masuk daftar ini sebelumnya
+
+Satu lagi ada di luar `src/app/`: `src/unban_admins.php:23`. Skrip itu hanya
+menyentuh akun admin, dan admin tidak pernah sampai ke `decide()` — jadi
+tertinggalnya pendamping di sana tidak berakibat apa-apa. Dicatat supaya
+pemeriksaan berikutnya tidak mengira ia terlewat.
 
 **Pendamping mati lebih dulu dari token.** `decide()` melihat pendamping yang
 hilang dan menolak — perangkat pemegang sesi terlihat asing bagi sistem, dan
@@ -133,13 +140,25 @@ membutuhkan fitur ini — yang paling pasti terkena.
 Supaya invarian ini tidak kembali menjadi kesepakatan tak tertulis antara
 angka-angka yang kebetulan sama, TTL-nya dan nama kunci pendampingnya dipegang
 `SessionTakeover::TTL_SECONDS` dan `SessionTakeover::deviceKey()`. Setiap
-penulisan, perpanjangan, dan penghapusan lewat keduanya.
+penulisan, perpanjangan, dan penghapusan **yang memperlakukan kunci itu sebagai
+sesi** lewat keduanya.
 
-Sentinel `'BANNED'` tidak menulis kunci pendamping. Akun yang di-ban memang
-harus ditolak dari perangkat mana pun. Penulis `'BANNED'` yang menggeser TTL
-token tanpa menyentuh pendamping karena itu tidak jadi masalah: `decide()`
-sudah keluar lebih dulu lewat `CLEAR_BANNED`, sebelum `$storedDevice` pernah
-dibaca.
+Kualifikasi "sebagai sesi" itu penting, karena ada pengecualian yang disengaja.
+Sentinel `'BANNED'` tidak menulis kunci pendamping, dan tiga penulisnya —
+`ExamService.php:458`, `ExamService.php:662`, `ProctorAction.php:166` — juga
+tetap memakai angka `7200` sendiri alih-alih `TTL_SECONDS`. Keduanya memang
+begitu seharusnya:
+
+- **Tidak menyentuh pendamping** tidak jadi masalah karena `decide()` sudah
+  keluar lebih dulu lewat `CLEAR_BANNED`, sebelum `$storedDevice` pernah dibaca.
+  Akun yang di-ban memang harus ditolak dari perangkat mana pun.
+- **Tidak memakai `TTL_SECONDS`** karena umur sebuah ban adalah konsep yang
+  berbeda dari umur sebuah sesi. Menyatukannya akan membuat penyetelan salah
+  satu diam-diam menggeser yang lain — kebetulan keduanya bernilai 7200 hari
+  ini bukan alasan untuk mengikatnya.
+
+Jadi tiga baris itu memang akan muncul di pemeriksaan `setex` pada Task 3 Step
+4b, dan memang boleh tetap seperti itu.
 
 ## 5. Perubahan Aplikasi
 

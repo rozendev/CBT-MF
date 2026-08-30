@@ -469,6 +469,34 @@ menjadi:
                     $redis->zRem('login_queue', $userId);
 ```
 
+- [ ] **Step 1b: Pembersihan saat login gagal di tengah jalan**
+
+Situs keempat, di berkas yang sama, yang tidak pernah masuk daftar §4.5
+sebelumnya. Token sudah telanjur ditulis lalu pencatatan sesi gagal, jadi
+blok ini membersihkannya — dan pendamping sudah ikut ditulis di titik itu.
+
+Di `src/app/Controllers/Auth/AuthController.php` (~baris 268), ganti:
+
+```php
+                $redis->del($tokenKey);
+                $redis->zRem('active_sessions', $user->id);
+                $redis->zRem('login_queue', $user->id);
+```
+
+menjadi:
+
+```php
+                $redis->del($tokenKey);
+                $redis->del(SessionTakeover::deviceKey($user->id));
+                $redis->zRem('active_sessions', $user->id);
+                $redis->zRem('login_queue', $user->id);
+```
+
+Catatan tingkat keparahan: pendamping basi di sini lebih ringan daripada di
+situs lain, karena setiap login yang berhasil menimpa ulang pendampingnya lewat
+`syncSessionDevice()`. Tetap dirapikan supaya aturan §4.5 berlaku seragam dan
+tidak bergantung pada penalaran berantai seperti itu.
+
 - [ ] **Step 2: Release**
 
 Di `src/app/Controllers/Admin/SuspendController.php`, ganti:
@@ -513,35 +541,68 @@ diperpanjang. Dua-duanya perlu dicek — pemeriksaan penghapusan saja buta
 terhadap sisi perpanjangan, dan justru sisi itu yang pernah menyimpang tanpa
 tertangkap tes.
 
-**4a — penghapusan:**
+> **Pakai `grep -E` dengan `\$` di-escape persis seperti tertulis.** Shell repo
+> ini fish, dan di fish `grep -rn 'del($tokenKey)'` mengembalikan **nol baris
+> tanpa galat** — pemeriksaan yang lolos secara palsu justru lebih berbahaya
+> daripada tidak ada pemeriksaan. Bentuk `-E` di bawah sudah diuji jalan di
+> fish maupun bash. `--exclude-dir=vendor` wajib, kalau tidak `expire(` akan
+> tenggelam oleh CodeIgniter.
+
+**4a — penghapusan (dua bentuk penulisan, seluruh `src/`):**
 ```bash
-grep -rn 'del("user_login_token' src/app/
+grep -rnE 'del\("user_login_token|del\(\$tokenKey\)' src/ --exclude-dir=vendor
 ```
-Expected: tiga baris — logout di `AuthController`, dan dua di `SuspendController`. **Setiap** baris itu harus punya `del("user_login_device` (atau `del(SessionTakeover::deviceKey(...))`) tepat di bawahnya. Periksa satu per satu:
+Expected: **lima baris** — empat di `src/app/`, satu di luar:
+
+```
+src/unban_admins.php:23                            (admin-only, lihat di bawah)
+src/app/Controllers/Auth/AuthController.php:268    (pembersihan login gagal)
+src/app/Controllers/Auth/AuthController.php:334    (logout)
+src/app/Controllers/Admin/SuspendController.php:115 (release)
+src/app/Controllers/Admin/SuspendController.php:140 (reset login)
+```
+
+Empat baris `src/app/` itu **wajib** punya penghapusan pendamping di sebelahnya
+(`del("user_login_device` atau `del(SessionTakeover::deviceKey(...))`). Periksa
+satu per satu dengan `-A1`:
 
 ```bash
-grep -rn -A1 'del("user_login_token' src/app/
+grep -rnE -A1 'del\("user_login_token|del\(\$tokenKey\)' src/ --exclude-dir=vendor
 ```
 
-**4b — perpanjangan:**
+`src/unban_admins.php:23` **sengaja dibiarkan**: skrip itu hanya menyentuh akun
+admin, dan admin tidak pernah sampai ke `decide()`. Ia muncul di grep supaya
+tidak terlihat seperti temuan baru setiap kali diperiksa.
+
+**4b — perpanjangan.** Dua mekanisme menggeser TTL, dan `expire()` saja tidak
+cukup: `setex` pada kunci yang sudah ada juga menyetel ulang TTL-nya.
+
 ```bash
-grep -rn 'expire(' src/app/ | grep -v '86400\|3600\|, 900\|\$window'
+grep -rnE 'expire\(' src/ --exclude-dir=vendor | grep -vE '86400|3600|, 900|\$window'
+grep -rnE 'setex\((\$tokenKey|"user_login_token)' src/ --exclude-dir=vendor
 ```
-Expected: tepat dua baris, keduanya di `MultiLoginFilter.php` dan berpasangan —
-satu untuk token, satu untuk `SessionTakeover::deviceKey($userId)`. Filter
-`expire()` lain di `src/app/` memakai jendela waktu yang tidak ada hubungannya
-dengan sesi (86400/3600/900), jadi tersaring oleh `grep -v`. Kalau muncul baris
-ketiga, ada tempat baru yang menggeser TTL token: tempat itu wajib menggeser
-pendampingnya juga.
+
+Expected grep pertama: tepat dua baris, keduanya di `MultiLoginFilter.php` dan
+berpasangan — satu untuk token, satu untuk `SessionTakeover::deviceKey($userId)`.
+`expire()` lain memakai jendela yang tidak ada hubungannya dengan sesi
+(86400/3600/900), jadi tersaring. Baris ketiga berarti ada tempat baru yang
+menggeser TTL token dan wajib menggeser pendampingnya juga.
+
+Expected grep kedua: lima baris — dua penulisan login di `AuthController`
+(`:174`, `:208`, keduanya langsung disusul `syncSessionDevice()`, jadi sudah
+berpasangan), dan tiga penulis sentinel `'BANNED'` (`ExamService.php:458`,
+`ExamService.php:662`, `ProctorAction.php:166`). **Tiga yang terakhir memang
+boleh memakai literal `7200` dan memang tidak menyentuh pendamping** — lihat
+carve-out di spec §4.5. Jangan "rapikan" ke `TTL_SECONDS`.
 
 **4c — tidak ada nama kunci atau TTL yang diketik ulang:**
 ```bash
-grep -rn 'user_login_device' src/app/
+grep -rn 'user_login_device' src/ --exclude-dir=vendor
 grep -rn '7200' src/app/Controllers/Auth/AuthController.php src/app/Filters/MultiLoginFilter.php
 ```
-Expected: grep pertama hanya mengenai `SessionTakeover.php`; grep kedua tidak
-mengenai apa pun. Semua pemakai lewat `SessionTakeover::deviceKey()` dan
-`SessionTakeover::TTL_SECONDS`.
+Expected: grep pertama hanya mengenai `SessionTakeover.php` (satu di docblock,
+satu di badan `deviceKey()`); grep kedua tidak mengenai apa pun. Semua pemakai
+lewat `SessionTakeover::deviceKey()` dan `SessionTakeover::TTL_SECONDS`.
 
 - [ ] **Step 5: Lint dan commit**
 
