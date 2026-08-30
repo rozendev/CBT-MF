@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Libraries\SessionTakeover;
 use App\Models\TestAttemptModel;
 use App\Models\UserModel;
 
@@ -113,6 +114,7 @@ class SuspendController extends BaseController
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
                 $redis->del("user_login_token:{$userId}");
+                $redis->del(SessionTakeover::deviceKey($userId));
                 $redis->del("ban_signal:{$userId}");
             }
         } catch (\Exception $e) {
@@ -138,6 +140,7 @@ class SuspendController extends BaseController
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
                 $redis->del("user_login_token:{$userId}");
+                $redis->del(SessionTakeover::deviceKey($userId));
                 $redis->zRem('active_sessions', $userId);
                 $redis->zRem('login_queue', $userId);
 

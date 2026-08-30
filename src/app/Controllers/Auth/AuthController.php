@@ -266,6 +266,7 @@ class AuthController extends BaseController
             // Clean up the Redis token/activity to avoid blocking future logins
             try {
                 $redis->del($tokenKey);
+                $redis->del(SessionTakeover::deviceKey($user->id));
                 $redis->zRem('active_sessions', $user->id);
                 $redis->zRem('login_queue', $user->id);
             } catch (\Exception $re) {
@@ -331,7 +332,11 @@ class AuthController extends BaseController
             try {
                 $redis = \App\Libraries\RedisClient::getInstance();
                 if ($redis) {
+                    // Penanda perangkat selalu mati bersama tokennya: penanda yang
+                    // tersisa memberi hak ambil-alih ke perangkat yang sudah tidak
+                    // memegang sesi.
                     $redis->del("user_login_token:{$userId}");
+                    $redis->del(SessionTakeover::deviceKey($userId));
                     $redis->zRem('active_sessions', $userId);
                     $redis->zRem('login_queue', $userId);
                 }
