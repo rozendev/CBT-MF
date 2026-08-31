@@ -60,13 +60,19 @@
 
         /* Diambil dari jembatan native. Di luar aplikasi kiosk jembatannya
            tidak ada, dan string kosong itu benar: server memperlakukan login
-           tanpa device_id sebagai tidak boleh merebut sesi perangkat lain. */
+           tanpa device_id sebagai tidak boleh merebut sesi perangkat lain.
+
+           Periksa `typeof ... === 'function'`, bukan sekadar keberadaan
+           window.CommsBridge: bundle bisa lebih baru daripada APK-nya. Di APK
+           lama jembatannya ada tapi getDeviceId belum, dan pemeriksaan longgar
+           akan melempar TypeError di tengah handler submit — login gagal total,
+           bukan sekadar tanpa ambil-alih. */
         function deviceId() {
             try {
                 if (window.CommsBridge && typeof window.CommsBridge.getDeviceId === 'function') {
                     return window.CommsBridge.getDeviceId() || '';
                 }
-            } catch (e) { /* di luar kiosk */ }
+            } catch (e) { /* jaring pengaman; jalur nyata ditangani || '' di atas */ }
             return '';
         }
 
