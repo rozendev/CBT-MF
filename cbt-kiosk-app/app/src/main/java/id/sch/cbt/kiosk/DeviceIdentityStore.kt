@@ -59,6 +59,14 @@ object DeviceIdentityStore {
         } else {
             // Jalur cadangan: blokir tetap berfungsi untuk perangkat ini, hanya
             // kembali bisa dilepas dengan menghapus data aplikasi.
+            //
+            // Bentuk keluarannya ikut terikat aturan yang sama dengan
+            // DeviceIdentity.derive(): server menyaring device_id dengan
+            // [A-Za-z0-9_-] sepanjang maksimal 64 (DeviceBan::isValidDeviceId).
+            // UUID.toString() lolos karena memakai tanda hubung, 36 karakter —
+            // tapi itu kebetulan yang menguntungkan, bukan jaminan. Format lain
+            // di sini akan ditolak diam-diam: device_id dikosongkan, lalu setiap
+            // sambung ulang di perangkat yang sama ditolak selamanya.
             Log.w("DeviceIdentityStore", "ANDROID_ID tidak dapat dipakai, memakai UUID per-pemasangan")
             val legacy = prefs.getString(KEY_LEGACY, "")
             if (!legacy.isNullOrBlank()) legacy else java.util.UUID.randomUUID().toString()
