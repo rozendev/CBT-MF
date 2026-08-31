@@ -58,6 +58,18 @@
             btn.textContent = 'Masuk';
         }
 
+        /* Diambil dari jembatan native. Di luar aplikasi kiosk jembatannya
+           tidak ada, dan string kosong itu benar: server memperlakukan login
+           tanpa device_id sebagai tidak boleh merebut sesi perangkat lain. */
+        function deviceId() {
+            try {
+                if (window.CommsBridge && typeof window.CommsBridge.getDeviceId === 'function') {
+                    return window.CommsBridge.getDeviceId() || '';
+                }
+            } catch (e) { /* di luar kiosk */ }
+            return '';
+        }
+
         form.addEventListener('submit', function (e) {
             e.preventDefault();
             var u = document.getElementById('username').value.trim();
@@ -76,7 +88,9 @@
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'X-Requested-With': 'kiosk-bundle'
                 },
-                body: 'username=' + encodeURIComponent(u) + '&password=' + encodeURIComponent(p)
+                body: 'username=' + encodeURIComponent(u)
+                    + '&password=' + encodeURIComponent(p)
+                    + '&device_id=' + encodeURIComponent(deviceId())
             }).then(function (r) {
                 return r.json().then(function (j) { return { ok: r.ok, j: j }; });
             }).then(function (res) {
