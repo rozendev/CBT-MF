@@ -78,4 +78,12 @@ final class LoginThrottleTest extends CIUnitTestCase
         $this->assertGreaterThanOrEqual(2, $removed);
         $this->assertSame([], LoginThrottle::activeBlocks());
     }
+
+    public function testMaxAttemptsFallsBackToDefaultWhenSettingUnavailable(): void
+    {
+        // Tanpa cache dan (di lingkungan test) tanpa baris/tabel settings,
+        // maxAttempts tak boleh melempar — ia jatuh ke default.
+        service('cache')->delete('setting_login_ip_max_attempts');
+        $this->assertSame(LoginThrottle::DEFAULT_MAX_ATTEMPTS, LoginThrottle::maxAttempts());
+    }
 }

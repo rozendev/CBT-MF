@@ -47,7 +47,15 @@ class LoginThrottle
 
     public static function maxAttempts(): int
     {
-        return (int) (new SettingModel())->getValue('login_ip_max_attempts', self::DEFAULT_MAX_ATTEMPTS);
+        // Ambang tak boleh pernah menjatuhkan pembaca (filter login, command,
+        // halaman admin). Bila tabel settings sesaat tak terbaca, jatuh ke
+        // default — konsisten dengan semangat fail-open (keputusan A).
+        try {
+            return (int) (new SettingModel())->getValue('login_ip_max_attempts', self::DEFAULT_MAX_ATTEMPTS);
+        } catch (\Throwable $e) {
+            log_message('error', 'LoginThrottle::maxAttempts fallback ke default: ' . $e->getMessage());
+            return self::DEFAULT_MAX_ATTEMPTS;
+        }
     }
 
     public static function clearForIp(string $ip): void
