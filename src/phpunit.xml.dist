@@ -14,5 +14,8 @@
         <testsuite name="Resilience">
             <directory>tests/Resilience</directory>
         </testsuite>
+        <testsuite name="Throttling">
+            <directory>tests/Throttling</directory>
+        </testsuite>
     </testsuites>
 </phpunit>
