@@ -249,6 +249,12 @@ class AuthController extends BaseController
             // Login successful — set session
             $this->userModel->recordLogin($user->id, $this->request->getIPAddress());
 
+            // Reset-on-success: selama ada yang berhasil login di balik satu
+            // CGNAT, counter per-IP dibersihkan sehingga tak menumpuk ke blokir
+            // massal. IP-nya sama persis dengan yang di-INCR filter (keduanya
+            // getIPAddress()), jadi penghapusannya tepat sasaran.
+            \App\Libraries\LoginThrottle::clearForIp($this->request->getIPAddress());
+
             session()->set([
                 'user_id'     => $user->id,
                 'username'    => $user->username,
