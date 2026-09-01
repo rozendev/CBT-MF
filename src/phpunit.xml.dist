@@ -14,5 +14,8 @@
         <testsuite name="Resilience">
             <directory>tests/Resilience</directory>
         </testsuite>
+        <!-- Suite Throttling butuh framework; dijalankan lewat konfigurasi
+             terpisah phpunit.throttling.xml.dist (bootstrap_ci.php). Sengaja
+             TIDAK di sini agar `composer test` (bootstrap ringan) tetap hijau. -->
     </testsuites>
 </phpunit>

@@ -180,9 +180,26 @@ class App extends BaseConfig
      *
      * @var array<string, string>
      */
-    public array $proxyIPs = [
-        '172.16.0.0/12' => 'X-Forwarded-For',
-    ];
+    /**
+     * Diisi di constructor dari env app.trustedProxyIPs.
+     *
+     * Header sengaja CF-Connecting-IP, bukan X-Forwarded-For: XFF boleh
+     * ditambahi klien sebelum sampai ke Cloudflare, sedangkan CF-Connecting-IP
+     * di-set otoritatif oleh edge Cloudflare — tidak dapat dipalsukan lewat
+     * header dari klien. Rem login mengunci berdasar IP ini.
+     */
+    public array $proxyIPs = [];
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        $raw   = (string) env('app.trustedProxyIPs', '172.16.0.0/12');
+        $cidrs = array_filter(array_map('trim', explode(',', $raw)));
+        foreach ($cidrs as $cidr) {
+            $this->proxyIPs[$cidr] = 'CF-Connecting-IP';
+        }
+    }
 
     /**
      * --------------------------------------------------------------------------

@@ -82,6 +82,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->post('suspend/ban/(:num)', 'Admin\SuspendController::ban/$1');
         $routes->post('suspend/reset/(:num)', 'Admin\SuspendController::reset/$1');
         $routes->post('suspend/reset-login/(:num)', 'Admin\SuspendController::resetLogin/$1');
+        $routes->post('suspend/unblock-ip', 'Admin\SuspendController::unblockIp');
         $routes->get('suspend/user-attempts/(:num)', 'Admin\SuspendController::getUserAttempts/$1');
         $routes->post('suspend/reset-attempt/(:num)', 'Admin\SuspendController::resetAttempt/$1');
 
