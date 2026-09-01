@@ -163,6 +163,7 @@
         <?php if (!empty($ipBlocks)): ?>
             <form action="<?= base_url('/admin/suspend/unblock-ip') ?>" method="POST" class="m-0"
                   onsubmit="return confirm('Buka semua blokir IP login?');">
+                <?= csrf_field() ?>
                 <input type="hidden" name="all" value="1">
                 <button type="submit" class="btn btn-sm btn-outline-danger">Unblock Semua</button>
             </form>
@@ -191,6 +192,7 @@
                             </td>
                             <td class="text-end">
                                 <form action="<?= base_url('/admin/suspend/unblock-ip') ?>" method="POST" class="m-0 d-inline">
+                                    <?= csrf_field() ?>
                                     <input type="hidden" name="ip" value="<?= esc($bip) ?>">
                                     <button type="submit" class="btn btn-sm btn-outline-primary">Unblock</button>
                                 </form>
