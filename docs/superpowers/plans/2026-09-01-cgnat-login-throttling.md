@@ -351,16 +351,18 @@ final class ClientIpResolutionTest extends CIUnitTestCase
 {
     private function requestWith(array $server): IncomingRequest
     {
-        foreach ($server as $k => $v) {
-            $_SERVER[$k] = $v;
-        }
+        // getServer() dan populateHeaders() membaca service 'superglobals' (snapshot
+        // saat boot), bukan $_SERVER langsung — jadi injeksi lewat service SEBELUM
+        // request dibangun agar header CF-Connecting-IP ikut terbaca.
+        service('superglobals')->setServerArray($server);
+
         // App() constructor membangun $proxyIPs dari env (default 172.16.0.0/12).
         return new IncomingRequest(new App(), new URI('http://localhost'), null, new UserAgent());
     }
 
     protected function tearDown(): void
     {
-        unset($_SERVER['REMOTE_ADDR'], $_SERVER['HTTP_CF_CONNECTING_IP']);
+        \Config\Services::resetSingle('superglobals');
         parent::tearDown();
     }
 
