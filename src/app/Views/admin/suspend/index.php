@@ -157,6 +157,53 @@
     </form>
 </div>
 
+<div class="card mt-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>Blokir Login per-IP (Rate Limit)</strong>
+        <?php if (!empty($ipBlocks)): ?>
+            <form action="<?= base_url('/admin/suspend/unblock-ip') ?>" method="POST" class="m-0"
+                  onsubmit="return confirm('Buka semua blokir IP login?');">
+                <input type="hidden" name="all" value="1">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Unblock Semua</button>
+            </form>
+        <?php endif; ?>
+    </div>
+    <div class="card-body p-0">
+        <?php if (empty($ipBlocks)): ?>
+            <p class="text-muted m-3 mb-0">Tidak ada IP dengan percobaan login aktif.</p>
+        <?php else: ?>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr><th>IP</th><th>Percobaan</th><th>Status</th><th class="text-end">Aksi</th></tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($ipBlocks as $bip => $count): ?>
+                        <tr>
+                            <td><code><?= esc($bip) ?></code></td>
+                            <td><?= esc($count) ?></td>
+                            <td>
+                                <?php if ($count > $ipBlockMax): ?>
+                                    <span class="badge bg-danger">Terblokir (&gt; <?= esc($ipBlockMax) ?>)</span>
+                                <?php else: ?>
+                                    <span class="badge bg-secondary">Aktif</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="text-end">
+                                <form action="<?= base_url('/admin/suspend/unblock-ip') ?>" method="POST" class="m-0 d-inline">
+                                    <input type="hidden" name="ip" value="<?= esc($bip) ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">Unblock</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </div>
+</div>
+
 <!-- Modal Reset Ujian -->
 <div class="modal fade" id="resetModal" tabindex="-1" aria-labelledby="resetModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
