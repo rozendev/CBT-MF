@@ -635,8 +635,11 @@ final class LoginRateLimitFilterTest extends CIUnitTestCase
 
     private function postRequest(): IncomingRequest
     {
-        $_SERVER['REQUEST_METHOD'] = 'POST';
-        $_SERVER['REMOTE_ADDR']    = self::IP;
+        // getMethod() & getIPAddress() membaca service 'superglobals', bukan $_SERVER.
+        service('superglobals')->setServerArray([
+            'REQUEST_METHOD' => 'POST',
+            'REMOTE_ADDR'    => self::IP,
+        ]);
         return new IncomingRequest(new App(), new URI('http://localhost/login'), null, new UserAgent());
     }
 
@@ -666,22 +669,43 @@ final class LoginRateLimitFilterTest extends CIUnitTestCase
         $budget = RedisClient::READ_TIMEOUT_SECONDS + 5;
         $this->failIfItHangs($budget);
 
+        $orig = [
+            'redis.host'     => $_ENV['redis.host'] ?? null,
+            'redis.port'     => $_ENV['redis.port'] ?? null,
+            'REDIS_PASSWORD' => $_ENV['REDIS_PASSWORD'] ?? null,
+        ];
+
+        // REDIS_PASSWORD='' WAJIB: tanpa ini getInstance mencoba auth() ke stub,
+        // gagal, dan mengembalikan null (jalur "unreachable" yang memang sudah
+        // fail-open sejak dulu). Dengan auth dilewati, getInstance memberi koneksi
+        // hidup ke stub beku → incr() melempar exception, persis jalur yang DULU 503.
         RedisClient::reset();
-        $_ENV['redis.host'] = '127.0.0.1';
-        $_ENV['redis.port'] = (string) self::FROZEN_PORT;
+        $_ENV['redis.host']     = '127.0.0.1';
+        $_ENV['redis.port']     = (string) self::FROZEN_PORT;
+        $_ENV['REDIS_PASSWORD'] = '';
 
         try {
             $filter = new LoginRateLimitFilter();
             $result = $filter->before($this->postRequest());
-            // Keputusan A: Redis beku TIDAK boleh memblokir login (dulu 503).
-            $this->assertNull($result, 'fail-open: login harus diteruskan saat Redis beku');
+            $this->assertNull($result, 'fail-open: login diteruskan saat perintah Redis error');
         } finally {
             pcntl_alarm(0);
-            unset($_ENV['redis.host'], $_ENV['redis.port']);
+            foreach ($orig as $k => $v) {
+                if ($v === null) {
+                    unset($_ENV[$k]);
+                } else {
+                    $_ENV[$k] = $v;
+                }
+            }
             RedisClient::reset();
         }
     }
 }
+
+<!-- Catatan verifikasi: keabsahan guard fail-open dibuktikan saat eksekusi dengan
+     sementara mengembalikan perilaku 503 lama di catch → test ini gagal; lalu
+     dikembalikan ke `return;` → test lulus. -->
+
 ```
 
 Catatan sensitivitas: test fail-open menganggap `service('cache')` (untuk membaca
