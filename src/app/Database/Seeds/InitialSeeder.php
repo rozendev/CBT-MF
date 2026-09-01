@@ -55,6 +55,7 @@ class InitialSeeder extends Seeder
             ['key' => 'enable_multi_login',  'value' => '0',               'type' => 'boolean', 'group' => 'security', 'description' => 'Izinkan login dari beberapa perangkat'],
             ['key' => 'max_login_attempts',  'value' => '5',               'type' => 'integer', 'group' => 'security', 'description' => 'Maksimal percobaan login sebelum dikunci'],
             ['key' => 'lockout_duration',    'value' => '15',              'type' => 'integer', 'group' => 'security', 'description' => 'Durasi penguncian akun (menit)'],
+            ['key' => 'login_ip_max_attempts', 'value' => '50',            'type' => 'integer', 'group' => 'security', 'description' => 'Maksimal percobaan login gagal per IP dalam 15 menit sebelum diblokir sementara'],
             ['key' => 'allow_registration',  'value' => '0',               'type' => 'boolean', 'group' => 'security', 'description' => 'Izinkan registrasi mandiri'],
             ['key' => 'default_role',        'value' => 'siswa',           'type' => 'string',  'group' => 'security', 'description' => 'Role default untuk pengguna baru'],
             ['key' => 'anti_cheat_enabled',  'value' => '1',               'type' => 'boolean', 'group' => 'security', 'description' => 'Aktifkan Anti-Cheat Sederhana'],
