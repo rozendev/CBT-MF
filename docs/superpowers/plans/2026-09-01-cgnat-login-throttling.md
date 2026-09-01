@@ -51,20 +51,24 @@ Jika salah satu ditolak, revert-nya kecil: (1) kembalikan header ke
 | `app/Database/Seeds/InitialSeeder.php` | Seed `login_ip_max_attempts` = 50 | **Ubah** (blok security ~baris 57) |
 | `app/Controllers/Admin/SettingController.php` | `KEY_META` + default `resetSettings` untuk kunci baru | **Ubah** (baris 47-49, ~262) |
 | `app/Views/admin/settings/index.php` | Field number di panel Kapasitas & Antrean | **Ubah** (~baris 1080) |
-| `phpunit.xml.dist` | Daftarkan testsuite `Throttling` | **Ubah** |
-| `tests/bootstrap_ci.php` | Bootstrap yang MEMUAT framework CI (dipakai hanya suite Throttling via `--bootstrap`) | **Buat** |
+| `phpunit.xml.dist` | (tak berubah — Throttling TIDAK didaftarkan di sini) | — |
+| `phpunit.throttling.xml.dist` | Konfigurasi terpisah suite Throttling (bootstrap CI) | **Buat** |
+| `tests/bootstrap_ci.php` | Bootstrap yang MEMUAT framework CI (dipakai konfigurasi Throttling) | **Buat** |
 | `tests/Throttling/*.php` | Unit test library, filter, resolusi IP, command | **Buat** |
 
 > **Catatan bootstrap (ditemukan saat eksekusi):** `tests/bootstrap.php` proyek
 > ini SENGAJA tidak memuat framework, sehingga suite lain cepat & tanpa container.
 > Test Throttling butuh framework (filter, `service('cache')`, `command()`,
-> `Config\App`), jadi suite ini dijalankan dengan bootstrap terpisah
-> `tests/bootstrap_ci.php` lewat flag `--bootstrap`. Suite lain tidak berubah.
+> `Config\App`), jadi ia hidup di konfigurasi TERPISAH `phpunit.throttling.xml.dist`
+> yang memakai `tests/bootstrap_ci.php`. Suite Throttling sengaja TIDAK didaftarkan
+> di `phpunit.xml.dist`, supaya `composer test` (bare `phpunit`, bootstrap ringan)
+> tetap hijau dan tak menyentuh framework. Jalankan Throttling dengan:
+> `vendor/bin/phpunit -c phpunit.throttling.xml.dist`.
 
 **Perintah standar** (jalankan dari root repo `/home/rozen/conquer/CBT-MF`):
 
 - **Lint:** `docker compose exec php php -l /var/www/html/<path relatif ke src>`
-- **Tes:** `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling'`
+- **Tes:** `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist'`
 - **Routes:** `docker compose exec php php spark routes | grep -i unblock`
 
 ---
@@ -179,7 +183,7 @@ final class LoginThrottleTest extends CIUnitTestCase
 
 - [ ] **Step 3: Jalankan test — pastikan gagal**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist'`
 Expected: FAIL — `Class "App\Libraries\LoginThrottle" not found`.
 
 - [ ] **Step 4: Tulis library**
@@ -320,7 +324,7 @@ Expected: `No syntax errors detected`.
 
 - [ ] **Step 6: Jalankan test — pastikan lulus**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist'`
 Expected: PASS (5 test di `LoginThrottleTest`).
 
 - [ ] **Step 7: Commit**
@@ -403,7 +407,7 @@ final class ClientIpResolutionTest extends CIUnitTestCase
 
 - [ ] **Step 2: Jalankan test — pastikan gagal**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling --filter ClientIpResolutionTest'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist --filter ClientIpResolutionTest'`
 Expected: FAIL pada `testTrustedPeerUsesCfConnectingIp` — `getIPAddress()` masih membaca `X-Forwarded-For`, mengembalikan `172.20.0.5` bukan `203.0.113.9`.
 
 - [ ] **Step 3: Ubah `$proxyIPs` jadi env-driven + header CF-Connecting-IP**
@@ -453,7 +457,7 @@ Expected: `No syntax errors detected`.
 
 - [ ] **Step 5: Jalankan test — pastikan lulus**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling --filter ClientIpResolutionTest'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist --filter ClientIpResolutionTest'`
 Expected: PASS (3 test).
 
 - [ ] **Step 6: Dokumentasikan env (opsional, non-kode)**
@@ -724,7 +728,7 @@ akan menyalak dan menandai perlu isolasi lebih lanjut.
 
 - [ ] **Step 2: Jalankan test — pastikan gagal**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling --filter LoginRateLimitFilterTest'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist --filter LoginRateLimitFilterTest'`
 Expected: FAIL — `testThresholdComesFromSettingAndBlocksAboveIt` gagal (filter masih pakai ambang 20, jadi ke-4 tetap `null`), dan/atau `testFailsOpenWhenRedisFrozen` gagal (filter lama kembalikan `503`, bukan `null`).
 
 - [ ] **Step 3: Rombak `before()`**
@@ -785,7 +789,7 @@ Expected: `No syntax errors detected`.
 
 - [ ] **Step 5: Jalankan test — pastikan lulus**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling --filter LoginRateLimitFilterTest'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist --filter LoginRateLimitFilterTest'`
 Expected: PASS (2 test). Waktu ~3-4 dtk untuk test frozen.
 
 - [ ] **Step 6: Commit**
@@ -838,7 +842,7 @@ Expected: satu baris, di dalam jalur sukses (nomor baris > 250).
 
 - [ ] **Step 4: Regresi — pastikan suite masih hijau**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist'`
 Expected: PASS (semua test Task 1-4).
 
 - [ ] **Step 5: Commit**
@@ -929,7 +933,7 @@ final class AuthUnblockCommandTest extends CIUnitTestCase
 
 - [ ] **Step 2: Jalankan test — pastikan gagal**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling --filter AuthUnblockCommandTest'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist --filter AuthUnblockCommandTest'`
 Expected: FAIL — command `auth:unblock` belum ada (`Command "auth:unblock" not found`).
 
 - [ ] **Step 3: Tulis command**
@@ -1052,7 +1056,7 @@ Expected: lint bersih, dan `auth:unblock` muncul di daftar command.
 
 - [ ] **Step 5: Jalankan test — pastikan lulus**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling --filter AuthUnblockCommandTest'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist --filter AuthUnblockCommandTest'`
 Expected: PASS (4 test).
 
 - [ ] **Step 6: Uji-tangan cepat**
@@ -1223,7 +1227,7 @@ Expected: satu baris memetakan `admin/suspend/unblock-ip [POST]` → `SuspendCon
 
 - [ ] **Step 8: Regresi penuh**
 
-Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit --bootstrap tests/bootstrap_ci.php --testsuite Throttling'`
+Run: `docker compose exec --user 33:33 php sh -c 'cd /var/www/html && vendor/bin/phpunit -c phpunit.throttling.xml.dist'`
 Expected: PASS (seluruh suite Throttling: library, IP, filter, command).
 
 - [ ] **Step 9: Commit**
