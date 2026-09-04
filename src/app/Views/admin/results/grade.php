@@ -82,6 +82,11 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>
+<!-- Alpine.js: layouts/admin tidak memuatnya, jadi tiap halaman yang
+     memakai x-data wajib menyertakan sendiri. Dipakai berkas vendor lokal
+     (bukan CDN) agar halaman admin tetap hidup di server sekolah yang
+     jaringan luarnya diblokir saat ujian berlangsung. -->
+<script defer src="<?= base_url('vendor/alpinejs/alpine.min.js?v=3.14.8') ?>"></script>
 <script>
 function gradeApp() {
     return {
