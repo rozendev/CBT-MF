@@ -85,18 +85,34 @@ ketiganya. Semua butir dijajarkan dengan `question_id`, bukan `display_order`.
 
 ## Batas verifikasi
 
-Yang **sudah dijalankan dan diverifikasi runtime**: seluruh aritmetika,
-penyusunan matriks, penomoran butir, dan pembentukan CSV — lewat 63 uji baru
-yang benar-benar dieksekusi, ditambah satu jalur simulasi yang keluarannya
-diperiksa angka per angka (soal berkunci terbalik keluar `D = -1,000`,
-`r = -0,873`, alpha kelas 0,802).
+Yang **sudah diverifikasi runtime**:
 
-Yang **belum diverifikasi runtime**: dua query SQL di
-`ItemAnalysisController::hitung()` dan rendering halaman Alpine, karena
-lingkungan kerja ini tidak punya MariaDB maupun daemon Docker. Keduanya lolos
-`php -l`, tapi `php -l` hanya memeriksa syntax parser — tidak membuktikan
-query cocok dengan skema, tidak menangkap salah nama kolom, dan tidak
-menjalankan satu baris pun kode. Sebelum dipakai di kelas sungguhan, jalankan:
+- Seluruh aritmetika, penyusunan matriks, penomoran butir, dan pembentukan CSV
+  — lewat 63 uji baru yang benar-benar dieksekusi (total suite 120 uji, 378 asersi).
+- **Jalur HTTP penuh**, dijalankan sungguhan dengan `php -S` + database SQLite
+  berisi kelas simulasi 30 peserta: login → `admin/results/view/1` →
+  `admin/results/analysis/1` → `analysis-data` → render Alpine. Kedua query di
+  `ItemAnalysisController::hitung()` benar-benar dieksekusi terhadap skema, dan
+  halamannya di-*screenshot* memakai Chromium. Angka yang keluar cocok dengan
+  hitungan tangan: soal berkunci terbalik `D = -1,000`, `r = -0,87`, alpha
+  kelas `0,802`, rata-rata `55,7%`.
+- Halaman Koreksi Cepat terbukti hidup kembali sesudah Alpine dimuat: daftar
+  siswa terisi, kursor melompat ke siswa pertama yang belum dinilai (8/30),
+  counter "27/30 terkoreksi" tampil.
+
+Yang **masih perlu dicek di lingkungan sungguhan**:
+
+- Query dijalankan lewat **SQLite**, bukan MariaDB. Dialek SQL yang dipakai
+  memang portabel (`JOIN`, `WHERE`, `IN`), jadi salah nama kolom dan salah
+  relasi pasti tertangkap — tapi ini **bukan** bukti perilaku identik di
+  MariaDB (tipe `DECIMAL(10,3)` vs `REAL`, kolasi, dan rencana eksekusi
+  indeks berbeda).
+- Skema SQLite-nya ditulis tangan menyalin migration, bukan hasil menjalankan
+  `spark migrate`, karena beberapa migration memakai DDL khusus MySQL.
+- Belum diuji pada ujian ber-`random_questions` menyala dengan data sungguhan,
+  dan belum diuji pada jumlah peserta besar (ratusan).
+
+Sebelum dipakai di kelas sungguhan, jalankan:
 
 ```bash
 ./scripts/cmd.sh up -d

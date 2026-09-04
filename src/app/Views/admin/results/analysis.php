@@ -105,13 +105,13 @@
                 <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
                     <h6 class="m-0 fw-bold text-primary"><i class="bi bi-list-ol me-2"></i>Statistik per Butir</h6>
                     <div class="d-flex align-items-center gap-2">
-                        <select x-model="filter" class="form-select form-select-sm w-auto">
+                        <select x-model="filter" class="form-select form-select-sm w-auto" style="min-width: 11rem;" aria-label="Saring menurut rekomendasi">
                             <option value="">Semua rekomendasi</option>
                             <option value="Tolak">Hanya Tolak</option>
                             <option value="Revisi">Hanya Revisi</option>
                             <option value="Terima">Hanya Terima</option>
                         </select>
-                        <select x-model="urut" class="form-select form-select-sm w-auto">
+                        <select x-model="urut" class="form-select form-select-sm w-auto" style="min-width: 13rem;" aria-label="Urutkan butir">
                             <option value="nomor">Urut nomor</option>
                             <option value="d">Urut daya beda terburuk</option>
                             <option value="p">Urut tersukar</option>
@@ -133,8 +133,8 @@
                                     <th class="text-center pe-3"></th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <template x-for="b in tampil()" :key="b.question_id">
+                            <template x-for="b in tampil()" :key="b.question_id">
+                                <tbody>
                                     <tr :class="b.saran === 'Tolak' ? 'table-danger' : (b.saran === 'Revisi' ? 'table-warning' : '')">
                                         <td class="ps-3 fw-bold" x-text="b.nomor"></td>
                                         <td style="min-width: 260px;">
@@ -168,8 +168,6 @@
                                             </button>
                                         </td>
                                     </tr>
-                                </template>
-                                <template x-for="b in tampil()" :key="'p' + b.question_id">
                                     <tr x-show="buka === b.question_id" x-cloak>
                                         <td colspan="8" class="bg-light">
                                             <div class="p-2">
@@ -208,8 +206,8 @@
                                             </div>
                                         </td>
                                     </tr>
-                                </template>
-                            </tbody>
+                                </tbody>
+                            </template>
                         </table>
                     </div>
                 </div>
