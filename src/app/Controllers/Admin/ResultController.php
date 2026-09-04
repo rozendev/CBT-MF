@@ -76,10 +76,15 @@ class ResultController extends BaseController
             WHERE ta.test_id = ? AND ta.status = 3 AND q.type = 3 AND q.answer_mode = 'manual'
         ", [$testId])->getRow()->c;
 
+        // Analisis butir baru punya arti kalau sudah ada attempt yang selesai;
+        // dengan nol peserta, layarnya hanya akan menampilkan pesan kosong.
+        $hasAnalysis = !empty($attempts);
+
         return view('admin/results/view', [
             'test'             => $test,
             'attempts'         => $attempts,
             'hasManualGrading' => $hasManualGrading,
+            'hasAnalysis'      => $hasAnalysis,
         ]);
     }
 
