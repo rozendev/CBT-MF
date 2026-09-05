@@ -2,6 +2,22 @@
 
 <?= $this->section('page_title') ?>Koreksi Cepat: <?= esc($test->name) ?><?= $this->endSection() ?>
 
+<?= $this->section('styles') ?>
+<style>
+    /* Teks soal esai bisa panjang. Tanpa batas, select ini melar melebihi
+       ruang yang ada dan teksnya terpotong tepat di bawah panah dropdown —
+       terbaca seolah judul soalnya memang berhenti di tengah kata. Dibatasi
+       lalu diberi ellipsis supaya pemotongannya terlihat sebagai pemotongan;
+       teks utuhnya tetap bisa dibaca lewat tooltip dan saat dropdown dibuka. */
+    .pemilih-soal {
+        flex: 1 1 20rem;
+        min-width: 0;
+        max-width: 46rem;
+        text-overflow: ellipsis;
+    }
+</style>
+<?= $this->endSection() ?>
+
 <?= $this->section('content') ?>
 <div x-data="gradeApp()" @keydown.window="onKey($event)" class="pb-5">
 
@@ -20,7 +36,9 @@
     <div class="card shadow-sm" x-show="loaded && !loadError">
         <div class="card-header bg-white py-3 border-bottom">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <select x-model.number="currentQuestionId" @change="loadQuestion()" class="form-select w-auto" aria-label="Pilih soal">
+                <select x-model.number="currentQuestionId" @change="loadQuestion()"
+                        class="form-select pemilih-soal" aria-label="Pilih soal"
+                        :title="labelSoalTerpilih()">
                     <template x-for="q in questions" :key="q.id">
                         <option :value="q.id" x-text="'[' + q.pending + ' belum] ' + q.label"></option>
                     </template>
@@ -115,6 +133,12 @@ function gradeApp() {
 
         gradedCount() { return this.students.filter(s => s.score !== null).length; },
         allDone() { return this.students.length > 0 && this.gradedCount() === this.students.length; },
+
+        // Judul lengkap untuk tooltip select — labelnya sendiri sudah dipotong
+        // di layar, jadi teks penuhnya perlu tetap bisa dibaca.
+        labelSoalTerpilih() {
+            return this.questions.find(q => q.id === this.currentQuestionId)?.label ?? '';
+        },
 
         async loadQuestion(questionId = null) {
             const id = questionId ?? this.currentQuestionId;
