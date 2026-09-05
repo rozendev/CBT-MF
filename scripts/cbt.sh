@@ -848,8 +848,11 @@ EOF
     done
     ok "✓ Token honeypot disinkronkan ke halaman 403/404."
 
-    # Reload environment variables so script knows the right container names
-    export $(grep -v '^#' "$PROJECT_DIR/.env" | grep -v '^$' | xargs)
+    # Muat ulang .env supaya nama container yang baru ditulis dikenali skrip.
+    # load_env dipakai, bukan 'export $(... | xargs)': xargs memecah kata dan
+    # memproses kutip, jadi sandi yang memuat spasi terpotong diam-diam dan
+    # sisa katanya berubah menjadi nama variabel yang ikut diekspor.
+    load_env "$PROJECT_DIR/.env" || warn "Gagal memuat ulang .env sesudah ditulis."
     PHP_CONTAINER="${CONTAINER_PHP:-${input_prefix}_php}"
     DB_CONTAINER="${CONTAINER_DB:-${input_prefix}_mariadb}"
     NGINX_CONTAINER="${CONTAINER_NGINX:-${input_prefix}_nginx}"
@@ -870,7 +873,10 @@ EOF
     sleep 15
     
     echo -e "\n${YELLOW}Memulai Migrasi Database...${NC}"
-    if ! docker ps | grep -q "$PHP_CONTAINER"; then
+    # Dicocokkan utuh terhadap daftar nama, bukan substring terhadap seluruh
+    # baris 'docker ps'. Container cron bernama "${CONTAINER_PHP}_cron", jadi
+    # pencocokan substring tetap lolos meski container php justru gagal naik.
+    if ! docker ps --format '{{.Names}}' | grep -qx "$PHP_CONTAINER"; then
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
         install_failed=1
     else
@@ -882,17 +888,20 @@ EOF
         fi
 
         echo -e "${CYAN}Mengupdate dan Menginstall dependensi Composer...${NC}"
-        if ! docker exec -i $PHP_CONTAINER composer update --no-dev --optimize-autoloader; then
+        # Tanpa '-i': perintah ini tidak membaca stdin, dan 'docker exec -i'
+        # ikut melahap masukan yang tersisa di terminal, sehingga prompt
+        # sesudahnya terbaca kosong.
+        if ! docker exec "$PHP_CONTAINER" composer update --no-dev --optimize-autoloader; then
             echo -e "${RED}Error: composer update gagal!${NC}"
             install_failed=1
         fi
-        if ! docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader; then
+        if ! docker exec "$PHP_CONTAINER" composer install --no-dev --optimize-autoloader; then
             echo -e "${RED}Error: composer install gagal!${NC}"
             install_failed=1
         fi
-        
+
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
-        if ! docker exec -i -e CI_ENVIRONMENT=development --user 33:33 $PHP_CONTAINER php spark migrate; then
+        if ! docker exec -e CI_ENVIRONMENT=development --user 33:33 "$PHP_CONTAINER" php spark migrate; then
             echo -e "${RED}Error: Migrasi database gagal!${NC}"
             install_failed=1
         else
@@ -905,9 +914,23 @@ EOF
             else
                 SAFE_ADMIN_USER=$(echo -n "$input_admin_user" | docker exec -i $PHP_CONTAINER php -r "echo addslashes(file_get_contents('php://stdin'));")
                 
-                if docker exec -i $DB_CONTAINER mariadb -u "$input_dbuser" -p"$input_dbpass" "$input_dbname" -e "
-                    INSERT INTO users (username, password, role, firstname) 
-                    VALUES ('$SAFE_ADMIN_USER', '$HASHED_ADMIN_PASS', 'admin', 'Administrator');
+                # Sandi lewat MYSQL_PWD, bukan -p"$pass": argumen proses
+                # terbaca siapa pun lewat 'ps'. Pola ini sudah dipakai
+                # db_exec_root dan run_backup di berkas yang sama.
+                #
+                # ON DUPLICATE KEY UPDATE dipakai karena users.username unik.
+                # Tanpa itu, installer yang dijalankan ulang mati di INSERT dan
+                # melaporkan instalasi gagal padahal seluruh langkah lain
+                # berhasil. Sandi yang baru diketik operator memang harus
+                # berlaku; kalau tidak, mereka mengetik sandi yang diam-diam
+                # tidak berpengaruh lalu gagal login.
+                if docker exec -e MYSQL_PWD="$input_dbpass" "$DB_CONTAINER" \
+                    mariadb -u "$input_dbuser" "$input_dbname" -e "
+                    INSERT INTO users (username, password, role, firstname)
+                    VALUES ('$SAFE_ADMIN_USER', '$HASHED_ADMIN_PASS', 'admin', 'Administrator')
+                    ON DUPLICATE KEY UPDATE
+                        password = '$HASHED_ADMIN_PASS',
+                        role     = 'admin';
                 "; then
                     echo -e "\n${GREEN}✅ Migrasi dan Setup Selesai!${NC}"
                     echo -e "\n=== 🛠️ DAFTAR CONTAINER ===\nPHP: $PHP_CONTAINER\nMariaDB: $DB_CONTAINER\nNginx: $NGINX_CONTAINER\nRedis: $REDIS_CONTAINER\nWebSocket: $WEBSOCKET_CONTAINER"
