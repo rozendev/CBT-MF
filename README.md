@@ -131,6 +131,26 @@ sudo bash scripts/cbt.sh install
 - `scripts/` - Script eksekusi Docker `cmd.sh` dan utilitas lainnya
 - `docker-compose.yml` - Orkestrasi Container
 
+## Sebelum Dipasang di Server Sungguhan
+
+Repositori ini publik, jadi apa pun yang tertulis di dalamnya diketahui semua
+orang. Dua hal berikut wajib diisi sendiri — tidak ada nilai bawaan yang bisa
+dipakai:
+
+| Variabel `.env` | Kalau kosong |
+|---|---|
+| `INTRUDER_TOKEN` | Endpoint laporan penyusup menolak semua permintaan (503). Honeypot 403/404 tidak mencatat apa pun. |
+| `DB_PASSWORD`, `MYSQL_ROOT_PASSWORD` | Wajib diisi; `.env.example` sengaja memuat penanda `GANTI_...`, bukan sandi yang bisa dipakai. |
+
+Menjalankan `./install.sh` mengurus semuanya: sandi database dan
+`INTRUDER_TOKEN` dibangkitkan acak, lalu token itu disinkronkan ke halaman
+honeypot `403.html` dan `404.html` yang disajikan nginx sebagai berkas statis.
+
+Kalau Anda memasang secara manual tanpa `install.sh`, sulih sendiri nilai
+`__INTRUDER_TOKEN__` di kedua berkas itu dengan isi `INTRUDER_TOKEN` Anda —
+sisi klien dan sisi server harus memakai nilai yang sama.
+
+
 ## Lisensi
 
 Perangkat lunak ini dilisensikan di bawah **GNU Affero General Public License

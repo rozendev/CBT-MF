@@ -623,8 +623,8 @@ run_install() {
     read -p "Masukkan nama database [cbt-mf]: " input_dbname
     input_dbname=${input_dbname:-cbt-mf}
     
-    read -p "Masukkan username database [sayasukakamu]: " input_dbuser
-    input_dbuser=${input_dbuser:-sayasukakamu}
+    read -p "Masukkan username database [cbt_user]: " input_dbuser
+    input_dbuser=${input_dbuser:-cbt_user}
     
     read -p "Masukkan Prefix Nama Container [ujian]: " input_prefix
     input_prefix=${input_prefix:-ujian}
