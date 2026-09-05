@@ -1,13 +1,12 @@
 {
-    "name": "codeigniter4/appstarter",
-    "description": "CodeIgniter4 starter app",
-    "license": "MIT",
+    "name": "rozendev/cbt-mf",
+    "description": "Sistem Ujian Berbasis Komputer (CBT) dengan WebSocket real-time dan mode kiosk",
+    "license": "AGPL-3.0-or-later",
     "type": "project",
-    "homepage": "https://codeigniter.com",
+    "homepage": "https://github.com/rozendev/CBT-MF",
     "support": {
-        "forum": "https://forum.codeigniter.com/",
-        "source": "https://github.com/codeigniter4/CodeIgniter4",
-        "slack": "https://codeigniterchat.slack.com"
+        "issues": "https://github.com/rozendev/CBT-MF/issues",
+        "source": "https://github.com/rozendev/CBT-MF"
     },
     "require": {
         "php": "^8.2",

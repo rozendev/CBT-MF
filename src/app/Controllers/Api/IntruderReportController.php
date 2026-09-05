@@ -7,8 +7,6 @@ use App\Models\IntruderReportModel;
 
 class IntruderReportController extends BaseController
 {
-    protected const DEFAULT_TOKEN = 'hny_8Xk2Lm9QzW7vBp4';
-
     protected const MAX_PHOTO_BYTES = 1048576; // 1 MB
 
     protected const MAX_PHOTOS_PER_IP_PER_DAY = 50;
@@ -27,8 +25,19 @@ class IntruderReportController extends BaseController
                 return $this->response->setStatusCode(400)->setJSON(['status' => 'error', 'message' => 'Invalid payload']);
             }
 
-            $token = env('INTRUDER_TOKEN', self::DEFAULT_TOKEN);
-            if (($body['token'] ?? '') !== $token) {
+            // Tidak ada token bawaan. Repositori ini publik, jadi token yang
+            // tertulis di dalamnya sama saja dengan tanpa token: siapa pun bisa
+            // memalsukan laporan penyusup pada pemasangan yang belum mengaturnya.
+            // Kalau INTRUDER_TOKEN kosong, gerbang ini menutup sepenuhnya —
+            // honeypot mati lebih baik daripada honeypot yang bisa dibanjiri.
+            $token = trim((string) env('INTRUDER_TOKEN', ''));
+            if ($token === '') {
+                log_message('warning', 'Laporan penyusup ditolak: INTRUDER_TOKEN belum diatur di .env.');
+
+                return $this->response->setStatusCode(503)->setJSON(['status' => 'error', 'message' => 'Service unavailable']);
+            }
+
+            if (!hash_equals($token, (string) ($body['token'] ?? ''))) {
                 return $this->response->setStatusCode(403)->setJSON(['status' => 'error', 'message' => 'Forbidden']);
             }
 
