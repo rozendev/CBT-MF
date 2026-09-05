@@ -11,6 +11,9 @@
         <testsuite name="Realtime">
             <directory>tests/Realtime</directory>
         </testsuite>
+        <testsuite name="Analytics">
+            <directory>tests/Analytics</directory>
+        </testsuite>
         <testsuite name="Resilience">
             <directory>tests/Resilience</directory>
         </testsuite>

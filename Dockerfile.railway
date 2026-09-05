@@ -1,0 +1,65 @@
+# Image sekali-jalan untuk Railway: nginx dan php-fpm dalam satu container.
+#
+# Berbeda dari docker/php-fpm/Dockerfile yang dipakai docker-compose. Di compose,
+# nginx dan php-fpm adalah dua container yang berbagi ./src lewat bind mount, dan
+# kodenya tidak pernah masuk ke dalam image. Railway tidak punya bind mount dan
+# hanya menjalankan satu container per service, jadi di sini kodenya disalin ke
+# dalam image dan kedua proses hidup berdampingan.
+#
+# Ditujukan untuk lingkungan uji, bukan produksi: php-fpm dijalankan sebagai
+# proses latar tanpa supervisor, sehingga matinya php-fpm tidak ikut mematikan
+# container.
+FROM php:8.3-fpm
+
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    nginx \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+    libicu-dev \
+    zip \
+    unzip \
+    default-mysql-client \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN docker-php-ext-install pdo_mysql mysqli
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd
+RUN docker-php-ext-install exif pcntl bcmath zip intl
+RUN pecl install redis && docker-php-ext-enable redis
+
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+
+# Dependensi dipasang dari lockfile lebih dulu supaya layer-nya bisa dipakai
+# ulang selama composer.lock tidak berubah.
+COPY src/composer.json src/composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --no-interaction
+
+COPY src/ ./
+RUN composer dump-autoload --optimize --no-dev
+
+# security.ini disalin SETELAH composer selesai: berkas itu mematikan proc_open
+# dan popen, yang masih dipakai composer saat memasang paket.
+COPY docker/php-fpm/security.ini /usr/local/etc/php/conf.d/security.ini
+COPY docker/php-fpm/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+COPY docker/railway/php-uploads.ini /usr/local/etc/php/conf.d/php-uploads.ini
+
+# Halaman error statis dilayani nginx dari luar docroot aplikasi.
+COPY docker/nginx/html/ /usr/share/nginx/html/
+
+COPY docker/railway/nginx.conf.template /etc/nginx/nginx.conf.template
+COPY docker/railway/entrypoint.sh /usr/local/bin/railway-entrypoint.sh
+RUN chmod +x /usr/local/bin/railway-entrypoint.sh \
+    && rm -f /etc/nginx/sites-enabled/default /etc/nginx/conf.d/default.conf
+
+RUN chown -R www-data:www-data /var/www/html/writable /var/www/html/public
+
+ENTRYPOINT ["/usr/local/bin/railway-entrypoint.sh"]

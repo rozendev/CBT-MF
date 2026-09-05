@@ -76,10 +76,15 @@ class ResultController extends BaseController
             WHERE ta.test_id = ? AND ta.status = 3 AND q.type = 3 AND q.answer_mode = 'manual'
         ", [$testId])->getRow()->c;
 
+        // Analisis butir baru punya arti kalau sudah ada attempt yang selesai;
+        // dengan nol peserta, layarnya hanya akan menampilkan pesan kosong.
+        $hasAnalysis = !empty($attempts);
+
         return view('admin/results/view', [
             'test'             => $test,
             'attempts'         => $attempts,
             'hasManualGrading' => $hasManualGrading,
+            'hasAnalysis'      => $hasAnalysis,
         ]);
     }
 
@@ -406,10 +411,17 @@ class ResultController extends BaseController
 
         $questions = [];
         foreach ($qRows as $qr) {
-            $label = trim(preg_replace('/\s+/u', ' ', strip_tags((string) $qr->description)));
+            $label = trim(preg_replace('/\s+/u', ' ', strip_tags((string) $qr->description)) ?? '');
+            if ($label === '') {
+                $label = '(soal tanpa teks)';
+            }
             $questions[] = [
                 'id'      => (int) $qr->id,
-                'label'   => mb_substr($label, 0, 80),
+                // Diberi '…' saat dipotong supaya guru tahu labelnya belum utuh,
+                // bukan mengira judul soalnya memang berhenti di situ. Batas 120
+                // dipilih agar layar lebar terpakai; layar sempit dipangkas lagi
+                // oleh ellipsis CSS di .pemilih-soal, jadi tidak pernah meluber.
+                'label'   => mb_strlen($label) > 120 ? mb_substr($label, 0, 120) . '…' : $label,
                 'pending' => (int) $qr->pending,
                 'total'   => (int) $qr->total,
             ];
