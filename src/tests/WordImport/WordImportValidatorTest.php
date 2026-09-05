@@ -129,4 +129,72 @@ class WordImportValidatorTest extends TestCase
 
         $this->assertSame([], $errors);
     }
+
+    public function testOptionWithoutAnswerTextIsRejected(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question(['options' => ['A' => 'Einstein', 'B' => ''], 'correct' => ['A']]),
+        ]);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('opsi tanpa teks jawaban: B', $errors[0]);
+    }
+
+    public function testOptionContainingOnlyWordWhitespaceIsRejected(): void
+    {
+        // Non-breaking space bawaan Word lolos dari trim() biasa.
+        $errors = (new WordImportValidator())->validate([
+            $this->question(['options' => ['A' => 'Einstein', 'B' => "\u{00A0} <br>"], 'correct' => ['A']]),
+        ]);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('opsi tanpa teks jawaban: B', $errors[0]);
+    }
+
+    public function testOptionThatOnlyContainsAnImageIsAccepted(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question([
+                'options' => ['A' => 'Einstein', 'B' => '<img src="/uploads/questions/img_abc.png">'],
+                'correct' => ['B'],
+            ]),
+        ]);
+
+        $this->assertSame([], $errors);
+    }
+
+    public function testDuplicateOptionLetterIsReported(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question(['duplicate_letters' => ['A']]),
+        ]);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('lebih dari satu opsi berhuruf "A"', $errors[0]);
+    }
+
+    public function testPairCellContainingTheStorageDelimiterIsRejected(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question([
+                'type' => 4, 'options' => [], 'correct' => [],
+                'matches' => [['left' => 'Indonesia|::|x', 'right' => 'Jakarta']],
+            ]),
+        ]);
+
+        $this->assertCount(1, $errors);
+        $this->assertStringContainsString('dipakai sistem sebagai pemisah', $errors[0]);
+    }
+
+    public function testEmptyPairCellIsWrittenAsKosongNotEmptyQuotes(): void
+    {
+        $errors = (new WordImportValidator())->validate([
+            $this->question([
+                'type' => 4, 'options' => [], 'correct' => [],
+                'matches' => [['left' => 'Jepang', 'right' => '']],
+            ]),
+        ]);
+
+        $this->assertStringContainsString('"Jepang" → (kosong) tidak lengkap', $errors[0]);
+    }
 }
