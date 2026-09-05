@@ -4,7 +4,7 @@
 # Aplikasi ini membaca konfigurasinya dari src/.env bergaya CodeIgniter
 # (database.default.hostname, app.baseURL) -- nama berbintik yang tidak nyaman
 # dipakai sebagai nama variabel di panel Railway. Jadi berkas itu dirender di
-# sini dari variabel lingkungan biasa, cara yang sama dipakai install.sh.
+# sini dari variabel lingkungan biasa, cara yang sama dipakai 'cbt.sh install'.
 set -e
 
 APP_DIR=/var/www/html

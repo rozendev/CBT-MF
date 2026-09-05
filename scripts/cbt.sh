@@ -57,6 +57,27 @@ load_env() {
     return 0
 }
 
+# Membaca satu kunci dari berkas env tanpa mengekspornya ke shell. Dipakai
+# installer untuk membawa maju nilai yang TIDAK ditanyakan saat instalasi
+# (setelan kapasitas dari 'tune set', token, rahasia opsional). Tanpa ini,
+# penulisan berkas secara utuh akan menghapusnya diam-diam setiap kali
+# installer dijalankan ulang.
+env_get() {
+    local file="$1" key="$2" line value
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in "$key"=*) ;; *) continue ;; esac
+        value=${line#*=}
+        case "$value" in
+            \"*\") value=${value#\"}; value=${value%\"} ;;
+            \'*\') value=${value#\'}; value=${value%\'} ;;
+        esac
+        printf '%s' "$value"
+        return 0
+    done < "$file"
+    return 0
+}
+
 # Instalasi baru yang bersih belum punya .env sama sekali; itu tugas
 # installer. Jadi ketiadaannya memperingatkan, bukan menghentikan.
 if ! load_env "$PROJECT_DIR/.env"; then
@@ -674,86 +695,164 @@ run_install() {
     
     echo -e "\n${YELLOW}Menyimpan konfigurasi...${NC}"
     
-    # Restore Root .env if missing
-    if [ ! -f "$PROJECT_DIR/.env" ]; then
-        if [ -f "$PROJECT_DIR/.env.example" ]; then
-            cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
-        fi
-    fi
-    
-    # Setup Root .env
-    if [ -f "$PROJECT_DIR/.env" ]; then
-        sed -i "s|^[# ]*DB_HOST=.*|DB_HOST=${input_prefix}_mariadb|" "$PROJECT_DIR/.env"
-        sed -i "s|^[# ]*DB_DATABASE=.*|DB_DATABASE=$input_dbname|" "$PROJECT_DIR/.env"
-        sed -i "s|^[# ]*DB_USERNAME=.*|DB_USERNAME=$input_dbuser|" "$PROJECT_DIR/.env"
-        sed -i "s|^[# ]*DB_PASSWORD=.*|DB_PASSWORD=$input_dbpass|" "$PROJECT_DIR/.env"
-        sed -i "s|^[# ]*MYSQL_ROOT_PASSWORD=.*|MYSQL_ROOT_PASSWORD=$input_dbpass|" "$PROJECT_DIR/.env"
-        
-        sed -i "s|^CONTAINER_NGINX=.*|CONTAINER_NGINX=${input_prefix}_nginx|" "$PROJECT_DIR/.env"
-        sed -i "s|^CONTAINER_PHP=.*|CONTAINER_PHP=${input_prefix}_php|" "$PROJECT_DIR/.env"
-        sed -i "s|^CONTAINER_WEBSOCKET=.*|CONTAINER_WEBSOCKET=${input_prefix}_websocket|" "$PROJECT_DIR/.env"
-        sed -i "s|^CONTAINER_CLOUDFLARED=.*|CONTAINER_CLOUDFLARED=${input_prefix}_cloudflared|" "$PROJECT_DIR/.env"
-        sed -i "s|^CONTAINER_DB=.*|CONTAINER_DB=${input_prefix}_mariadb|" "$PROJECT_DIR/.env"
-        sed -i "s|^CONTAINER_PHPMYADMIN=.*|CONTAINER_PHPMYADMIN=${input_prefix}_phpmyadmin|" "$PROJECT_DIR/.env"
-        sed -i "s|^CONTAINER_REDIS=.*|CONTAINER_REDIS=${input_prefix}_redis|" "$PROJECT_DIR/.env"
-        
-        if ! grep -q "^[# ]*REDIS_PASSWORD[ ]*=" "$PROJECT_DIR/.env"; then
-            echo "REDIS_PASSWORD=$input_redispass" >> "$PROJECT_DIR/.env"
-        else
-            sed -i "s|^[# ]*REDIS_PASSWORD[ ]*=.*|REDIS_PASSWORD=$input_redispass|" "$PROJECT_DIR/.env"
-        fi
+    # Nilai yang memuat kutip tunggal atau baris baru menghasilkan berkas env
+    # rusak. Ditolak di sini, bukan dibiarkan lolos: berkas env yang rusak
+    # baru bersuara jauh kemudian sebagai galat koneksi yang tidak menunjuk
+    # ke installer sama sekali.
+    local nilai
+    for nilai in "$input_dbname" "$input_dbuser" "$input_dbpass" \
+                 "$input_redispass" "$input_baseurl" "$input_cf_token" \
+                 "$input_prefix"; do
+        case "$nilai" in
+            *\'*)   die "Jawaban instalasi memuat kutip tunggal, yang merusak berkas env. Ulangi tanpa karakter itu." ;;
+            *$'\n'*) die "Jawaban instalasi memuat baris baru, yang merusak berkas env." ;;
+        esac
+    done
 
-        if ! grep -q "^[# ]*CF_TUNNEL_TOKEN[ ]*=" "$PROJECT_DIR/.env"; then
-            echo "CF_TUNNEL_TOKEN=$input_cf_token" >> "$PROJECT_DIR/.env"
+    # Nilai yang tidak ditanyakan installer dibawa maju dari berkas yang ada,
+    # supaya menjalankan ulang installer tidak menghapus setelan kapasitas
+    # ('tune set') atau rahasia yang sudah dipasang sendiri oleh operator.
+    local buffer_pool max_conn fpm_children kiosk_secret cors_origins intruder_token
+    buffer_pool=$(env_get "$PROJECT_DIR/.env" DB_BUFFER_POOL)
+    max_conn=$(env_get "$PROJECT_DIR/.env" DB_MAX_CONNECTIONS)
+    fpm_children=$(env_get "$PROJECT_DIR/.env" PHP_FPM_MAX_CHILDREN)
+    kiosk_secret=$(env_get "$PROJECT_DIR/src/.env" KIOSK_APP_SECRET)
+    cors_origins=$(env_get "$PROJECT_DIR/src/.env" CORS_ALLOWED_ORIGINS)
+    cors_origins=${cors_origins:-https://appassets.androidplatform.net}
+
+    # Token honeypot, unik per pemasangan. Nilai lama dipertahankan supaya
+    # halaman 403/404 yang sudah disulih tidak berubah tanpa alasan.
+    intruder_token=$(env_get "$PROJECT_DIR/src/.env" INTRUDER_TOKEN)
+    if [ -z "$intruder_token" ]; then
+        if command -v openssl >/dev/null 2>&1; then
+            intruder_token=$(openssl rand -hex 32)
         else
-            sed -i "s|^[# ]*CF_TUNNEL_TOKEN[ ]*=.*|CF_TUNNEL_TOKEN=$input_cf_token|" "$PROJECT_DIR/.env"
+            intruder_token=$(tr -dc a-f0-9 </dev/urandom | head -c 64)
         fi
     fi
 
-    # Setup App .env
-    if [ ! -f "$PROJECT_DIR/src/.env" ]; then
-        if [ -f "$PROJECT_DIR/src/env" ]; then
-            cp "$PROJECT_DIR/src/env" "$PROJECT_DIR/src/.env"
-        fi
-    fi
-    
-    if [ -f "$PROJECT_DIR/src/.env" ]; then
-        # Set Base URL
-        sed -i "s|^[# ]*app.baseURL =.*|app.baseURL = '$input_baseurl'|" "$PROJECT_DIR/src/.env"
-        
-        # Set Database Credentials
-        sed -i "s|^[# ]*database.default.hostname.*|database.default.hostname = '${input_prefix}_mariadb'|" "$PROJECT_DIR/src/.env"
-        sed -i "s|^[# ]*database.default.database.*|database.default.database = '$input_dbname'|" "$PROJECT_DIR/src/.env"
-        sed -i "s|^[# ]*database.default.username.*|database.default.username = '$input_dbuser'|" "$PROJECT_DIR/src/.env"
-        sed -i "s|^[# ]*database.default.password.*|database.default.password = '$input_dbpass'|" "$PROJECT_DIR/src/.env"
-        
-        # Set Redis Configuration
-        sed -i "s|^[# ]*cache.redis.host.*|cache.redis.host = '${input_prefix}_redis'|" "$PROJECT_DIR/src/.env"
-        sed -i "s|^[# ]*redis.host.*|redis.host = '${input_prefix}_redis'|" "$PROJECT_DIR/src/.env"
-        sed -i "s|^[# ]*session.savePath =.*|session.savePath = 'tcp://${input_prefix}_redis:6379'|" "$PROJECT_DIR/src/.env"
-        
-        if ! grep -q "^[# ]*REDIS_PASSWORD[ ]*=" "$PROJECT_DIR/src/.env"; then
-            echo "REDIS_PASSWORD='$input_redispass'" >> "$PROJECT_DIR/src/.env"
-        else
-            sed -i "s|^[# ]*REDIS_PASSWORD[ ]*=.*|REDIS_PASSWORD='$input_redispass'|" "$PROJECT_DIR/src/.env"
-        fi
-        
-        if ! grep -q "^[# ]*cache\.redis\.password[ ]*=" "$PROJECT_DIR/src/.env"; then
-            echo "cache.redis.password = '$input_redispass'" >> "$PROJECT_DIR/src/.env"
-        else
-            sed -i "s|^[# ]*cache\.redis\.password[ ]*=.*|cache.redis.password = '$input_redispass'|" "$PROJECT_DIR/src/.env"
-        fi
-        
-        # Lock installer
-        if ! grep -q "^[# ]*INSTALLER_LOCKED[ ]*=" "$PROJECT_DIR/src/.env"; then
-            echo "INSTALLER_LOCKED=true" >> "$PROJECT_DIR/src/.env"
-        else
-            sed -i "s|^[# ]*INSTALLER_LOCKED[ ]*=.*|INSTALLER_LOCKED=true|" "$PROJECT_DIR/src/.env"
-        fi
-    fi
-    
-    # Reload environment variables so script knows the right container names
-    export $(grep -v '^#' "$PROJECT_DIR/.env" | grep -v '^$' | xargs)
+    # ── Berkas env DITULIS UTUH, bukan disalin lalu ditambal sed ─────────
+    # Pola lama menyalin .env.example dan src/env lalu menjalankan sed per
+    # kunci. Itu punya dua mode gagal yang sama-sama diam:
+    #
+    #   1. src/env memuat enam kunci dua kali (cache.handler, cache.redis.*,
+    #      redis.*). sed mengganti SETIAP baris yang cocok, jadi src/.env
+    #      hasilnya memuat kunci yang sama dua kali dalam keadaan aktif, dan
+    #      nilai mana yang menang bergantung urutan baris.
+    #
+    #   2. session.savePath ditulis eksplisit tanpa '?auth=', padahal
+    #      Config/Session.php hanya merakit savePath berpassword ketika kunci
+    #      itu TIDAK ada. Akibatnya RedisHandler menyambung lalu melewati
+    #      auth(), dan permintaan pertama mati dengan 'NOAUTH Authentication
+    #      required' yang tidak menyebut-nyebut installer.
+    #
+    # 'cat >' mengosongkan berkas lalu menulisnya, dan tidak mengganti inode,
+    # jadi bind mount docker yang sudah berjalan tetap menunjuk berkas yang sama.
+
+    cat > "$PROJECT_DIR/.env" <<EOF
+# Dibuat oleh 'cbt.sh install'. Jangan diedit sambil container berjalan.
+# Berkas ini dibaca docker-compose untuk interpolasi \${...}.
+#
+# Rahasia tingkat aplikasi TIDAK ditaruh di sini. docker-compose hanya
+# menyuntikkan DB_* dan REDIS_* ke container php, jadi INTRUDER_TOKEN,
+# CORS_ALLOWED_ORIGINS, dan KIOSK_APP_SECRET hanya berarti kalau ditulis di
+# src/.env, tempat CodeIgniter membacanya.
+
+# ── Database ────────────────────────────────────────────────
+DB_HOST=${input_prefix}_mariadb
+DB_PORT=3306
+DB_DATABASE=$input_dbname
+DB_USERNAME=$input_dbuser
+DB_PASSWORD=$input_dbpass
+MYSQL_ROOT_PASSWORD=$input_dbpass
+
+# Kosong = 512M buffer pool dan 500 koneksi.
+DB_BUFFER_POOL=$buffer_pool
+DB_MAX_CONNECTIONS=$max_conn
+
+# ── Redis ───────────────────────────────────────────────────
+# Nilai ini disuntikkan ke container php; Config/Cache.php dan
+# Config/Session.php membacanya dari sana. JANGAN menulis ulang di src/.env:
+# dua sumber untuk nilai yang sama akan menyimpang diam-diam.
+REDIS_HOST=${input_prefix}_redis
+REDIS_PORT=6379
+REDIS_PASSWORD=$input_redispass
+
+# Kosong = 4x jumlah core, dirender entrypoint saat container start.
+PHP_FPM_MAX_CHILDREN=$fpm_children
+
+# ── Cloudflare Tunnel (opsional) ────────────────────────────
+CF_TUNNEL_TOKEN=$input_cf_token
+
+# ── Nama container ──────────────────────────────────────────
+CONTAINER_NGINX=${input_prefix}_nginx
+CONTAINER_PHP=${input_prefix}_php
+CONTAINER_WEBSOCKET=${input_prefix}_websocket
+CONTAINER_CLOUDFLARED=${input_prefix}_cloudflared
+CONTAINER_DB=${input_prefix}_mariadb
+CONTAINER_REDIS=${input_prefix}_redis
+EOF
+    ok "✓ .env (akar) ditulis."
+
+    cat > "$PROJECT_DIR/src/.env" <<EOF
+# Dibuat oleh 'cbt.sh install'.
+# Rujukan lengkap semua kunci yang dikenali aplikasi ada di src/env, yang
+# seluruhnya berkomentar dan sengaja tidak dipakai sebagai bahan salinan.
+#
+# Kunci Redis SENGAJA tidak ada di sini. docker-compose menyuntikkan
+# REDIS_HOST, REDIS_PORT, dan REDIS_PASSWORD ke container dari .env akar,
+# lalu Config/Cache.php dan Config/Session.php membacanya dari sana.
+# Menulis session.savePath di sini akan mematikan perakitan savePath
+# berpassword di Config/Session.php dan membuat sesi gagal dengan NOAUTH.
+#
+# database.default.* HARUS ada: CodeIgniter tidak memetakan DB_HOST dan
+# kawan-kawan ke kunci ini, jadi tanpa baris berikut aplikasi menyambung ke
+# localhost.
+
+app.baseURL = '$input_baseurl'
+
+database.default.hostname = '${input_prefix}_mariadb'
+database.default.port = 3306
+database.default.database = '$input_dbname'
+database.default.username = '$input_dbuser'
+database.default.password = '$input_dbpass'
+
+# Dibaca IntruderReportController lewat env(). Halaman honeypot 403/404
+# disajikan nginx sebagai berkas statis dan tidak bisa membaca berkas ini,
+# jadi nilainya disulihkan ke sana oleh installer.
+INTRUDER_TOKEN=$intruder_token
+
+# Origin yang diizinkan untuk bundled UI kiosk (WebView lokal).
+CORS_ALLOWED_ORIGINS=$cors_origins
+
+# Opsional. Kosong berarti lapisan ini dilewati, bukan galat.
+KIOSK_APP_SECRET=$kiosk_secret
+
+INSTALLER_LOCKED=true
+EOF
+    ok "✓ src/.env ditulis."
+
+    # Halaman honeypot memakai token yang sama dengan sisi server. Ditulis
+    # dengan 'cat >' lewat berkas sementara, bukan 'sed -i', supaya inode-nya
+    # tidak berganti dan nginx yang sedang berjalan tetap menyajikan berkas
+    # yang sama. Polanya mencocokkan isi kutip apa pun, bukan hanya penanda
+    # __INTRUDER_TOKEN__, agar installer yang dijalankan ulang tetap bekerja.
+    local berkas tmp_honeypot
+    for berkas in "$PROJECT_DIR/docker/nginx/html/errors/403.html" \
+                  "$PROJECT_DIR/docker/nginx/html/errors/404.html"; do
+        [ -f "$berkas" ] || continue
+        tmp_honeypot=$(mktemp)
+        sed "s|var TOKEN = '[^']*';|var TOKEN = '${intruder_token}';|" "$berkas" > "$tmp_honeypot"
+        cat "$tmp_honeypot" > "$berkas"
+        rm -f "$tmp_honeypot"
+    done
+    ok "✓ Token honeypot disinkronkan ke halaman 403/404."
+
+    # Muat ulang .env supaya nama container yang baru ditulis dikenali skrip.
+    # load_env dipakai, bukan 'export $(... | xargs)': xargs memecah kata dan
+    # memproses kutip, jadi sandi yang memuat spasi terpotong diam-diam dan
+    # sisa katanya berubah menjadi nama variabel yang ikut diekspor.
+    load_env "$PROJECT_DIR/.env" || warn "Gagal memuat ulang .env sesudah ditulis."
     PHP_CONTAINER="${CONTAINER_PHP:-${input_prefix}_php}"
     DB_CONTAINER="${CONTAINER_DB:-${input_prefix}_mariadb}"
     NGINX_CONTAINER="${CONTAINER_NGINX:-${input_prefix}_nginx}"
@@ -774,7 +873,10 @@ run_install() {
     sleep 15
     
     echo -e "\n${YELLOW}Memulai Migrasi Database...${NC}"
-    if ! docker ps | grep -q "$PHP_CONTAINER"; then
+    # Dicocokkan utuh terhadap daftar nama, bukan substring terhadap seluruh
+    # baris 'docker ps'. Container cron bernama "${CONTAINER_PHP}_cron", jadi
+    # pencocokan substring tetap lolos meski container php justru gagal naik.
+    if ! docker ps --format '{{.Names}}' | grep -qx "$PHP_CONTAINER"; then
         echo -e "${RED}Error fatal: Container $PHP_CONTAINER gagal berjalan! Cek docker logs.${NC}"
         install_failed=1
     else
@@ -786,17 +888,20 @@ run_install() {
         fi
 
         echo -e "${CYAN}Mengupdate dan Menginstall dependensi Composer...${NC}"
-        if ! docker exec -i $PHP_CONTAINER composer update --no-dev --optimize-autoloader; then
+        # Tanpa '-i': perintah ini tidak membaca stdin, dan 'docker exec -i'
+        # ikut melahap masukan yang tersisa di terminal, sehingga prompt
+        # sesudahnya terbaca kosong.
+        if ! docker exec "$PHP_CONTAINER" composer update --no-dev --optimize-autoloader; then
             echo -e "${RED}Error: composer update gagal!${NC}"
             install_failed=1
         fi
-        if ! docker exec -i $PHP_CONTAINER composer install --no-dev --optimize-autoloader; then
+        if ! docker exec "$PHP_CONTAINER" composer install --no-dev --optimize-autoloader; then
             echo -e "${RED}Error: composer install gagal!${NC}"
             install_failed=1
         fi
-        
+
         echo -e "${CYAN}Menjalankan 'php spark migrate'...${NC}"
-        if ! docker exec -i -e CI_ENVIRONMENT=development --user 33:33 $PHP_CONTAINER php spark migrate; then
+        if ! docker exec -e CI_ENVIRONMENT=development --user 33:33 "$PHP_CONTAINER" php spark migrate; then
             echo -e "${RED}Error: Migrasi database gagal!${NC}"
             install_failed=1
         else
@@ -809,9 +914,23 @@ run_install() {
             else
                 SAFE_ADMIN_USER=$(echo -n "$input_admin_user" | docker exec -i $PHP_CONTAINER php -r "echo addslashes(file_get_contents('php://stdin'));")
                 
-                if docker exec -i $DB_CONTAINER mariadb -u "$input_dbuser" -p"$input_dbpass" "$input_dbname" -e "
-                    INSERT INTO users (username, password, role, firstname) 
-                    VALUES ('$SAFE_ADMIN_USER', '$HASHED_ADMIN_PASS', 'admin', 'Administrator');
+                # Sandi lewat MYSQL_PWD, bukan -p"$pass": argumen proses
+                # terbaca siapa pun lewat 'ps'. Pola ini sudah dipakai
+                # db_exec_root dan run_backup di berkas yang sama.
+                #
+                # ON DUPLICATE KEY UPDATE dipakai karena users.username unik.
+                # Tanpa itu, installer yang dijalankan ulang mati di INSERT dan
+                # melaporkan instalasi gagal padahal seluruh langkah lain
+                # berhasil. Sandi yang baru diketik operator memang harus
+                # berlaku; kalau tidak, mereka mengetik sandi yang diam-diam
+                # tidak berpengaruh lalu gagal login.
+                if docker exec -e MYSQL_PWD="$input_dbpass" "$DB_CONTAINER" \
+                    mariadb -u "$input_dbuser" "$input_dbname" -e "
+                    INSERT INTO users (username, password, role, firstname)
+                    VALUES ('$SAFE_ADMIN_USER', '$HASHED_ADMIN_PASS', 'admin', 'Administrator')
+                    ON DUPLICATE KEY UPDATE
+                        password = '$HASHED_ADMIN_PASS',
+                        role     = 'admin';
                 "; then
                     echo -e "\n${GREEN}✅ Migrasi dan Setup Selesai!${NC}"
                     echo -e "\n=== 🛠️ DAFTAR CONTAINER ===\nPHP: $PHP_CONTAINER\nMariaDB: $DB_CONTAINER\nNginx: $NGINX_CONTAINER\nRedis: $REDIS_CONTAINER\nWebSocket: $WEBSOCKET_CONTAINER"
