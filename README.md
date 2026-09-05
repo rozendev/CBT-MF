@@ -220,21 +220,25 @@ Repositori ini publik, jadi apa pun yang tertulis di dalamnya diketahui semua
 orang. Tidak ada satu pun rahasia bawaan yang bisa dipakai; semuanya harus Anda
 isi sendiri.
 
-**Isi `INTRUDER_TOKEN` di `.env`, dan sulihkan ke halaman honeypot.**
-`scripts/cbt.sh install` tidak menyentuh variabel ini, jadi setelah instalasi
-nilainya masih kosong. Selama kosong, endpoint laporan penyusup menolak semua
-permintaan dengan status 503, dan halaman honeypot `403.html` serta `404.html`
-tidak mencatat apa pun. Sisi klien dan sisi server harus memakai nilai yang
-sama, jadi token yang sudah Anda buat wajib disulihkan juga ke kedua halaman
-itu.
+**`INTRUDER_TOKEN` sudah diurus installer.** `scripts/cbt.sh install`
+membangkitkan token acak, menulisnya ke `src/.env`, lalu menyulihkannya ke
+halaman honeypot `403.html` dan `404.html`. Nilainya dipertahankan kalau
+installer dijalankan ulang.
+
+Yang perlu Anda kerjakan sendiri hanya kalau memasang secara manual tanpa
+installer. Selama token kosong, endpoint laporan penyusup menolak semua
+permintaan dengan status 503 dan kedua halaman honeypot tidak mencatat apa pun.
 
 ```bash
 openssl rand -hex 32
 ```
 
-Isikan hasilnya ke `INTRUDER_TOKEN` di `.env`, lalu ganti nilai `TOKEN` di
-`docker/nginx/html/errors/403.html` dan `docker/nginx/html/errors/404.html`
-dengan token yang sama.
+Isikan hasilnya ke `INTRUDER_TOKEN` di `src/.env`, bukan di `.env` akar.
+Docker Compose hanya menyuntikkan `DB_*` dan `REDIS_*` ke container php, jadi
+token yang ditulis di `.env` akar tidak akan terbaca aplikasi. Lalu ganti nilai
+`TOKEN` di `docker/nginx/html/errors/403.html` dan
+`docker/nginx/html/errors/404.html` dengan token yang sama, karena sisi klien
+dan sisi server harus memakai nilai yang identik.
 
 **Isi `DB_PASSWORD` dan `MYSQL_ROOT_PASSWORD`.** Berkas `.env.example` sengaja
 memuat penanda `GANTI_...`, bukan sandi yang bisa dipakai. Bila Anda memasang
