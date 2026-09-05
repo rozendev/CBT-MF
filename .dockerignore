@@ -1,0 +1,14 @@
+.git
+.github
+cbt-kiosk-app
+docs
+scripts
+src/vendor
+src/writable/cache/*
+src/writable/logs/*
+src/writable/session/*
+src/writable/debugbar/*
+# Jangan pernah ikut terbawa ke dalam image: berkas ini berisi kredensial
+# lingkungan lokal, sementara entrypoint Railway merender .env sendiri.
+.env
+src/.env
