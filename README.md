@@ -131,6 +131,40 @@ sudo bash scripts/cbt.sh install
 - `scripts/` - Script eksekusi Docker `cmd.sh` dan utilitas lainnya
 - `docker-compose.yml` - Orkestrasi Container
 
+## Lisensi
+
+Perangkat lunak ini dilisensikan di bawah **GNU Affero General Public License
+v3.0 atau versi setelahnya (AGPL-3.0-or-later)**. Teks lengkapnya ada di berkas
+[`LICENSE`](LICENSE).
+
+Yang perlu diketahui sebelum memakainya:
+
+- Anda bebas memakai, mempelajari, mengubah, dan menyebarkan aplikasi ini.
+- Setiap turunan yang Anda sebarkan harus memakai lisensi yang sama.
+- **Pasal 13 AGPL** — inilah yang membedakannya dari GPL biasa: jika Anda
+  mengubah aplikasi ini lalu **menjalankannya sebagai layanan yang diakses
+  lewat jaringan**, Anda wajib menawarkan kode sumber versi Anda kepada
+  para penggunanya, meskipun Anda tidak pernah membagikan berkasnya.
+  Karena CBT ini memang dipakai lewat jaringan, pasal itu berlaku pada
+  pemakaian yang paling lazim.
+
+Menjalankan aplikasi ini apa adanya untuk ujian di sekolah Anda **tidak**
+mewajibkan apa pun — kewajiban pasal 13 baru muncul kalau Anda mengubah
+kodenya dan menyajikan hasil ubahannya kepada pengguna lain lewat jaringan.
+
+Ringkasan ini ditulis untuk memudahkan, bukan sebagai nasihat hukum; yang
+mengikat adalah teks di `LICENSE`.
+
+### Lisensi dependensi
+
+Seluruh dependensi Composer berlisensi permisif dan sejalan dengan AGPL-3.0:
+34 paket MIT, 27 paket BSD-3-Clause, dan satu paket LGPL-3.0-only
+(`phpoffice/phpword`). Daftar terkini bisa dilihat dengan:
+
+```bash
+./scripts/cmd.sh composer licenses
+```
+
 ## Keamanan & Deployment Produksi
 
 Sebelum merilis aplikasi ini ke lingkungan produksi (production), pastikan Anda melakukan langkah-langkah keamanan berikut:
