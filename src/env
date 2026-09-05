@@ -47,10 +47,11 @@
 # sama pada field app_secret.
 # KIOSK_APP_SECRET = ''
 
-# Token untuk endpoint laporan penyusup. PERHATIAN: kalau kosong, kode
-# memakai nilai bawaan yang tertulis di dalam repositori
-# (IntruderReportController::DEFAULT_TOKEN), sehingga semua pemasangan
-# memakai token yang sama. Isi sendiri sebelum dipakai sungguhan.
+# Token untuk endpoint laporan penyusup. Tidak ada nilai bawaan: kalau
+# kosong, endpoint menolak semua permintaan (503) dan honeypot berhenti
+# mencatat. Isi dengan `openssl rand -hex 32`, lalu sulih nilai yang sama
+# ke `var TOKEN` di docker/nginx/html/errors/403.html dan 404.html —
+# halaman itu statis dan tidak bisa membaca .env sendiri.
 # INTRUDER_TOKEN = ''
 
 # Statistik Cloudflare di halaman analitik. Kosong = panel itu tidak aktif.
