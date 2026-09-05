@@ -102,10 +102,11 @@ CONTAINER_DB=${PREFIX_VAL}_mariadb
 CONTAINER_REDIS=${PREFIX_VAL}_redis
 
 # ── Keamanan ────────────────────────────────────────────────
-# WAJIB diisi sebelum dipakai sungguhan: \`openssl rand -hex 32\`.
-# Kalau kosong, kode memakai token bawaan yang tertulis di dalam
-# repositori, jadi semua pemasangan berbagi token yang sama.
-INTRUDER_TOKEN=
+# Dibangkitkan acak saat pemasangan. Repositori ini publik, jadi tidak ada
+# token bawaan yang bisa dipakai: kalau nilai ini kosong, endpoint laporan
+# penyusup menolak semua permintaan (503) alih-alih menerima token yang
+# sudah diketahui umum.
+INTRUDER_TOKEN=${INTRUDER_TOKEN_VAL}
 
 # Opsional. Kosong berarti lapisan ini dilewati, bukan galat.
 KIOSK_APP_SECRET=
@@ -150,6 +151,32 @@ generate_password() {
     tr -dc A-Za-z0-9 </dev/urandom | head -c 16
 }
 
+# Token honeypot: 32 bita heksadesimal, unik per pemasangan. openssl dipakai
+# kalau ada; kalau tidak, /dev/urandom sudah cukup untuk keperluan ini.
+generate_token() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 32
+    else
+        tr -dc a-f0-9 </dev/urandom | head -c 64
+    fi
+}
+
+INTRUDER_TOKEN_VAL=$(generate_token)
+
+# Halaman honeypot 403/404 disajikan nginx sebagai berkas statis, jadi tidak
+# bisa membaca .env sendiri. Tokennya disulih di sini supaya sisi klien dan
+# sisi server memakai nilai yang sama. Pola sed-nya mencocokkan isi kutip apa
+# pun, bukan hanya penanda __INTRUDER_TOKEN__, agar install.sh yang dijalankan
+# ulang tetap bekerja dan tidak menumpuk nilai lama.
+sync_honeypot_token() {
+    local berkas
+    for berkas in docker/nginx/html/errors/403.html docker/nginx/html/errors/404.html; do
+        [ -f "$berkas" ] || continue
+        sed -i "s|var TOKEN = '[^']*';|var TOKEN = '${INTRUDER_TOKEN_VAL}';|" "$berkas"
+    done
+    echo -e "${GREEN}✓ Token honeypot dibangkitkan dan disinkronkan ke halaman 403/404.${NC}"
+}
+
 # Nilai yang akan merusak berkas env kalau ditulis apa adanya.
 # Tolak lebih awal dengan pesan jelas daripada menghasilkan env rusak yang
 # gejalanya baru muncul sebagai galat koneksi yang membingungkan.
@@ -189,7 +216,7 @@ else
         DB_HOST_VAL="mariadb"
         DB_PORT_VAL="3306"
         DB_NAME_VAL="cbt-mf"
-        DB_USER_VAL="sayasukakamu"
+        DB_USER_VAL="cbt_user"
         DB_PASS_VAL=$(generate_password)
         DB_ROOT_PASS_VAL=$(generate_password)
     else
@@ -222,6 +249,7 @@ else
 
     write_root_env
     write_app_env
+    sync_honeypot_token
 
     if [ "$DB_CHOICE" != "1" ]; then
         echo -e "${YELLOW}Menonaktifkan kontainer MariaDB dan phpMyAdmin untuk menghemat RAM...${NC}"

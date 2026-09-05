@@ -174,13 +174,15 @@ class WordBlockExtractorTest extends TestCase
         unlink($imgPath);
 
         $phpWord = IOFactory::load($path);
-        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $blocks = $extractor->extract($phpWord);
         unlink($path);
 
         $this->assertCount(1, $blocks);
         $this->assertSame('line', $blocks[0]['kind']);
         $this->assertStringContainsString('<img src="/uploads/questions/', $blocks[0]['text']);
 
+        $extractor->flushImages();
         $savedFiles = glob($this->uploadDir . '*.png');
         $this->assertCount(1, $savedFiles);
     }
@@ -226,9 +228,11 @@ class WordBlockExtractorTest extends TestCase
         unlink($imgPath);
 
         $phpWord = IOFactory::load($path);
-        $blocks = (new WordBlockExtractor($this->uploadDir))->extract($phpWord);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $blocks = $extractor->extract($phpWord);
         unlink($path);
 
+        $extractor->flushImages();
         $savedFiles = glob($this->uploadDir . '*.png');
         $this->assertCount(1, $savedFiles);
 
@@ -236,5 +240,122 @@ class WordBlockExtractorTest extends TestCase
         $this->assertStringContainsString('<img src="/uploads/questions/', $allText);
         $this->assertStringContainsString('Lihat gambar', $allText);
         $this->assertStringContainsString('Apa itu', $allText);
+    }
+
+    public function testImagesAreNotWrittenBeforeFlush(): void
+    {
+        $imgPath = $this->onePixelPng();
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $extractor->extract($phpWord);
+        unlink($path);
+
+        // Dokumen yang nanti ditolak validator tidak boleh meninggalkan file.
+        $this->assertSame([], glob($this->uploadDir . '*.png') ?: []);
+
+        $written = $extractor->flushImages();
+
+        $this->assertCount(1, $written);
+        $this->assertFileExists($written[0]);
+        $this->assertCount(1, glob($this->uploadDir . '*.png'));
+    }
+
+    public function testFlushIsIdempotentSoImagesAreWrittenOnce(): void
+    {
+        $imgPath = $this->onePixelPng();
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $extractor->extract($phpWord);
+        unlink($path);
+
+        $extractor->flushImages();
+
+        $this->assertSame([], $extractor->flushImages());
+        $this->assertCount(1, glob($this->uploadDir . '*.png'));
+    }
+
+    public function testTwoImagesInOneDocumentGetDistinctFilenames(): void
+    {
+        $imgPath = $this->onePixelPng();
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $blocks = $extractor->extract($phpWord);
+        unlink($path);
+
+        $written = $extractor->flushImages();
+
+        // Dua panggilan uniqid() dalam mikrodetik yang sama bisa bernilai sama;
+        // kalau namanya bertabrakan, satu gambar menimpa gambar lainnya.
+        $this->assertCount(2, $written);
+        $this->assertCount(2, array_unique($written));
+        $this->assertCount(2, glob($this->uploadDir . '*.png'));
+        $this->assertNotSame($blocks[0]['text'], $blocks[1]['text']);
+    }
+
+    /** 1x1 pixel PNG transparan, ditulis ke file sementara. */
+    private function onePixelPng(): string
+    {
+        $pngData = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+        $imgPath = tempnam(sys_get_temp_dir(), 'wordimport_img_') . '.png';
+        file_put_contents($imgPath, $pngData);
+
+        return $imgPath;
+    }
+
+    public function testOnlyReferencedImagesAreWritten(): void
+    {
+        $imgPath = $this->onePixelPng();
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $blocks = $extractor->extract($phpWord);
+        unlink($path);
+
+        // Cuma gambar milik soal yang benar-benar disimpan yang ditulis; gambar
+        // milik soal yang ditolak atau kembar tidak perlu mendarat di disk.
+        preg_match('/src="[^"]*\/([^\/"]+)"/', $blocks[0]['text'], $m);
+        $written = $extractor->flushImages([$m[1]]);
+
+        $this->assertCount(1, $written);
+        $this->assertSame($this->uploadDir . $m[1], $written[0]);
+        $this->assertCount(1, glob($this->uploadDir . '*.png'));
+    }
+
+    public function testFlushWithoutMatchingReferenceWritesNothing(): void
+    {
+        $imgPath = $this->onePixelPng();
+        $path = WordFixtureBuilder::buildDocx(function ($section) use ($imgPath) {
+            $section->addImage($imgPath, ['width' => 50, 'height' => 50]);
+        });
+        unlink($imgPath);
+
+        $phpWord = IOFactory::load($path);
+        $extractor = new WordBlockExtractor($this->uploadDir);
+        $extractor->extract($phpWord);
+        unlink($path);
+
+        $this->assertSame([], $extractor->flushImages([]));
+        $this->assertSame([], glob($this->uploadDir . '*.png') ?: []);
     }
 }

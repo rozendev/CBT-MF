@@ -131,6 +131,82 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    const BANK_SOAL_URL = '<?= base_url('admin/questions') ?>';
+
+    function statCard(count, label, tone, icon) {
+        return `
+            <div class="col-4">
+                <div class="border border-${tone}-subtle bg-${tone}-subtle rounded-3 py-3 px-2 h-100">
+                    <div class="text-${tone} fs-3 fw-bold lh-1">${count}</div>
+                    <div class="small text-muted mt-1"><i class="bi ${icon} me-1"></i>${label}</div>
+                </div>
+            </div>`;
+    }
+
+    // Teks soal dari server sudah lolos htmlspecialchars waktu dokumen dibaca,
+    // jadi aman ditempel apa adanya -- meng-escape ulang malah bikin tanda
+    // kurang dari dan sejenisnya tampil sebagai entitas mentah.
+    function listSection(title, rows, more, tone, renderReason) {
+        if (!rows || rows.length === 0) {
+            return '';
+        }
+
+        let html = `<div class="mt-3 text-start">
+            <div class="fw-semibold text-${tone} mb-1"><i class="bi bi-list-ul me-1"></i>${title}</div>
+            <ul class="list-group list-group-flush small" style="max-height: 220px; overflow-y: auto;">`;
+
+        rows.forEach(row => {
+            html += `<li class="list-group-item px-2 py-2">
+                <div class="fw-semibold">${row.soal}</div>
+                <div class="text-muted">${renderReason(row)}</div>
+            </li>`;
+        });
+
+        html += '</ul>';
+        if (more > 0) {
+            html += `<div class="small text-muted mt-1">...dan ${more} soal lainnya.</div>`;
+        }
+
+        return html + '</div>';
+    }
+
+    function showImportSummary(res) {
+        const s = res.summary || { total: 0, masuk: 0, duplikat: 0, ditolak: 0 };
+        const masuk = s.masuk || 0;
+
+        let html = `<p class="text-muted mb-3">${s.total} soal terbaca dari dokumen untuk Subjek
+            <strong>${res.subject || ''}</strong>.</p>
+            <div class="row g-2 text-center">
+                ${statCard(masuk, 'Masuk', 'success', 'bi-check-circle')}
+                ${statCard(s.duplikat || 0, 'Duplikat', 'warning', 'bi-files')}
+                ${statCard(s.ditolak || 0, 'Ditolak', 'danger', 'bi-x-circle')}
+            </div>`;
+
+        html += listSection(
+            'Duplikat (tidak disimpan)', res.duplicates, res.duplicates_more, 'warning',
+            row => row.alasan
+        );
+        html += listSection(
+            'Ditolak (perlu diperbaiki)', res.rejected, res.rejected_more, 'danger',
+            row => (row.alasan || []).join('<br>')
+        );
+
+        Swal.fire({
+            icon: masuk > 0 ? 'success' : 'warning',
+            title: masuk > 0 ? 'Import Selesai' : 'Tidak Ada Soal yang Masuk',
+            html: html,
+            width: 720,
+            showCancelButton: masuk > 0,
+            confirmButtonText: masuk > 0 ? 'Ke Bank Soal' : 'Perbaiki Dokumen',
+            cancelButtonText: 'Tetap di Sini',
+            customClass: { popup: 'rounded-4' }
+        }).then(result => {
+            if (masuk > 0 && result.isConfirmed) {
+                window.location.href = BANK_SOAL_URL;
+            }
+        });
+    }
+
     importForm.addEventListener('submit', function(e) {
         e.preventDefault();
 
@@ -233,15 +309,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     customClass: { popup: 'rounded-4' }
                 });
             } else if (res.status === 'success') {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Import Berhasil!',
-                    text: res.message,
-                    confirmButtonText: 'Ke Bank Soal',
-                    customClass: { popup: 'rounded-4' }
-                }).then(() => {
-                    window.location.href = '<?= base_url('admin/questions') ?>';
-                });
+                showImportSummary(res);
             }
         })
         .catch(err => {

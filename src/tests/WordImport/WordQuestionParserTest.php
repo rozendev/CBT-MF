@@ -341,4 +341,72 @@ class WordQuestionParserTest extends TestCase
         $this->assertNull($questions[0]['matches']);
         $this->assertStringContainsString('<table></table>', $questions[0]['question']);
     }
+
+    public function testDuplicateOptionLetterIsRecordedInsteadOfSilentlyMerging(): void
+    {
+        $blocks = [
+            $this->line('1. Soal dengan huruf opsi kembar'),
+            $this->line('*A. Pertama'),
+            $this->line('B. Kedua'),
+            $this->line('*A. Ketiga'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $q = $questions[0];
+        $this->assertSame(['A' => 'Ketiga', 'B' => 'Kedua'], $q['options']);
+        // Huruf yang sama tidak boleh tercatat dua kali sebagai kunci: kalau
+        // tercatat dua kali, finalize() menganggapnya PG kompleks padahal
+        // jawaban benarnya cuma satu.
+        $this->assertSame(['A'], $q['correct']);
+        $this->assertSame(1, $q['type']);
+        $this->assertSame(['A'], $q['duplicate_letters']);
+    }
+
+    public function testDuplicateOptionLetterWithoutStarDropsPreviousCorrectMark(): void
+    {
+        $blocks = [
+            $this->line('1. Soal dengan huruf opsi kembar'),
+            $this->line('*A. Pertama'),
+            $this->line('B. Kedua'),
+            $this->line('A. Ketiga'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        // Teks A sudah tertimpa jadi "Ketiga" yang tidak berbintang, jadi tanda
+        // benarnya tidak boleh tertinggal menunjuk teks yang sudah hilang.
+        $this->assertSame([], $questions[0]['correct']);
+        $this->assertSame(['A'], $questions[0]['duplicate_letters']);
+    }
+
+    public function testNormalQuestionHasNoDuplicateLetters(): void
+    {
+        $blocks = [
+            $this->line('1. Siapa penemu bola lampu?'),
+            $this->line('A. Albert Einstein'),
+            $this->line('*B. Thomas Alva Edison'),
+        ];
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+
+        $this->assertSame([], $questions[0]['duplicate_letters']);
+    }
+
+    public function testOptionLettersContinueToAaAfterZ(): void
+    {
+        $blocks = [$this->line('1. Soal dengan 28 opsi')];
+        for ($i = 0; $i < 28; $i++) {
+            $blocks[] = $this->line(($i === 0 ? '*' : '') . 'opsi ' . $i, true, 1);
+        }
+
+        $questions = (new WordQuestionParser())->parse($blocks);
+        $letters = array_keys($questions[0]['options']);
+
+        // chr(65 + n) menghasilkan '[', '\\', ']' setelah Z.
+        $this->assertSame('Z', $letters[25]);
+        $this->assertSame('AA', $letters[26]);
+        $this->assertSame('AB', $letters[27]);
+        $this->assertSame([], $questions[0]['duplicate_letters']);
+    }
 }

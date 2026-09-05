@@ -3,7 +3,7 @@
 ![PHP](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)
 ![CodeIgniter](https://img.shields.io/badge/CodeIgniter-4.7-EF4223?logo=codeigniter&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-![Lisensi](https://img.shields.io/badge/Lisensi-AGPL--3.0-blue)
+![Lisensi](https://img.shields.io/badge/Lisensi-AGPL--3.0--or--later-blue)
 
 Aplikasi ujian berbasis komputer untuk sekolah dan madrasah. Dibangun di atas
 CodeIgniter 4 dan berjalan sepenuhnya di dalam Docker. Dua keputusan
@@ -35,8 +35,10 @@ lonjakan akses di menit-menit pertama ujian.
 - **Antrean slot dan rem login** — batas peserta serentak dengan halaman antrean,
   serta throttling login per-IP yang dirancang tidak menghukum sekolah di balik
   CGNAT.
+- **Analisis butir soal** — tingkat kesukaran, daya beda, dan rincian pengecoh
+  per butir, dapat diekspor ke CSV.
 - **Audit trail dan pelaporan** — riwayat aktivitas dengan daftar pengguna online
-  real-time, analytics, dan export laporan ke `.xls`.
+  real-time dan export laporan ke `.xls`.
 
 ## Tampilan
 
@@ -204,18 +206,37 @@ Tujuh service di `docker-compose.yml`:
 | `cbt-kiosk-app/` | Sumber aplikasi Android EXAMBRO |
 | `docs/` | Panduan Cloudflare, Nginx, dan rancangan fitur |
 | `docker-compose.yml` | Orkestrasi container |
+| `Dockerfile.railway`, `railway.json`, `docker/railway/` | Berkas pendukung deploy ke Railway |
+
+Selain pemasangan Docker di atas, tersedia jalur deploy ke Railway untuk
+lingkungan uji yang bisa diakses dari mana saja tanpa menyiapkan VPS.
+Panduannya di [RAILWAY.md](RAILWAY.md).
 
 ## Keamanan Produksi
 
-Empat hal yang harus dikerjakan sebelum sistem dipakai sungguhan.
+Repositori ini publik, jadi apa pun yang tertulis di dalamnya diketahui semua
+orang. Tidak ada satu pun rahasia bawaan yang bisa dipakai — semuanya harus
+Anda isi sendiri.
 
-**Isi `INTRUDER_TOKEN` di `.env`.** Bila dibiarkan kosong, kode memakai token
-bawaan yang tertulis di dalam repositori — artinya seluruh pemasangan di dunia
-berbagi token yang sama.
+**Isi `INTRUDER_TOKEN` di `.env`, dan sulihkan ke halaman honeypot.**
+`scripts/cbt.sh install` tidak menyentuh variabel ini, jadi setelah instalasi
+nilainya masih kosong. Selama kosong, endpoint laporan penyusup menolak semua
+permintaan dengan status 503 dan halaman honeypot `403.html` serta `404.html`
+tidak mencatat apa pun. Sisi klien dan sisi server harus memakai nilai yang
+sama, sehingga token yang sudah Anda buat wajib disulihkan juga ke kedua
+halaman itu.
 
 ```bash
 openssl rand -hex 32
 ```
+
+Isikan hasilnya ke `INTRUDER_TOKEN` di `.env`, lalu ganti nilai `TOKEN` di
+`docker/nginx/html/errors/403.html` dan `docker/nginx/html/errors/404.html`
+dengan token yang sama.
+
+**Isi `DB_PASSWORD` dan `MYSQL_ROOT_PASSWORD`.** `.env.example` sengaja memuat
+penanda `GANTI_...`, bukan sandi yang bisa dipakai. Bila Anda memasang lewat
+`scripts/cbt.sh install`, keduanya sudah ditanyakan saat instalasi.
 
 **Isi `KIOSK_APP_SECRET`.** Opsional, tetapi tanpa itu endpoint verifikasi
 keluar kiosk hanya dilindungi rate-limit per-IP.
@@ -314,10 +335,34 @@ Aktif dikembangkan. Versi aplikasi saat ini 1.30.
 
 ## Lisensi
 
-[GNU Affero General Public License v3.0](LICENSE).
+Perangkat lunak ini dilisensikan di bawah **GNU Affero General Public License
+v3.0 atau versi setelahnya (AGPL-3.0-or-later)**. Teks lengkapnya ada di berkas
+[`LICENSE`](LICENSE).
 
-Perlu diperhatikan oleh siapa pun yang memasang CBT-MF: AGPL berbeda dari GPL
-justru pada kasus penggunaan seperti ini. Pasal 13 mewajibkan, bila Anda
-memodifikasi aplikasi ini dan menjalankannya sebagai layanan yang diakses
-pengguna lewat jaringan, source code versi modifikasi itu harus tersedia bagi
-mereka — sekalipun Anda tidak pernah mendistribusikan perangkat lunaknya.
+Yang perlu diketahui sebelum memakainya:
+
+- Anda bebas memakai, mempelajari, mengubah, dan menyebarkan aplikasi ini.
+- Setiap turunan yang Anda sebarkan harus memakai lisensi yang sama.
+- **Pasal 13 AGPL** — inilah yang membedakannya dari GPL biasa: jika Anda
+  mengubah aplikasi ini lalu **menjalankannya sebagai layanan yang diakses
+  lewat jaringan**, Anda wajib menawarkan kode sumber versi Anda kepada
+  para penggunanya, meskipun Anda tidak pernah membagikan berkasnya.
+  Karena CBT ini memang dipakai lewat jaringan, pasal itu berlaku pada
+  pemakaian yang paling lazim.
+
+Menjalankan aplikasi ini apa adanya untuk ujian di sekolah Anda **tidak**
+mewajibkan apa pun — kewajiban pasal 13 baru muncul kalau Anda mengubah
+kodenya dan menyajikan hasil ubahannya kepada pengguna lain lewat jaringan.
+
+Ringkasan ini ditulis untuk memudahkan, bukan sebagai nasihat hukum; yang
+mengikat adalah teks di `LICENSE`.
+
+### Lisensi dependensi
+
+Seluruh dependensi Composer berlisensi permisif dan sejalan dengan AGPL-3.0:
+34 paket MIT, 27 paket BSD-3-Clause, dan satu paket LGPL-3.0-only
+(`phpoffice/phpword`). Daftar terkini bisa dilihat dengan:
+
+```bash
+sudo bash scripts/cbt.sh app composer licenses
+```

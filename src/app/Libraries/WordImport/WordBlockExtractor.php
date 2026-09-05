@@ -33,6 +33,14 @@ class WordBlockExtractor
      */
     private array $listFormats = [];
 
+    /**
+     * Gambar yang sudah ditandai di HTML tapi belum ditulis ke disk:
+     * nama file => data biner.
+     *
+     * @var array<string, string>
+     */
+    private array $pendingImages = [];
+
     public function __construct(?string $uploadDir = null, string $uploadUrlPrefix = '/uploads/questions/')
     {
         $this->uploadDir = $uploadDir ?? (defined('FCPATH') ? FCPATH . 'uploads/questions/' : sys_get_temp_dir() . '/uploads/questions/');
@@ -50,6 +58,7 @@ class WordBlockExtractor
     public function extract(PhpWord $phpWord, ?string $docxPath = null): array
     {
         $this->listFormats = $docxPath === null ? [] : $this->readListFormats($docxPath);
+        $this->pendingImages = [];
 
         $blocks = [];
         foreach ($phpWord->getSections() as $section) {
@@ -68,7 +77,7 @@ class WordBlockExtractor
         }
 
         if ($element instanceof Image) {
-            $tag = $this->saveImageAndBuildTag($element);
+            $tag = $this->stageImageAndBuildTag($element);
             return $tag === null ? [] : [$this->line($tag, false, 0)];
         }
 
@@ -104,7 +113,7 @@ class WordBlockExtractor
                 if ($child instanceof TextBreak) {
                     $paragraphText .= "\n";
                 } elseif ($child instanceof Image) {
-                    $tag = $this->saveImageAndBuildTag($child);
+                    $tag = $this->stageImageAndBuildTag($child);
                     if ($tag !== null) {
                         $paragraphText .= '<br>' . $tag . '<br>';
                     }
@@ -230,7 +239,12 @@ class WordBlockExtractor
         };
     }
 
-    private function saveImageAndBuildTag(Image $image): ?string
+    /**
+     * Gambar hanya ditandai di sini, belum ditulis ke disk: dokumen yang
+     * ternyata gagal divalidasi atau gagal disimpan tidak boleh meninggalkan
+     * file di folder upload. Penulisannya dilakukan flushImages().
+     */
+    private function stageImageAndBuildTag(Image $image): ?string
     {
         $raw = $image->getImageStringData();
         if (!$raw) {
@@ -240,13 +254,57 @@ class WordBlockExtractor
         if (!in_array($ext, self::ALLOWED_IMAGE_EXTS, true)) {
             return null;
         }
-        if (!is_dir($this->uploadDir)) {
-            @mkdir($this->uploadDir, 0755, true);
-        }
-        $filename = uniqid('img_') . '.' . $ext;
-        @file_put_contents($this->uploadDir . $filename, $raw);
+
+        // Hitungan gambar ikut masuk nama file: uniqid() sendiri bisa
+        // mengembalikan nilai sama untuk dua panggilan dalam mikrodetik yang
+        // sama, dan tabrakan nama berarti satu gambar menimpa gambar lain.
+        $filename = uniqid('img_') . '_' . count($this->pendingImages) . '.' . $ext;
+        $this->pendingImages[$filename] = $raw;
+
         $src = rtrim($this->uploadUrlPrefix, '/') . '/' . $filename;
         return '<img src="' . $src . '" style="max-width:100%; height:auto; margin:10px 0;" class="img-fluid rounded shadow-sm">';
+    }
+
+    /**
+     * Menulis gambar hasil extract() ke folder upload.
+     *
+     * @param string[]|null $onlyFilenames Kalau diisi, hanya nama file inilah
+     *                                     yang ditulis -- dipakai supaya gambar
+     *                                     milik soal yang ditolak atau kembar
+     *                                     tidak ikut mendarat di folder upload.
+     *
+     * @return string[] Path file yang berhasil ditulis, supaya pemanggilnya
+     *                  bisa menghapusnya lagi kalau langkah berikutnya gagal.
+     *
+     * @throws WordImportException kalau ada gambar yang gagal ditulis -- lebih
+     *                             baik impornya dibatalkan daripada soal
+     *                             tersimpan menunjuk gambar yang tidak ada.
+     */
+    public function flushImages(?array $onlyFilenames = null): array
+    {
+        if ($onlyFilenames !== null) {
+            $this->pendingImages = array_intersect_key($this->pendingImages, array_flip($onlyFilenames));
+        }
+
+        if ($this->pendingImages === []) {
+            return [];
+        }
+
+        if (!is_dir($this->uploadDir) && !mkdir($this->uploadDir, 0755, true) && !is_dir($this->uploadDir)) {
+            throw new WordImportException('Folder penyimpanan gambar tidak bisa dibuat. Hubungi administrator.');
+        }
+
+        $written = [];
+        foreach ($this->pendingImages as $filename => $raw) {
+            $path = $this->uploadDir . $filename;
+            if (file_put_contents($path, $raw) === false) {
+                throw new WordImportException('Gagal menyimpan gambar dari dokumen ke folder upload.');
+            }
+            $written[] = $path;
+        }
+        $this->pendingImages = [];
+
+        return $written;
     }
 
     private function processTable(Table $table): array
