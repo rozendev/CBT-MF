@@ -1,145 +1,323 @@
-# Sistem Ujian (CBT)
+# CBT-MF
 
-Aplikasi Computer-Based Test (CBT) menggunakan CodeIgniter 4 (PHP 8.5), dirancang untuk skalabilitas tinggi dengan Docker, Nginx, MariaDB, dan Redis.
+![PHP](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)
+![CodeIgniter](https://img.shields.io/badge/CodeIgniter-4.7-EF4223?logo=codeigniter&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Lisensi](https://img.shields.io/badge/Lisensi-AGPL--3.0-blue)
 
-Aplikasi ini menggunakan teknologi **WebSocket (ReactPHP/Ratchet)** untuk deteksi kecurangan dan manajemen sesi secara *real-time* (seperti Ban, Kick, Tambah Waktu, dan Sinkronisasi Mode Statis) guna menghindari habisnya *PHP-FPM worker* pada saat beban tinggi.
+Aplikasi ujian berbasis komputer untuk sekolah dan madrasah. Dibangun di atas
+CodeIgniter 4 dan berjalan sepenuhnya di dalam Docker. Dua keputusan
+membedakannya dari CBT pada umumnya: komunikasi real-time ditangani daemon
+WebSocket terpisah sehingga ratusan peserta serentak tidak menghabiskan worker
+PHP-FPM, dan halaman soal dapat dibekukan menjadi berkas statis sehingga tahan
+lonjakan akses di menit-menit pertama ujian.
+
+![Dashboard admin](docs/images/admin-dashboard.png)
 
 ## Fitur Utama
-- **Ujian Berbasis Waktu**: Ujian dengan batas waktu yang bisa ditambah oleh admin secara *real-time*.
-- **Anti-Cheat Terintegrasi**: Peringatan otomatis ketika siswa keluar dari mode *fullscreen* atau beralih tab.
-- **Static Exam Generator**: Menghasilkan file statis HTML yang membuat ujian tahan terhadap lonjakan akses ribuan peserta sekaligus.
-- **WebSocket Daemon**: Daemon independen dengan single-thread ReactPHP & Redis Pub/Sub untuk komunikasi server-ke-klien dengan CPU dan Memory footprint yang sangat kecil.
-- **Cloudflare Tunnel Ready**: Konfigurasi telah disesuaikan agar berjalan lancar di belakang proksi dan Cloudflare.
 
-## Instalasi & Menjalankan Aplikasi
+- **Bank soal enam tipe** — pilihan ganda satu jawaban, pilihan ganda kompleks,
+  esai atau teks singkat, menjodohkan, benar/salah, dan mengurutkan.
+- **Import dari Word** — soal ditulis di `.docx` dengan penomoran biasa, tanpa
+  kode format khusus seperti `Q:` atau `RIGHT:`. Gambar yang tertanam di dokumen
+  ikut terbawa.
+- **Mode ujian statis** — generator yang membekukan halaman soal menjadi HTML,
+  menghilangkan pekerjaan PHP per permintaan pada saat beban puncak.
+- **Live proctoring** — pengawas melihat peserta yang sedang mengerjakan dan
+  dapat memberi tambahan waktu, mengeluarkan, atau memblokir sesi secara
+  langsung tanpa memuat ulang halaman.
+- **EXAMBRO** — aplikasi Android pengunci layar untuk skema BYOD, dengan sirine
+  saat peserta memaksa keluar, overlay guard, blokir clipboard, pemaksaan home
+  launcher, dan deteksi perangkat ter-root atau emulator.
+- **Deteksi kecurangan di browser** — peringatan otomatis saat peserta keluar
+  dari fullscreen atau berpindah tab, dengan ambang pelanggaran yang diatur
+  administrator.
+- **Antrean slot dan rem login** — batas peserta serentak dengan halaman antrean,
+  serta throttling login per-IP yang dirancang tidak menghukum sekolah di balik
+  CGNAT.
+- **Audit trail dan pelaporan** — riwayat aktivitas dengan daftar pengguna online
+  real-time, analytics, dan export laporan ke `.xls`.
 
-Aplikasi ini sepenuhnya berjalan di dalam Docker. Semua perintah dieksekusi menggunakan *wrapper* script `./scripts/cmd.sh`.
+## Tampilan
 
-### 1. Persiapan Environment
-1. Salin file environment untuk Docker Compose di root direktori:
-   ```bash
-   cp .env.example .env
-   # Sesuaikan kredensial database & Redis jika diperlukan di .env
-   ```
-2. Salin file environment untuk CodeIgniter di dalam folder `src/`:
-   ```bash
-   cp src/env src/.env
-   # Sesuaikan app.baseURL dan database di src/.env
-   ```
+### Panel administrator
 
-Jika menggunakan Cloudflare Tunnel, atur variabel lingkungan `CF_TUNNEL_TOKEN` di file `.env` root atau export di shell:
+| | |
+| --- | --- |
+| ![Daftar ujian](docs/images/daftar-ujian.png) <br> Manajemen ujian: jadwal, durasi, dan mode pelaksanaan | ![Import Word](docs/images/import-word.png) <br> Import soal dari `.docx` beserta panduan formatnya |
+| ![Akses siswa](docs/images/akses-siswa.png) <br> Kontrol pengawas: ban, reset sesi, dan reset ujian | ![EXAMBRO](docs/images/exambro.png) <br> Konfigurasi penguncian layar perangkat Android |
+
+### Sisi peserta
+
+![Halaman mulai ujian di desktop](docs/images/ujian-desktop.png)
+
+Halaman mulai ujian di desktop.
+
+<img src="docs/images/ujian-mobile.png" alt="Pengerjaan soal di ponsel" width="260">
+
+Pengerjaan soal di ponsel. Tata letak menyesuaikan layar kecil, sehingga skema
+BYOD dapat berjalan tanpa aplikasi terpisah.
+
+## Instalasi
+
+### Prasyarat
+
+- Docker dan Docker Compose V2
+- Host Linux
+- Akses root — installer mengatur kepemilikan direktori ke GID 33 (`www-data`)
+
+### Pemasangan
+
 ```bash
-export CF_TUNNEL_TOKEN="token_anda_disini"
-```
-
-### 2. Membangun & Menjalankan Service
-```bash
-./scripts/cmd.sh up -d
-```
-Service yang berjalan:
-- **App (Nginx/PHP)**: `http://localhost:8080`
-- **phpMyAdmin**: `http://localhost:8081`
-- **MariaDB**: `localhost:3306`
-- **Redis**: `localhost:6379`
-- **WebSocket**: Port `8060` (di-proxy secara transparan oleh Nginx via `/ws/`)
-
-### 3. Composer & Migrasi Database (Saat Pertama Kali Clone)
-Saat pertama kali melakukan clone repositori, Anda harus menginstal semua dependensi Composer di dalam kontainer PHP sebelum dapat menjalankan migrasi database.
-
-Anda dapat masuk ke shell kontainer PHP dan menjalankan perintah Composer secara interaktif:
-```bash
-./scripts/cmd.sh shell                      # Masuk ke dalam bash container PHP
-composer install                            # Jalankan composer install di dalam container
-exit                                        # Keluar dari shell container
-```
-
-Atau jalankan perintah langsung dari host menggunakan wrapper script:
-```bash
-./scripts/cmd.sh composer install          # Instalasi dependency
-```
-
-Setelah Composer selesai menginstal dependensi, jalankan migrasi database dan seeder data awal:
-```bash
-./scripts/cmd.sh php spark migrate         # Jalankan migrasi database
-./scripts/cmd.sh php spark db:seed MainSeeder # (Opsional) Seeder data awal
-```
-
-## Pemecahan Masalah (Troubleshooting)
-
-### 1. WebSocket Terputus / Tidak Konek (ERR_CONNECTION_REFUSED atau Code 1006)
-- **Gejala**: Siswa masuk ke halaman ujian tetapi *alert* "Reconnecting WebSocket..." muncul terus menerus.
-- **Solusi**:
-  1. Pastikan container `ujian_websocket` berjalan: `docker ps | grep ujian_websocket`.
-  2. Jika statusnya *restarting/exited*, periksa log: `docker logs ujian_websocket`. 
-  3. Pastikan konfigurasi proxy Nginx terbaru sudah dimuat. Jalankan: `docker restart ujian_nginx`.
-  4. Jika masalah terjadi di halaman ujian **Mode Statis**, hapus halaman statis tersebut dari menu Admin dan **Generate Ulang**. Halaman lama mungkin tidak membawa parameter `user_id` pada URL WebSocket-nya.
-
-### 2. Pesan `Could not find a matching version of package` saat Composer Update
-- **Solusi**: Pastikan nama *package* benar (misalnya `clue/redis-react`, bukan `clue/reactphp-redis`). Selalu gunakan `./scripts/cmd.sh composer require <nama-paket>` dari *root* direktori.
-
-### 3. Koneksi WebSocket Terputus Secara Periodik oleh Cloudflare
-- **Gejala**: Tidak ada error, namun Cloudflare Tunnel memutus WebSocket setelah ± 100 detik jika tidak ada aktivitas.
-- **Solusi**: Sistem sudah dilengkapi dengan mekanisme **Heartbeat** interval 30 detik (daemon akan melakukan ping ke semua klien). Jika masih sering terputus, periksa apakah loop timer pada `WebSocketServe.php` tereksekusi dengan benar tanpa diblokir oleh pemrosesan sinkronous (seperti koneksi ke database yang memblokir EventLoop). Jangan gunakan PDO MariaDB sinkronous di dalam WebSocket daemon.
-
-### 4. Progress Jawaban Tidak Tersimpan (Autosave Error)
-- **Solusi**: Pastikan Redis menyala, karena semua *autosave* ditulis sementara ke Redis (`exam_answers:attemptId`) sebelum di-*flush* ke MariaDB secara massal di akhir ujian. Cek log `docker logs ujian_redis`.
-
-### 5. Sesi Cepat Berakhir atau Session Menumpuk
-- **Solusi**: Pastikan *session handler* di file `src/.env` tidak ter-*override* ke *file* biasa. Untuk performa terbaik di Docker, atur `app.sessionDriver = 'CodeIgniter\Session\Handlers\RedisHandler'` dan pastikan `app.sessionSavePath` mengarah ke Redis server Anda (`tcp://redis:6379`).
-
-### 6. Error Permission / Gagal Generate Static atau Upload Gambar (Could not move file)
-- **Gejala**: Muncul pesan error tidak dapat menulis file HTML saat melakukan *Generate* halaman statis, atau error seperti `Could not move file "..." to "/var/www/html/public/uploads/"` saat mengunggah gambar di editor.
-- **Solusi**: Pastikan folder `src/writable/`, `src/public/static/`, dan `src/public/uploads/` dapat ditulis oleh kontainer web server (PHP-FPM). Sesuai *best practice* keamanan, hindari penggunaan `chmod 777`.
-
-Lakukan pengaturan kepemilikan ke grup web server (`www-data`, atau GID 33 di Docker) dan beri izin akses `775` (rwxrwxr-x):
-
-**Di Linux Host:**
-```bash
-# Buat direktori jika belum ada
-mkdir -p src/writable src/public/static src/public/uploads
-
-# Ubah kepemilikan grup ke GID 33 (www-data) dan atur permission ke 775
-sudo chown -R :33 src/writable src/public/static src/public/uploads
-chmod -R 775 src/writable src/public/static src/public/uploads
-```
-
-**Atau langsung dari dalam kontainer PHP:**
-```bash
-./scripts/cmd.sh shell
-chown -R www-data:www-data writable public/static public/uploads
-chmod -R 775 writable public/static public/uploads
-exit
-```
-
-### 7. PHP-FPM Resource Exhausted / Server Terasa Lambat
-- **Solusi**: Jika Anda baru saja beralih dari versi lawas (yang masih menggunakan Server-Sent Events / EventSource), pastikan Anda telah sepenuhnya mendeploy Daemon WebSocket. Cara termudahnya adalah periksa *Network tab* di *DevTools* Browser. Anda harusnya melihat aktivitas ke `wss://domain.com/ws/` dengan status kode `101 Switching Protocols`, bukan request yang terus-menerus "*Pending*" (itu adalah sisa SSE FPM).
-
-### 8. Error Migrasi: Access denied for user (Gagal Konek Database)
-- **Gejala**: Saat menjalankan instalasi atau migrasi, muncul error `[CodeIgniter\Database\Exceptions\DatabaseException] Unable to connect to the database. Main connection [MySQLi]: Access denied for user...` padahal password yang dimasukkan saat prompt sudah benar.
-- **Penyebab**: MariaDB di Docker hanya mengatur *username* dan *password* satu kali pada saat pertama kali container dijalankan dan volume dibuat. Jika Anda sebelumnya pernah menginstal atau menjalankan container dengan kredensial lama, lalu mencoba menginstal ulang dengan kredensial baru, MariaDB akan tetap menggunakan kredensial lama yang tersimpan di volume.
-- **Solusi**: Anda harus menghapus volume database lama secara total agar MariaDB dapat diinisialisasi ulang dengan kredensial baru. **PERINGATAN: Ini akan menghapus semua data di database!**
-Jalankan perintah berikut:
-```bash
-docker compose down -v
-# Kemudian ulangi proses instalasi
+git clone https://github.com/rozendev/CBT-MF.git
+cd CBT-MF
 sudo bash scripts/cbt.sh install
 ```
 
+Installer bersifat interaktif dan menanyakan nama database, username dan
+password database, prefix nama container, token Cloudflare Tunnel (boleh
+dikosongkan), base URL aplikasi, password Redis, serta username dan password
+akun administrator pertama. Tidak ada kredensial bawaan: password admin adalah
+yang Anda ketik sendiri.
+
+Setelah pertanyaan selesai, installer menulis `.env` dan `src/.env`, membangun
+dan menyalakan seluruh container, membetulkan permission direktori, menjalankan
+`composer install`, menjalankan migrasi database, dan membuat akun administrator.
+Tidak ada langkah manual tambahan.
+
+### Layanan yang berjalan
+
+| Layanan | Alamat | Keterangan |
+| --- | --- | --- |
+| Aplikasi (Nginx) | `http://localhost:8080` | Satu-satunya port yang terekspos ke jaringan |
+| WebSocket | `127.0.0.1:8060` | Terikat ke localhost; diproksi Nginx lewat `/ws/` |
+| MariaDB | — | Hanya di dalam jaringan Docker |
+| Redis | — | Hanya di dalam jaringan Docker |
+
+Untuk membuka MariaDB atau Redis, gunakan `scripts/cbt.sh db shell` dan
+`scripts/cbt.sh redis shell`; keduanya tidak dipublikasikan ke host.
+
+## Penggunaan
+
+`scripts/cbt.sh` adalah satu-satunya pintu operasional. Dijalankan tanpa
+argumen, ia membuka menu interaktif:
+
+```bash
+sudo bash scripts/cbt.sh
+```
+
+Atau langsung sebagai subperintah:
+
+```bash
+sudo bash scripts/cbt.sh <grup> <perintah>
+```
+
+| Grup | Perintah |
+| --- | --- |
+| `docker` | `up`, `down`, `restart`, `logs`, `status` |
+| `app` | `shell`, `php`, `composer` |
+| `db` | `shell`, `root`, `export`, `import`, `reset-password` |
+| `redis` | `shell`, `flush` |
+| `bundle` | `build`, `status` |
+| `data` | `images`, `optimize`, `cache-clear`, `finalize`, `prune-kiosk` |
+| `migrate` | `up`, `status`, `rollback` |
+| `tune` | `show`, `set` |
+
+Perintah tingkat atas tanpa grup: `backup`, `log-rotate`, `reset-install`,
+`test-k6`, `install`, `help`.
+
+Perintah yang merusak data (`db import`, `redis flush`, `data optimize`,
+`migrate rollback`, `reset-install`) menuntut Anda mengetik ulang nama
+perintahnya sebelum dijalankan.
+
+Beberapa perintah yang sering dipakai:
+
+```bash
+sudo bash scripts/cbt.sh docker status      # periksa kondisi seluruh container
+sudo bash scripts/cbt.sh docker logs        # ikuti log semua layanan
+sudo bash scripts/cbt.sh backup             # backup database dan Redis
+sudo bash scripts/cbt.sh db reset-password  # setel ulang password admin
+sudo bash scripts/cbt.sh data finalize      # tutup attempt yang lewat batas waktu
+```
+
+Satu hal yang mudah terlewat: **setelah mengubah UI ujian, bundle kiosk wajib
+dibangun ulang.**
+
+```bash
+sudo bash scripts/cbt.sh bundle build
+```
+
+Tanpa langkah ini, perangkat yang memakai EXAMBRO tetap menerima artefak lama
+dan tidak ada pesan galat apa pun yang memberi tahu Anda. Gunakan
+`bundle status` untuk membandingkan versi bundle lokal, server, dan zip publik.
+
+## Arsitektur
+
+```mermaid
+flowchart LR
+    B["Browser peserta"] --> N["Nginx"]
+    E["EXAMBRO Android"] --> N
+    N -->|"HTTP"| P["PHP-FPM<br/>CodeIgniter 4"]
+    N -->|"/ws/"| W["Daemon WebSocket<br/>ReactPHP dan Ratchet"]
+    P --> R[("Redis")]
+    W --> R
+    P --> M[("MariaDB")]
+    C["Cron"] --> M
+    C --> R
+```
+
+Tiga keputusan yang menjelaskan bentuk di atas:
+
+**Daemon WebSocket terpisah.** Komunikasi server-ke-klien tidak lewat PHP-FPM.
+Daemon single-thread berbasis ReactPHP mendengarkan Redis Pub/Sub dan menyiarkan
+perintah pengawas ke peserta. Satu proses kecil menggantikan ratusan worker yang
+tertahan, sehingga jumlah peserta serentak tidak lagi dibatasi jumlah worker.
+Konsekuensinya, tidak boleh ada operasi sinkronus yang memblokir event loop di
+dalam daemon — termasuk koneksi PDO ke MariaDB.
+
+**Autosave ke Redis, flush ke MariaDB.** Jawaban peserta ditulis ke Redis selama
+ujian berlangsung dan baru dipindahkan ke MariaDB secara massal di akhir. Ujian
+karenanya tidak menghasilkan satu penulisan database per jawaban.
+
+**Mode ujian statis.** Halaman soal dibekukan menjadi HTML sehingga pembacaannya
+tidak memerlukan pekerjaan PHP maupun kueri database per permintaan.
+
+Tujuh service di `docker-compose.yml`:
+
+| Service | Peran |
+| --- | --- |
+| `nginx` | Reverse proxy dan penyaji berkas statis |
+| `php` | PHP-FPM menjalankan aplikasi CodeIgniter 4 |
+| `websocket` | Daemon `spark websocket:serve` |
+| `cron` | Menutup attempt kedaluwarsa, probe dependensi, membersihkan kunci kiosk basi |
+| `cloudflared` | Cloudflare Tunnel, aktif bila `CF_TUNNEL_TOKEN` diisi |
+| `mariadb` | Basis data |
+| `redis` | Sesi, cache, autosave, dan Pub/Sub |
+
 ## Struktur Repositori
-- `src/` - Kode aplikasi CodeIgniter 4
-- `docker/` - Dockerfiles (Nginx, PHP-FPM, MariaDB init scripts)
-- `scripts/` - Script eksekusi Docker `cmd.sh` dan utilitas lainnya
-- `docker-compose.yml` - Orkestrasi Container
 
-## Keamanan & Deployment Produksi
+| Direktori | Isi |
+| --- | --- |
+| `src/` | Aplikasi CodeIgniter 4 |
+| `docker/` | Dockerfile dan konfigurasi Nginx, PHP-FPM, MariaDB |
+| `scripts/` | `cbt.sh` dan utilitas pendukung |
+| `cbt-kiosk-app/` | Sumber aplikasi Android EXAMBRO |
+| `docs/` | Panduan Cloudflare, Nginx, dan rancangan fitur |
+| `docker-compose.yml` | Orkestrasi container |
 
-Sebelum merilis aplikasi ini ke lingkungan produksi (production), pastikan Anda melakukan langkah-langkah keamanan berikut:
+## Keamanan Produksi
 
-1. **Hapus Folder Installer**: Setelah proses instalasi selesai, hapus atau pindahkan folder `src/public/install/` untuk mencegah penyalahgunaan installer secara berkala.
-2. **Hapus Berkas Pengujian**: Hapus berkas pengujian `src/public/install/test.php` dan `src/test_api.php` jika masih ada.
-3. **Konfigurasi phpMyAdmin**:
-   - Di file `docker-compose.yml`, matikan service `phpmyadmin` atau hapus konfigurasi `PMA_USER` dan `PMA_PASSWORD` yang melakukan auto-login.
-   - Jangan pernah mengekspos port phpMyAdmin (`8081`) ke internet publik.
-4. **Batasi Akses Port Nginx**: Pastikan port Nginx (`8080`) di `docker-compose.yml` hanya mendengarkan ke localhost (`127.0.0.1:8080:80`) jika Anda menggunakan Cloudflare Tunnel atau reverse proxy terpisah untuk menangani lalu lintas HTTPS eksternal.
-5. **Ganti Kredensial Default**: Segera ganti password default admin (`admin123`) di menu administrator setelah login pertama kali.
-6. **Set Environment**: Pastikan `CI_ENVIRONMENT` pada `src/.env` diatur ke `production` agar fitur debugging dinonaktifkan.
+Empat hal yang harus dikerjakan sebelum sistem dipakai sungguhan.
+
+**Isi `INTRUDER_TOKEN` di `.env`.** Bila dibiarkan kosong, kode memakai token
+bawaan yang tertulis di dalam repositori — artinya seluruh pemasangan di dunia
+berbagi token yang sama.
+
+```bash
+openssl rand -hex 32
+```
+
+**Isi `KIOSK_APP_SECRET`.** Opsional, tetapi tanpa itu endpoint verifikasi
+keluar kiosk hanya dilindungi rate-limit per-IP.
+
+**Setel `CI_ENVIRONMENT = production` di `src/.env`.** Nilai ini menonaktifkan
+tampilan galat yang membocorkan jalur berkas dan kueri.
+
+**Batasi port 8080.** Bila Anda memakai Cloudflare Tunnel atau reverse proxy
+terpisah, ubah pemetaan port Nginx di `docker-compose.yml` menjadi
+`127.0.0.1:8080:80` agar aplikasi tidak dapat dijangkau langsung dari internet.
+
+## Pemecahan Masalah
+
+Tiga kasus yang paling sering menimpa pemasangan baru. Kasus lain ada di
+[Troubleshooting.md](Troubleshooting.md).
+
+### WebSocket tidak terhubung
+
+Gejala: peringatan "Reconnecting WebSocket..." muncul terus menerus di halaman
+ujian.
+
+1. Periksa container WebSocket berjalan: `sudo bash scripts/cbt.sh docker status`.
+2. Bila statusnya *restarting* atau *exited*, baca lognya:
+   `sudo bash scripts/cbt.sh docker logs`.
+3. Muat ulang konfigurasi proxy: `sudo bash scripts/cbt.sh docker restart`.
+4. Bila hanya terjadi pada halaman **mode statis**, hapus halaman statis itu
+   dari menu admin lalu buat ulang. Halaman lama mungkin tidak membawa parameter
+   `user_id` pada URL WebSocket-nya.
+
+### Gagal generate halaman statis atau upload gambar
+
+Gejala: pesan tidak dapat menulis berkas HTML, atau
+`Could not move file "..." to "/var/www/html/public/uploads/"`.
+
+Direktori `src/writable/`, `src/public/static/`, dan `src/public/uploads/` harus
+dapat ditulis oleh PHP-FPM. Jangan memakai `chmod 777`; atur kepemilikan ke
+grup web server dan beri izin `775`.
+
+```bash
+mkdir -p src/writable src/public/static src/public/uploads
+sudo chown -R :33 src/writable src/public/static src/public/uploads
+sudo chmod -R 775 src/writable src/public/static src/public/uploads
+```
+
+### Migrasi gagal dengan "Access denied for user"
+
+Gejala: `Unable to connect to the database ... Access denied for user`, padahal
+password yang dimasukkan sudah benar.
+
+MariaDB hanya menetapkan username dan password satu kali, yaitu saat volume
+dibuat pertama kali. Bila Anda pernah memasang dengan kredensial lama, volume
+lama tetap dipakai. Volume itu harus dihapus agar MariaDB terinisialisasi ulang.
+
+**Perintah berikut menghapus seluruh data di database.**
+
+```bash
+docker compose down -v
+sudo bash scripts/cbt.sh install
+```
+
+## Berkontribusi
+
+Laporan bug dan usulan fitur dibuka lewat
+[GitHub Issues](https://github.com/rozendev/CBT-MF/issues).
+
+Untuk perubahan kode, buat branch dari `main` dan ajukan pull request. Jalankan
+pengujian di dalam container PHP:
+
+```bash
+sudo bash scripts/cbt.sh app shell
+composer test
+```
+
+Suite Throttling memakai bootstrap terpisah karena membutuhkan framework yang
+dimuat penuh, dan sengaja tidak dimasukkan ke `composer test`. Jalankan
+terpisah:
+
+```bash
+vendor/bin/phpunit -c phpunit.throttling.xml.dist
+```
+
+Bila perubahan Anda menyentuh UI ujian, jalankan `scripts/cbt.sh bundle build`
+dan sertakan hasilnya, karena perangkat kiosk memuat bundle tersebut, bukan
+berkas sumbernya.
+
+## Dukungan
+
+Pertanyaan dan laporan masalah lewat
+[GitHub Issues](https://github.com/rozendev/CBT-MF/issues). Sertakan keluaran
+`scripts/cbt.sh docker status` dan potongan log yang relevan; keduanya
+mempersingkat penelusuran secara berarti.
+
+## Status Proyek
+
+Aktif dikembangkan. Versi aplikasi saat ini 1.30.
+
+## Lisensi
+
+[GNU Affero General Public License v3.0](LICENSE).
+
+Perlu diperhatikan oleh siapa pun yang memasang CBT-MF: AGPL berbeda dari GPL
+justru pada kasus penggunaan seperti ini. Pasal 13 mewajibkan, bila Anda
+memodifikasi aplikasi ini dan menjalankannya sebagai layanan yang diakses
+pengguna lewat jaringan, source code versi modifikasi itu harus tersedia bagi
+mereka — sekalipun Anda tidak pernah mendistribusikan perangkat lunaknya.
