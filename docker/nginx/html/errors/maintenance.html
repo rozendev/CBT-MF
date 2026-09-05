@@ -132,12 +132,21 @@
 
   <div id="manualMsg"></div>
 
-  <div class="section" id="redisSection">
-    <h2>Langkah Cepat untuk Admin</h2>
+  <div class="section" id="redisSection" style="display:none">
+    <h2>Langkah Cepat untuk Admin — Redis</h2>
     <pre>docker compose logs redis --tail 100
 docker stats
 docker compose restart redis</pre>
     <p>Periksa pesan error di log (misalnya <b>OOM / maxmemory</b>). Redis memakai AOF — sesi dan jawaban aman setelah container kembali online.</p>
+  </div>
+
+  <div class="section" id="dbSection" style="display:none">
+    <h2>Langkah Cepat untuk Admin — Database</h2>
+    <pre>docker compose logs mariadb --tail 100
+df -h
+docker compose restart mariadb</pre>
+    <p>Penyebab yang paling sering: <b>disk penuh</b> atau <b>koneksi habis</b>. Jangan hapus volume <code>mariadb_data</code>.</p>
+    <p id="dbBufferNote"></p>
   </div>
 
   <div class="section">
@@ -168,19 +177,38 @@ docker compose restart redis</pre>
     var badgeText = document.getElementById('badgeText');
     var intro = document.getElementById('intro');
     var redisSection = document.getElementById('redisSection');
+    var dbSection = document.getElementById('dbSection');
     var manualMsg = document.getElementById('manualMsg');
 
-    if (mode === 'redis') {
+    /* Daftar 'down' berasal dari flag; kalau flag ditulis versi lama dan
+       belum memuatnya, jatuh ke hasil probe langsung supaya panel admin
+       yang tampil tetap yang relevan. */
+    var down = (data.down && data.down.length) ? data.down : [];
+    if (!down.length && mode === 'deps') {
+      if (data.redis_ok === false) down.push('redis');
+      if (data.db_ok === false) down.push('database');
+    }
+
+    if (mode === 'deps') {
       badge.className = 'badge';
-      badgeText.textContent = 'Gangguan: Redis tidak tersedia';
-      intro.textContent = 'Sistem penyimpanan sesi (Redis) tidak dapat dijangkau. Ujian belum tentu berjalan normal — hubungi pengawas segera.';
-      redisSection.style.display = 'block';
+      badgeText.textContent = 'Gangguan: ' + (data.message || 'layanan inti tidak tersedia');
+      intro.textContent = 'Komponen inti sistem tidak dapat dijangkau. Ujian belum tentu berjalan normal — hubungi pengawas segera.';
+      var redisDown = down.indexOf('redis') !== -1;
+      redisSection.style.display = redisDown ? 'block' : 'none';
+      dbSection.style.display = down.indexOf('database') !== -1 ? 'block' : 'none';
+      /* Buffer jawaban hidup DI Redis. Menjanjikan jawaban aman saat Redis
+         ikut tumbang adalah kebohongan yang justru dibaca pengawas saat
+         mengambil keputusan — jadi kalimatnya ikut berubah. */
+      document.getElementById('dbBufferNote').innerHTML = redisDown
+        ? '<b>Redis ikut tumbang, jadi jawaban baru tidak tersimpan di mana pun di server.</b> Hentikan ujian dan catat waktu kejadian sebelum melanjutkan.'
+        : 'Jawaban yang belum sempat ditulis ke tabel masih tersimpan di Redis dan akan menyusul sendiri setelah database kembali online.';
       manualMsg.style.display = 'none';
     } else if (mode === 'manual') {
       badge.className = 'badge ok';
       badgeText.textContent = 'Mode Pemeliharaan Manual';
       intro.textContent = 'Sistem sedang dalam pemeliharaan yang dijadwalkan oleh admin.';
       redisSection.style.display = 'none';
+      dbSection.style.display = 'none';
       manualMsg.style.display = 'block';
       manualMsg.textContent = data.message || 'Sistem sedang dalam pemeliharaan. Silakan coba lagi beberapa saat lagi.';
     } else {

@@ -52,10 +52,21 @@ class Cookie extends BaseConfig
     public function __construct()
     {
         parent::__construct();
-        
+
         // Dynamically set cookie secure flag based on base_url scheme.
         // If baseURL is http, secure cookies must be disabled to prevent session and CSRF loss.
-        $this->secure = (strpos(base_url(), 'https://') === 0);
+        $isHttps      = (strpos(base_url(), 'https://') === 0);
+        $this->secure = $isHttps;
+
+        // $samesite harus ikut $secure, bukan konstanta lepas: Cookie::validateSameSite()
+        // menolak SameSite=None tanpa Secure dan melempar CookieException di filter
+        // `before`, sebelum controller mana pun jalan — jadi SATU request saja dengan
+        // secure=false (baseURL http, mis. akses lokal http://localhost:8080) menjatuhkan
+        // seluruh aplikasi. 'None' aslinya ditambahkan di 2477cdf supaya WebView kiosk
+        // (origin silang, https://appassets.androidplatform.net) bisa menerima cookie ini;
+        // itu cuma berlaku ketika koneksi memang HTTPS, jadi turunkan ke 'Lax' saat http —
+        // fallback aman yang sama seperti default CodeIgniter sendiri.
+        $this->samesite = $isHttps ? 'None' : 'Lax';
     }
 
     /**
@@ -87,9 +98,14 @@ class Cookie extends BaseConfig
      * (empty string) means default SameSite attribute set by browsers (`Lax`)
      * will be set on cookies. If set to `None`, `$secure` must also be set.
      *
+     * Nilai statis di sini hanya dipakai kalau constructor di bawah tidak
+     * jalan (mis. instansiasi langsung tanpa lewat factory). Pada jalur
+     * normal, __construct() menimpanya secara dinamis mengikuti $secure —
+     * lihat komentar di sana.
+     *
      * @var ''|'Lax'|'None'|'Strict'
      */
-    public string $samesite = 'None';
+    public string $samesite = 'Lax';
 
     /**
      * --------------------------------------------------------------------------

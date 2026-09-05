@@ -2,6 +2,7 @@
 
 namespace App\Filters;
 
+use App\Libraries\SessionTakeover;
 use CodeIgniter\Filters\FilterInterface;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -81,8 +82,13 @@ class MultiLoginFilter implements FilterInterface
                     return redirect()->to('/login')->with('error', $message);
                 }
                 
-                // Keep the TTL alive for active sessions
-                $redis->expire($key, 7200);
+                // Perpanjang umur sesi yang masih dipakai. Penanda perangkat
+                // ikut diperpanjang supaya umurnya tidak pernah menyimpang dari
+                // tokennya: pendamping yang mati lebih dulu akan mengunci siswa
+                // dari sesinya sendiri persis seperti sebelum fitur ini ada,
+                // justru di ujian panjang yang paling membutuhkannya.
+                $redis->expire($key, SessionTakeover::TTL_SECONDS);
+                $redis->expire(SessionTakeover::deviceKey($userId), SessionTakeover::TTL_SECONDS);
             }
         } catch (\Exception $e) {
             // If Redis fails, log and continue (don't block user)

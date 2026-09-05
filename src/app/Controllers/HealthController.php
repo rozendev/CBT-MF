@@ -14,30 +14,21 @@ class HealthController extends BaseController
 
         $allOk = true;
 
-        // Database check
-        try {
-            $db = \Config\Database::connect();
-            $db->query('SELECT 1');
-            $checks['checks']['database'] = 'ok';
-        } catch (\Throwable $e) {
-            $checks['checks']['database'] = 'error: connection_failed';
-            $allOk = false;
-            log_message('error', 'Health check DB failed: ' . $e->getMessage());
-        }
+        // Dependency checks. Delegated to DependencyHealth so this endpoint and
+        // `spark deps:probe` can never disagree about what "healthy" means —
+        // one of them raising the maintenance flag while the other reports ok
+        // would be worse than either check being wrong on its own.
+        $down = \App\Libraries\DependencyHealth::down();
 
-        // Redis check
-        try {
-            $redis = \App\Libraries\RedisClient::getInstance();
-            if ($redis && $redis->ping()) {
-                $checks['checks']['redis'] = 'ok';
-            } else {
-                $checks['checks']['redis'] = 'error: connection_failed';
+        foreach ([\App\Libraries\DependencyHealth::DATABASE, \App\Libraries\DependencyHealth::REDIS] as $dependency) {
+            $isDown = in_array($dependency, $down, true);
+
+            $checks['checks'][$dependency] = $isDown ? 'error: connection_failed' : 'ok';
+
+            if ($isDown) {
                 $allOk = false;
+                log_message('error', 'Health check failed for dependency: ' . $dependency);
             }
-        } catch (\Throwable $e) {
-            $checks['checks']['redis'] = 'error: connection_failed';
-            $allOk = false;
-            log_message('error', 'Health check Redis failed: ' . $e->getMessage());
         }
 
         // Disk check (writable directory)

@@ -3,6 +3,8 @@
 namespace App\Controllers\Auth;
 
 use App\Controllers\BaseController;
+use App\Libraries\DeviceBan;
+use App\Libraries\SessionTakeover;
 use App\Models\UserModel;
 use App\Models\ActivityLogModel;
 
@@ -124,24 +126,63 @@ class AuthController extends BaseController
 
         $loginToken = bin2hex(random_bytes(16));
         $tokenKey = "user_login_token:{$user->id}";
+        $deviceKey = SessionTakeover::deviceKey($user->id);
+
+        // Hanya diterima dari aplikasi kiosk, yang mengambilnya dari
+        // DeviceIdentityStore — sumber yang sama dengan heartbeat dan
+        // /api/kiosk/config. Browser biasa tidak mengirimnya, dan itu berarti
+        // ia tidak pernah bisa merebut sesi milik perangkat lain.
+        $rawDevice = $this->request->getPost('device_id');
+        $incomingDevice = is_string($rawDevice) ? $rawDevice : '';
+        if (!DeviceBan::isValidDeviceId($incomingDevice)) {
+            $incomingDevice = '';
+        }
 
         // Block second login for students if prevent_multi_login is enabled
         $preventMultiLogin = ($user->role === 'siswa' && $this->getSettingValue('prevent_multi_login', 1) == 1);
         if ($preventMultiLogin) {
             try {
-                $existingToken = $redis->get($tokenKey);
-                // If a token exists and isn't a BANNED marker, they are already logged in elsewhere
-                if ($existingToken && $existingToken !== 'BANNED') {
+                $existingRaw = $redis->get($tokenKey);
+                $storedRaw = $redis->get($deviceKey);
+                $existingToken = $existingRaw === false ? null : (string) $existingRaw;
+                $storedDevice = $storedRaw === false ? null : (string) $storedRaw;
+
+                $decision = SessionTakeover::decide($existingToken, $storedDevice, $incomingDevice);
+
+                if ($decision === SessionTakeover::BUSY) {
                     return $fail('Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
                 }
-                
-                // Set the token atomically to prevent concurrent login bypass
-                if ($existingToken === 'BANNED') {
-                    $redis->setex($tokenKey, 7200, $loginToken);
-                } else {
-                    $set = $redis->set($tokenKey, $loginToken, ['nx', 'ex' => 7200]);
+
+                if ($decision === SessionTakeover::FRESH) {
+                    // Tetap 'nx': dua perangkat yang login bersamaan saat tidak
+                    // ada token tidak boleh sama-sama menang.
+                    $set = $redis->set($tokenKey, $loginToken, ['nx', 'ex' => SessionTakeover::TTL_SECONDS]);
                     if (!$set) {
                         return $fail('Akun Anda sedang digunakan di perangkat lain. Silakan ke Administrator jika Anda merasa ini kesalahan.');
+                    }
+                } else {
+                    // TAKEOVER dan CLEAR_BANNED sama-sama menimpa. Tidak perlu
+                    // 'nx': perangkat LAIN yang mencoba bersamaan sudah ditolak
+                    // di pembacaannya sendiri, jadi ia tidak pernah menulis.
+                    //
+                    // Yang tidak ikut tertutup: dua login serentak dari
+                    // perangkat yang SAMA, misalnya tombol login tertekan dua
+                    // kali. Keduanya memutuskan TAKEOVER dan sama-sama menulis,
+                    // lalu sesi yang kalah dimatikan MultiLoginFilter pada
+                    // permintaan berikutnya. Tulisan terakhir menang — dan untuk
+                    // pemilik perangkat yang sama, itu memang hasil yang benar.
+                    $stored = $redis->setex($tokenKey, SessionTakeover::TTL_SECONDS, $loginToken);
+                    if (!$stored) {
+                        // Bukan perebutan, melainkan penyimpanan yang gagal,
+                        // jadi pesannya pun harus mengatakan itu. phpredis
+                        // melempar untuk kegagalan koneksi — sudah ditangkap di
+                        // bawah — tapi mengembalikan false untuk sebagian balasan
+                        // galat dari server. Kalau diloloskan, sesi ini berjalan
+                        // dengan login_token yang tidak pernah tersimpan, dan
+                        // MultiLoginFilter membaca token yang hilang sebagai
+                        // "lanjutkan": perlindungan multi-login mati diam-diam
+                        // untuk sesi itu. Gagal tertutup.
+                        return $fail('Layanan sedang tidak tersedia. Coba lagi.');
                     }
                 }
             } catch (\Exception $e) {
@@ -151,12 +192,33 @@ class AuthController extends BaseController
         } else {
             // Write it anyway (overwriting)
             try {
-                $redis->setex($tokenKey, 7200, $loginToken);
+                // Cabang ini TIDAK boleh berasumsi MultiLoginFilter ikut mati.
+                // Sakelar mati di filter membandingkan `$isEnabled === '0'`
+                // dengan sebuah string, sedangkan setelan prevent_multi_login
+                // bertipe boolean dan sampai ke sini sebagai bool. Begitu admin
+                // mematikannya, cabang ini yang jalan — selagi filter masih
+                // menegakkan, karena `false === '0'` bernilai false.
+                //
+                // Jadi kegagalan penulisan di sini punya akibat yang sama
+                // dengan di jalur TAKEOVER: sesi berjalan dengan login_token
+                // yang tidak pernah tersimpan, dan filter membaca token yang
+                // hilang sebagai "lanjutkan". Gagal tertutup. Benar atau
+                // tidaknya perbandingan di berkas lain bukan sesuatu yang
+                // pantas dijadikan sandaran di sini.
+                $stored = $redis->setex($tokenKey, SessionTakeover::TTL_SECONDS, $loginToken);
+                if (!$stored) {
+                    return $fail('Layanan sedang tidak tersedia. Coba lagi.');
+                }
             } catch (\Exception $e) {
                 log_message('error', 'Redis session store error: ' . $e->getMessage());
                 return $fail('Layanan sedang tidak tersedia. Coba lagi.');
             }
         }
+
+        // Samakan penanda perangkat dengan pemegang sesi yang baru: ditulis
+        // kalau login ini membawa device_id, dihapus kalau tidak. Dijalankan di
+        // kedua jalur di atas.
+        $this->syncSessionDevice($redis, $user->id, $incomingDevice);
 
         // Regenerate session ID to prevent fixation
         session()->regenerate(true);
@@ -187,6 +249,12 @@ class AuthController extends BaseController
             // Login successful — set session
             $this->userModel->recordLogin($user->id, $this->request->getIPAddress());
 
+            // Reset-on-success: selama ada yang berhasil login di balik satu
+            // CGNAT, counter per-IP dibersihkan sehingga tak menumpuk ke blokir
+            // massal. IP-nya sama persis dengan yang di-INCR filter (keduanya
+            // getIPAddress()), jadi penghapusannya tepat sasaran.
+            \App\Libraries\LoginThrottle::clearForIp($this->request->getIPAddress());
+
             session()->set([
                 'user_id'     => $user->id,
                 'username'    => $user->username,
@@ -204,6 +272,7 @@ class AuthController extends BaseController
             // Clean up the Redis token/activity to avoid blocking future logins
             try {
                 $redis->del($tokenKey);
+                $redis->del(SessionTakeover::deviceKey($user->id));
                 $redis->zRem('active_sessions', $user->id);
                 $redis->zRem('login_queue', $user->id);
             } catch (\Exception $re) {
@@ -269,7 +338,11 @@ class AuthController extends BaseController
             try {
                 $redis = \App\Libraries\RedisClient::getInstance();
                 if ($redis) {
+                    // Penanda perangkat selalu mati bersama tokennya: penanda yang
+                    // tersisa memberi hak ambil-alih ke perangkat yang sudah tidak
+                    // memegang sesi.
                     $redis->del("user_login_token:{$userId}");
+                    $redis->del(SessionTakeover::deviceKey($userId));
                     $redis->zRem('active_sessions', $userId);
                     $redis->zRem('login_queue', $userId);
                 }
@@ -297,6 +370,51 @@ class AuthController extends BaseController
 
         return redirect()->to('/login')
             ->with('success', 'Anda telah berhasil logout.');
+    }
+
+    /**
+     * Catat perangkat pemegang sesi, atau buang catatannya.
+     *
+     * `$deviceId` kosong berarti "sesi ini tidak dipegang perangkat kiosk mana
+     * pun" — konvensi yang sama dengan SessionTakeover::decide() — sehingga
+     * pemanggil tidak perlu memilih sendiri antara menulis dan menghapus.
+     * Login lewat browser biasa masuk ke cabang hapus, supaya pendamping lama
+     * tidak tertinggal dan membuat kiosk basi mengira masih memegang sesi ini.
+     *
+     * Kegagalan di sini tidak boleh menggagalkan login. Tapi arah kebocorannya
+     * berbeda di dua cabang, dan keduanya aman:
+     *
+     * - Gagal menulis mengunci: pendamping tidak ada, jadi perangkat ini nanti
+     *   dianggap asing dan pemiliknya harus menunggu TTL atau minta admin —
+     *   persis keadaan sebelum fitur ini ada.
+     * - Gagal menghapus justru melonggarkan: pendamping lama tetap hidup selagi
+     *   token dipegang browser, jadi kiosk basi itu masih bisa merebut sesinya
+     *   kembali. Ini kebalikan arah dari cabang di atas.
+     *
+     * Cabang kedua menyisakan risiko, dan risiko itu tidak nol. Di tingkat akun
+     * ia aman — pendamping hanya pernah berisi device_id milik pemilik akun yang
+     * sama, jadi tidak ada jalur lintas-akun sama sekali (spec §4.3). Tapi model
+     * ancaman fitur ini memang mencakup penyerang yang sudah melewati verifikasi
+     * password, dan bagi dia pendamping basi mengubah BUSY menjadi TAKEOVER bila
+     * ia kebetulan berada di kiosk yang dulu terdaftar. Sisa risikonya kecil:
+     * butuh gangguan Redis, penguasaan fisik atas kiosk itu, DAN password
+     * korban sekaligus. Dengan ketiganya terpenuhi, menggagalkan login pun tidak
+     * menolong. Karena itu tetap tidak menggagalkan login — tapi dicatat di sini
+     * sebagai sisa risiko, bukan sebagai nol.
+     */
+    private function syncSessionDevice(\Redis $redis, int|string $userId, string $deviceId): void
+    {
+        $deviceKey = SessionTakeover::deviceKey($userId);
+
+        try {
+            if ($deviceId !== '') {
+                $redis->setex($deviceKey, SessionTakeover::TTL_SECONDS, $deviceId);
+            } else {
+                $redis->del($deviceKey);
+            }
+        } catch (\Exception $e) {
+            log_message('warning', 'Gagal memperbarui penanda perangkat sesi: ' . $e->getMessage());
+        }
     }
 
     /**

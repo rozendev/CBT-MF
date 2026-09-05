@@ -11,6 +11,15 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('content') ?>
+<?php if (($bannedCount ?? 0) > 0): ?>
+    <div class="alert alert-warning d-flex justify-content-between align-items-center">
+        <span>
+            <i class="bi bi-slash-circle me-2"></i>
+            <strong><?= (int) $bannedCount ?></strong> perangkat sedang terkunci dan tidak bisa menjalankan aplikasi ujian.
+        </span>
+        <a href="<?= base_url('/admin/kiosk/devices') ?>" class="btn btn-sm btn-outline-dark">Kelola</a>
+    </div>
+<?php endif; ?>
 <div x-data="kioskLive()" class="pb-5">
     <div class="row mb-4 align-items-center">
         <div class="col-md-8">
@@ -89,6 +98,12 @@
                                             <li><hr class="dropdown-divider"></li>
                                             <li><button class="dropdown-item text-danger fw-semibold" type="button" @click="runAction(s, 'eject_lock')">
                                                 <i class="bi bi-shield-exclamation me-2"></i>Keluarkan &amp; Kunci</button></li>
+                                            <li><hr class="dropdown-divider"></li>
+                                            <li><button class="dropdown-item text-danger fw-semibold" type="button"
+                                                        :disabled="!s.device_id"
+                                                        :title="s.device_id ? '' : 'Perangkat ini belum melaporkan ID — aplikasinya perlu diperbarui'"
+                                                        @click="runAction(s, 'ban_device')">
+                                                <i class="bi bi-slash-circle me-2"></i>Blokir Perangkat</button></li>
                                         </ul>
                                     </div>
                                 </td>
@@ -144,14 +159,63 @@ function kioskLive() {
                 .then(d => { this.students = d.students || []; })
                 .catch(e => console.error('kiosk live-data failed:', e));
         },
+        /* Nama siswa masuk ke opsi html: milik Swal, jadi harus di-escape.
+           Nama berasal dari basis data dan bisa memuat karakter apa pun. */
+        escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            })[c]);
+        },
         actionLabel(action) {
             if (action === 'eject') return 'mengeluarkan siswa ini dari ujian';
             if (action === 'lock') return 'mengunci akun siswa ini';
+            if (action === 'ban_device') return 'MEMBLOKIR PERANGKAT ini dari menjalankan aplikasi ujian, dan mengeluarkan sesinya sekarang';
             return 'mengeluarkan siswa ini dari ujian DAN mengunci akunnya';
         },
-        runAction(student, action) {
+        /* SweetAlert2, bukan window.confirm/prompt. Dua alasan: prompt()
+           tidak dapat diandalkan di browser mobile — dan pengawas justru
+           sering memegang tablet atau HP saat mengawasi — dan seluruh view
+           admin lain di proyek ini sudah memakai Swal. */
+        async runAction(student, action) {
             const nama = (student.firstname + ' ' + student.lastname).trim() + ' (' + student.username + ')';
-            if (!window.confirm('Anda akan ' + this.actionLabel(action) + ':\n\n' + nama + '\n\nLanjutkan?')) return;
+
+            let reason = '';
+
+            if (action === 'ban_device') {
+                // Alasan wajib: ini keputusan yang akan dibaca orang lain saat
+                // memutuskan membukanya kembali. Digabung ke satu dialog supaya
+                // pengawas tidak dihadapkan dua tahap saat sedang panik.
+                const res = await Swal.fire({
+                    icon: 'warning',
+                    title: 'Blokir Perangkat?',
+                    html: 'Perangkat milik <b>' + this.escapeHtml(nama) + '</b> akan diblokir dari '
+                        + 'menjalankan aplikasi ujian, dan sesinya dikeluarkan sekarang.'
+                        + '<br><br><span class="text-muted small">Akun siswanya TIDAK dikunci — '
+                        + 'dia masih bisa melanjutkan di perangkat lain.</span>',
+                    input: 'text',
+                    inputLabel: 'Alasan (wajib)',
+                    inputPlaceholder: 'mis. terpasang aplikasi perekam layar',
+                    inputValidator: (v) => (!v || !v.trim()) ? 'Alasan wajib diisi.' : undefined,
+                    showCancelButton: true,
+                    confirmButtonText: 'Blokir Perangkat',
+                    cancelButtonText: 'Batal',
+                    confirmButtonColor: '#dc3545'
+                });
+                if (!res.isConfirmed) return;
+                reason = (res.value || '').trim();
+            } else {
+                const res = await Swal.fire({
+                    icon: 'warning',
+                    title: 'Lanjutkan?',
+                    html: 'Anda akan ' + this.escapeHtml(this.actionLabel(action)) + ':<br><br><b>'
+                        + this.escapeHtml(nama) + '</b>',
+                    showCancelButton: true,
+                    confirmButtonText: 'Lanjutkan',
+                    cancelButtonText: 'Batal',
+                    confirmButtonColor: '#dc3545'
+                });
+                if (!res.isConfirmed) return;
+            }
 
             this.busyUser = student.user_id;
             fetch('<?= base_url('/admin/kiosk/live/action') ?>', {
@@ -164,7 +228,9 @@ function kioskLive() {
                 body: JSON.stringify({
                     test_id: this.selectedTest,
                     user_id: student.user_id,
-                    action: action
+                    action: action,
+                    device_id: student.device_id || '',
+                    reason: reason
                 })
             })
                 .then(r => r.json())
@@ -184,8 +250,9 @@ function kioskLive() {
             fetch('<?= base_url('/maintenance-check.php') ?>', { cache: 'no-store' })
                 .then(r => r.json())
                 .then(d => {
-                    if (d.mode === 'redis') {
-                        this.outageMessage = 'Redis tidak tersedia — data mungkin kedaluwarsa hingga layanan pulih.';
+                    if (d.mode === 'deps') {
+                        this.outageMessage = (d.message || 'Layanan inti tidak tersedia')
+                            + ' — data mungkin kedaluwarsa hingga layanan pulih.';
                     } else if (d.mode === 'manual') {
                         this.outageMessage = 'Mode pemeliharaan manual aktif — data saat ini mungkin tidak lengkap.';
                     } else {

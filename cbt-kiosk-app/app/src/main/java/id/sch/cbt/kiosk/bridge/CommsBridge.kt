@@ -3,6 +3,7 @@ package id.sch.cbt.kiosk.bridge
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
+import id.sch.cbt.kiosk.DeviceIdentityStore
 import id.sch.cbt.kiosk.MainActivity
 import id.sch.cbt.kiosk.security.RootDetector
 
@@ -71,6 +72,17 @@ class CommsBridge(private val activity: MainActivity) {
         val model = android.os.Build.MODEL
         return "{\"os\": \"Android\", \"version\": \"$release\", \"model\": \"$model\", \"isRooted\": $isRooted}"
     }
+
+    /**
+     * Penanda perangkat untuk halaman login.
+     *
+     * Nilainya diambil dari DeviceIdentityStore — sumber yang sama dengan
+     * heartbeat dan /api/kiosk/config. Mengambilnya dari tempat lain pernah
+     * membuat dua titik penegakan memeriksa identitas yang berbeda, dan blokir
+     * yang dipasang pengawas tidak pernah menggigit.
+     */
+    @JavascriptInterface
+    fun getDeviceId(): String = DeviceIdentityStore.resolve(activity)
 
     companion object {
         fun sendEventToJS(webView: WebView, eventName: String, dataJson: String) {

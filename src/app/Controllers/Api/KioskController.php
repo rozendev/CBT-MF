@@ -3,6 +3,8 @@
 namespace App\Controllers\Api;
 
 use App\Controllers\BaseController;
+use App\Libraries\DeviceBan;
+use App\Models\KioskBannedDeviceModel;
 use App\Models\SettingModel;
 
 class KioskController extends BaseController
@@ -45,7 +47,7 @@ class KioskController extends BaseController
             }
         }
 
-        return $this->response->setJSON([
+        $payload = [
             'school_name'     => $settingModel->getValue('app_name', 'CBT-MF Kiosk System'),
             'exam_url'        => base_url('student/dashboard'),
             'min_app_version' => $settingModel->getValue('kiosk_min_app_version', '1.0.0'),
@@ -58,7 +60,26 @@ class KioskController extends BaseController
                 'overlay_guard_enabled'     => (bool) $settingModel->getValue('kiosk_overlay_guard_enabled', true),
             ],
             'ui_bundle'       => $bundleInfo,
-        ]);
+        ];
+
+        // Perangkat terblokir tetap dijawab 200 dengan konfigurasi lengkap,
+        // bukan 4xx. Dua alasan: layar terkunci masih bisa menampilkan nama
+        // sekolah alih-alih layar kosong, dan status galat mengundang aplikasi
+        // memperlakukan ini sebagai gangguan jaringan lalu mencoba ulang —
+        // padahal ini keputusan final, bukan kegagalan.
+        //
+        // APK lama tidak mengirim device_id sama sekali: mereka lolos di sini
+        // dan tertangkap di kiosk-heartbeat.php beberapa detik kemudian.
+        $deviceId = (string) ($this->request->getGet('device_id') ?? '');
+        if (DeviceBan::isValidDeviceId($deviceId) && DeviceBan::isBanned($deviceId)) {
+            $ban = (new KioskBannedDeviceModel())->activeFor($deviceId);
+            $payload['blocked'] = [
+                'reason' => $ban !== null ? $ban->reason : '',
+                'since'  => $ban !== null ? $ban->banned_at : '',
+            ];
+        }
+
+        return $this->response->setJSON($payload);
     }
 
     /**

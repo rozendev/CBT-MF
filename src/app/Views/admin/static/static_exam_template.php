@@ -278,6 +278,35 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 </div>
             </div>
         </div>
+
+        <!-- Penyimpanan server tak terjangkau: ujian dibekukan di tempat.
+             Sengaja tidak memindahkan halaman — sesi ada di Redis, jadi kalau
+             Redis yang tumbang siswa tidak akan bisa login kembali. Dengan
+             bertahan di sini, jawaban di memori utuh dan menyusul sendiri
+             begitu server pulih. -->
+        <div x-show="storageDown" style="display: none; position: fixed; inset: 0; z-index: 100000; background: rgba(15, 23, 42, 0.97); backdrop-filter: blur(8px); align-items: center; justify-content: center; flex-direction: column;" :class="{'d-flex': storageDown}">
+            <div class="bg-white rounded-4 shadow-lg p-5 text-center" style="max-width: 480px; width: 90%;">
+                <div class="mb-4 d-flex justify-content-center">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width: 80px; height: 80px; background: rgba(255, 193, 7, 0.15);">
+                        <i class="bi bi-database-exclamation text-warning" style="font-size: 2.5rem;"></i>
+                    </div>
+                </div>
+                <h3 class="fw-bold text-dark mb-3">Ujian Dihentikan Sementara</h3>
+                <p class="text-secondary mb-2" x-text="storageDownMsg"></p>
+                <p class="text-secondary mb-4"><strong>Jangan tutup atau muat ulang halaman ini.</strong> Segera panggil pengawas.</p>
+                <div class="alert alert-success border-success-subtle py-3 text-start d-flex align-items-center mb-3">
+                    <i class="bi bi-shield-check text-success fs-3 me-3"></i>
+                    <div>
+                        <strong class="text-success d-block">Jawaban Anda tidak hilang</strong>
+                        <span class="text-success small">Semua jawaban masih tersimpan di perangkat ini dan akan dikirim otomatis begitu server pulih.</span>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center justify-content-center text-secondary small">
+                    <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+                    <span>Mencoba menyambung ulang otomatis…</span>
+                </div>
+            </div>
+        </div>
     <div class="exam-layout">
     <div class="exam-main">
         

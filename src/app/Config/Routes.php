@@ -82,6 +82,7 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->post('suspend/ban/(:num)', 'Admin\SuspendController::ban/$1');
         $routes->post('suspend/reset/(:num)', 'Admin\SuspendController::reset/$1');
         $routes->post('suspend/reset-login/(:num)', 'Admin\SuspendController::resetLogin/$1');
+        $routes->post('suspend/unblock-ip', 'Admin\SuspendController::unblockIp');
         $routes->get('suspend/user-attempts/(:num)', 'Admin\SuspendController::getUserAttempts/$1');
         $routes->post('suspend/reset-attempt/(:num)', 'Admin\SuspendController::resetAttempt/$1');
 
@@ -108,6 +109,10 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
         $routes->get('kiosk/live', 'Admin\KioskLiveController::index');
         $routes->get('kiosk/live-data', 'Admin\KioskLiveController::data');
         $routes->post('kiosk/live/action', 'Admin\KioskLiveController::action');
+
+        // Perangkat yang diblokir dari menjalankan aplikasi ujian
+        $routes->get('kiosk/devices', 'Admin\KioskDeviceController::index');
+        $routes->post('kiosk/devices/unlock', 'Admin\KioskDeviceController::unlock');
 
         // Analytics
         $routes->get('analytics', 'Admin\AnalyticsController::index');

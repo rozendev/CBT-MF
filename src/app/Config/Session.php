@@ -43,7 +43,12 @@ class Session extends BaseConfig
      * Host, port, dan password dirakit dari env di __construct(). Nilai di sini
      * cuma cadangan kalau env-nya tidak ada sama sekali.
      */
-    public string $savePath = 'tcp://redis:6379';
+    /**
+     * Timeout wajib ada. Tanpa parameter ini CodeIgniter memakai 0.0, dan
+     * phpredis membaca 0 sebagai "tunggu selamanya" — satu Redis yang
+     * menggantung akan mengunci worker php-fpm sampai habis.
+     */
+    public string $savePath = 'tcp://redis:6379?timeout=2';
 
     /**
      * Whether to match the user's IP address when reading the session data.
@@ -97,9 +102,15 @@ class Session extends BaseConfig
             $port = (int) (env('session.redis.port') ?: env('REDIS_PORT') ?: 6379);
             $password = env('session.redis.password') ?: env('REDIS_PASSWORD') ?: '';
 
-            $this->savePath = 'tcp://' . $host . ':' . $port;
+            // timeout=2 dipertahankan dari main. Tanpa batas waktu, Redis yang
+            // menggantung ikut menggantungkan setiap request yang menyentuh sesi
+            // -- persis beban yang paling mahal saat ujian sedang berlangsung.
+            $this->savePath = 'tcp://' . $host . ':' . $port . '?timeout=2';
             if ($password !== '') {
-                $this->savePath .= '?auth=' . rawurlencode((string) $password);
+                // Password di-encode: savePath diurai dengan parse_str, jadi
+                // password yang memuat & = % + akan tercabik kalau ditempel
+                // mentah. '&' dipakai, bukan '?', karena timeout sudah memakainya.
+                $this->savePath .= '&auth=' . rawurlencode((string) $password);
             }
         }
 

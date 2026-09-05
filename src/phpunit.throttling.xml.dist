@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Konfigurasi terpisah untuk suite Throttling, yang MEMUAT framework CodeIgniter
+    (filter login, service('cache'), command(), Config\App). Suite lain tetap di
+    phpunit.xml.dist dengan bootstrap ringan tanpa framework, sehingga `composer test`
+    (bare phpunit) tidak ikut menjalankan suite ini.
+
+    Jalankan: vendor/bin/phpunit -c phpunit.throttling.xml.dist
+    (dari /var/www/html sehingga getcwd() = HOMEPATH untuk bootstrap CI).
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap_ci.php"
+         colors="true"
+         cacheDirectory="writable/.phpunit.cache">
+    <testsuites>
+        <testsuite name="Throttling">
+            <directory>tests/Throttling</directory>
+        </testsuite>
+    </testsuites>
+</phpunit>

@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Libraries\SessionTakeover;
 use App\Models\TestAttemptModel;
 use App\Models\UserModel;
 
@@ -44,7 +45,9 @@ class SuspendController extends BaseController
         return view('admin/suspend/index', [
             'users' => $users,
             'pager' => $pager,
-            'search' => $search
+            'search' => $search,
+            'ipBlocks' => \App\Libraries\LoginThrottle::activeBlocks(),
+            'ipBlockMax' => \App\Libraries\LoginThrottle::maxAttempts(),
         ]);
     }
 
@@ -113,6 +116,7 @@ class SuspendController extends BaseController
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
                 $redis->del("user_login_token:{$userId}");
+                $redis->del(SessionTakeover::deviceKey($userId));
                 $redis->del("ban_signal:{$userId}");
             }
         } catch (\Exception $e) {
@@ -138,12 +142,13 @@ class SuspendController extends BaseController
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
                 $redis->del("user_login_token:{$userId}");
+                $redis->del(SessionTakeover::deviceKey($userId));
                 $redis->zRem('active_sessions', $userId);
                 $redis->zRem('login_queue', $userId);
 
                 $failedIp = $redis->get("last_failed_login_ip:{$userId}");
                 if ($failedIp) {
-                    $redis->del("login_attempts_ip:{$failedIp}");
+                    \App\Libraries\LoginThrottle::clearForIp((string) $failedIp);
                     $redis->del("last_failed_login_ip:{$userId}");
                 }
             }
@@ -162,6 +167,26 @@ class SuspendController extends BaseController
         $this->_doResetLogin($userId);
 
         return redirect()->to('/admin/suspend')->with('success', "Sesi login {$user->username} berhasil di-reset. Siswa kini bisa login kembali.");
+    }
+
+    /**
+     * Break-glass web: buka blokir rate-limit login per-IP atau semua.
+     * Melengkapi resetLogin() (per-user). Dijaga role:admin oleh grup route.
+     */
+    public function unblockIp()
+    {
+        if ($this->request->getPost('all') === '1') {
+            $n = \App\Libraries\LoginThrottle::clearAll();
+            return redirect()->to('/admin/suspend')->with('success', "Semua blokir IP login dibersihkan ({$n} IP).");
+        }
+
+        $ip = trim((string) $this->request->getPost('ip'));
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return redirect()->to('/admin/suspend')->with('error', 'IP tidak valid.');
+        }
+
+        \App\Libraries\LoginThrottle::clearForIp($ip);
+        return redirect()->to('/admin/suspend')->with('success', "Blokir login untuk IP {$ip} telah dibuka.");
     }
 
     /**

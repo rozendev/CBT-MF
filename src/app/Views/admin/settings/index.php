@@ -1080,6 +1080,19 @@
                     </div>
                     <div class="s-row">
                         <div class="s-main">
+                            <label class="s-label" for="loginIpMaxAttempts">Batas Percobaan Login per IP</label>
+                            <p class="s-desc">Percobaan login gagal per koneksi dalam 15 menit sebelum diblokir sementara. Naikkan untuk sekolah ber-CGNAT (banyak siswa satu IP publik). Default 50.</p>
+                        </div>
+                        <div class="s-ctrl">
+                            <div class="s-unit">
+                                <input type="number" class="form-control text-center" id="loginIpMaxAttempts" name="settings[login_ip_max_attempts]" value="<?= esc(settingVal($groupedSettings, 'security', 'login_ip_max_attempts', '50')) ?>" min="5" max="10000" style="width: 120px;">
+                                <span class="unit">/ 15 mnt</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="s-row">
+                        <div class="s-main">
                             <label class="s-label" for="queueMessage">Pesan Antrean Slot</label>
                             <p class="s-desc">Pesan yang tampil pada peserta yang sedang menunggu slot kosong.</p>
                         </div>
