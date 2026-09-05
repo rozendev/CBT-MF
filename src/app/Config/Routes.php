@@ -185,6 +185,12 @@ $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($route
     $routes->get('results/grade-data/(:num)/(:num)', 'Admin\ResultController::gradeData/$1/$2');
     $routes->post('results/grade-save', 'Admin\ResultController::gradeSave');
 
+    // Analisis butir soal: tingkat kesukaran, daya beda, pengecoh, reliabilitas.
+    // Ketiganya hanya membaca — tidak ada penulisan di jalur ini.
+    $routes->get('results/analysis/(:num)', 'Admin\ItemAnalysisController::show/$1');
+    $routes->get('results/analysis-data/(:num)', 'Admin\ItemAnalysisController::data/$1');
+    $routes->get('results/analysis-export/(:num)', 'Admin\ItemAnalysisController::export/$1');
+
     // Proctor Report Notifications (polling)
     $routes->get('notifications/proctor-reports', 'Admin\NotificationController::proctorReports');
 });

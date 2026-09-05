@@ -16,6 +16,11 @@
                         <i class="bi bi-lightning-charge me-1"></i>Koreksi Cepat
                     </a>
                 <?php endif; ?>
+                <?php if (!empty($hasAnalysis)): ?>
+                    <a href="<?= base_url('/admin/results/analysis/' . $test->id) ?>" class="btn btn-info me-1">
+                        <i class="bi bi-clipboard-data me-1"></i>Analisis Butir
+                    </a>
+                <?php endif; ?>
                 <a href="<?= base_url('/admin/results') ?>" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i> Kembali</a>
             </div>
         </div>
