@@ -614,7 +614,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             
             <template x-if="currentQuestion.question_type == 3">
                 <div>
-                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input="this._typingQid = this.currentQuestion.question_id" @input.debounce.500ms="saveAnswer(this._typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
+                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input="_typingQid = currentQuestion.log_id" @input.debounce.500ms="saveAnswer(_typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
                 </div>
             </template>
             
@@ -959,6 +959,12 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 isSaving: false,
                 showSavedToast: false,
                 showErrorToast: false,
+                /* Soal yang SEDANG diketik. Dicatat saat @input, dibaca 500ms kemudian
+                   oleh handler debounce -- siswa yang berpindah soal sebelum debounce
+                   habis akan membuat autosave menyimpan soal yang salah tanpa ini.
+                   Wajib dideklarasikan di sini: nama yang tidak ada di x-data tidak
+                   ditangkap `with (scope)` milik Alpine dan malah jadi variabel global. */
+                _typingQid: null,
                 timeLeft: 0,
                 timerInterval: null,
                 warningShown: false,

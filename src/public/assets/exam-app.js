@@ -283,6 +283,12 @@
             unsavedCount: 0,
             unsavedIds: {},
             saveTimers: {},
+            /* Soal yang SEDANG diketik. Dicatat saat @input, dibaca 500ms kemudian
+               oleh handler debounce -- siswa yang berpindah soal sebelum debounce
+               habis akan membuat autosave menyimpan soal yang salah tanpa ini.
+               Wajib dideklarasikan di sini: nama yang tidak ada di x-data tidak
+               ditangkap `with (scope)` milik Alpine dan malah jadi variabel global. */
+            _typingQid: null,
             actionTimes: [],
             lastRateToast: 0,
             showRateToast: false,

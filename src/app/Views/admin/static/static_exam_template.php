@@ -378,7 +378,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             <!-- Type 3: Essay -->
             <template x-if="currentQuestion.question_type == 3">
                 <div>
-                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input="this._typingQid = this.currentQuestion.question_id" @input.debounce.500ms="saveAnswer(this._typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
+                    <textarea class="form-control" rows="8" style="border-radius:12px;" x-model="currentQuestion.answer_text" @input="_typingQid = qKey(currentQuestion)" @input.debounce.500ms="saveAnswer(_typingQid)" placeholder="Tulis jawaban Anda di sini..."></textarea>
                 </div>
             </template>
             
