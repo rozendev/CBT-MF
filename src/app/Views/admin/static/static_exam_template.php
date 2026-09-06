@@ -330,7 +330,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
         <!-- Progress Bar -->
         <div class="progress-wrapper">
-            <div class="progress-fill" :style="'width: ' + ((countAnswered() / questions.length) * 100) + '%'"></div>
+            <div class="progress-fill" :style="'width: ' + ((questions && questions.length > 0) ? ((countAnswered() / questions.length) * 100) : 0) + '%'"></div>
         </div>
 
         <!-- Autosave Indicator -->
@@ -467,7 +467,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             </div>
             <div class="offcanvas-body p-3">
                 <div class="q-grid-container">
-                    <template x-for="(q, idx) in questions" :key="q.question_id">
+                    <template x-for="(q, idx) in questions" :key="q.log_id || q.question_id">
                         <button class="q-grid-btn" :class="getGridButtonClass(idx)" @click="goToQuestion(idx); closeMobileSidebar()" x-text="idx + 1"></button>
                     </template>
                 </div>

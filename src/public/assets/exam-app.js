@@ -206,6 +206,16 @@
                     answers: mergedAnswers,
                     attemptId: ATTEMPT_ID,
                     studentName: STUDENT_NAME,
+                    /* Nama ujian dan durasi ikut dititipkan ke komponen. Dulu hanya
+                       cabang __KIOSK_BUNDLE__ yang membaca EXAM_CONFIG, sehingga di
+                       halaman static durationMinutes tetap 0: chip timer tidak pernah
+                       dirender dan startTimer() keluar lebih awal. Nilai dari server
+                       didahulukan -- halaman static boleh berumur sampai tujuh hari
+                       dan durasinya bisa sudah diubah admin sejak di-generate. */
+                    testName: (res.test && res.test.name) || EXAM_CONFIG.testName || '',
+                    durationMinutes: (res.test && res.test.duration_minutes !== undefined)
+                        ? Number(res.test.duration_minutes) || 0
+                        : Number(EXAM_CONFIG.durationMinutes) || 0,
                     beginTimeMs: res.test.begin_time_ms,
                     timeOffset: timeOffset,
                     antiCheat: res.anti_cheat || null,
@@ -500,6 +510,18 @@
                 }
 
                 this.studentName = data.studentName || this.studentName || '';
+                this.testName = data.testName || this.testName || '';
+                /* Dijaga dengan undefined, bukan sekadar falsy: cabang bundle sudah
+                   mengisi durationMinutes sebelum memanggil applyExamData, dan
+                   __examData miliknya memang tidak memuat field ini. */
+                if (data.durationMinutes !== undefined && data.durationMinutes !== null) {
+                    this.durationMinutes = Number(data.durationMinutes) || 0;
+                }
+                // Tanpa ini chip timer sempat menampilkan 00:00:00 sedetik penuh,
+                // karena startTimer() baru mengisi timeLeft pada tick pertama.
+                if (this.durationMinutes > 0 && !this.timeLeft) {
+                    this.timeLeft = this.durationMinutes * 60 * 1000;
+                }
                 this.parseMatching();
                 this.restoreLocalBackup();
 
