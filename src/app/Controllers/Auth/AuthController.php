@@ -4,6 +4,7 @@ namespace App\Controllers\Auth;
 
 use App\Controllers\BaseController;
 use App\Libraries\DeviceBan;
+use App\Libraries\MultiLoginPolicy;
 use App\Libraries\SessionTakeover;
 use App\Models\UserModel;
 use App\Models\ActivityLogModel;
@@ -139,7 +140,7 @@ class AuthController extends BaseController
         }
 
         // Block second login for students if prevent_multi_login is enabled
-        $preventMultiLogin = ($user->role === 'siswa' && $this->getSettingValue('prevent_multi_login', 1) == 1);
+        $preventMultiLogin = ($user->role === 'siswa' && MultiLoginPolicy::isEnabled());
         if ($preventMultiLogin) {
             try {
                 $existingRaw = $redis->get($tokenKey);
@@ -192,19 +193,13 @@ class AuthController extends BaseController
         } else {
             // Write it anyway (overwriting)
             try {
-                // Cabang ini TIDAK boleh berasumsi MultiLoginFilter ikut mati.
-                // Sakelar mati di filter membandingkan `$isEnabled === '0'`
-                // dengan sebuah string, sedangkan setelan prevent_multi_login
-                // bertipe boolean dan sampai ke sini sebagai bool. Begitu admin
-                // mematikannya, cabang ini yang jalan — selagi filter masih
-                // menegakkan, karena `false === '0'` bernilai false.
-                //
-                // Jadi kegagalan penulisan di sini punya akibat yang sama
-                // dengan di jalur TAKEOVER: sesi berjalan dengan login_token
-                // yang tidak pernah tersimpan, dan filter membaca token yang
-                // hilang sebagai "lanjutkan". Gagal tertutup. Benar atau
-                // tidaknya perbandingan di berkas lain bukan sesuatu yang
-                // pantas dijadikan sandaran di sini.
+                // Filter sekarang membaca setelan yang SAMA lewat
+                // MultiLoginPolicy, jadi cabang ini benar-benar hanya jalan
+                // ketika filter juga mati. Meski begitu, kegagalan penulisan
+                // di sini tetap ditangani seperti di jalur TAKEOVER: sesi yang
+                // berjalan dengan login_token yang tidak pernah tersimpan
+                // membuat filter membaca token yang hilang sebagai
+                // "lanjutkan". Gagal tertutup.
                 $stored = $redis->setex($tokenKey, SessionTakeover::TTL_SECONDS, $loginToken);
                 if (!$stored) {
                     return $fail('Layanan sedang tidak tersedia. Coba lagi.');
