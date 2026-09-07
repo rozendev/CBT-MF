@@ -16,6 +16,19 @@ class SettingModel extends Model
     protected $afterInsert  = ['clearCacheAfterInsert'];
 
     /**
+     * Penanda "baris setelan ini memang tidak ada di database".
+     *
+     * Wajib ada karena cache dipakai bersama oleh pemanggil yang meneruskan
+     * default BERBEDA untuk kunci yang sama. Menyimpan default milik pemanggil
+     * pertama — seperti yang dilakukan sebelumnya — membuat pemanggil kedua
+     * menerima default milik orang lain selama satu jam penuh, jadi perilaku
+     * sistem bergantung pada halaman mana yang kebetulan dibuka lebih dulu.
+     * Yang boleh di-cache hanyalah fakta "barisnya tidak ada"; defaultnya
+     * ditentukan ulang oleh setiap pemanggil.
+     */
+    private const MISSING = '__cbt_setting_missing__';
+
+    /**
      * Get a setting value by key
      */
     public function getValue(string $key, $default = null)
@@ -25,11 +38,15 @@ class SettingModel extends Model
         $cacheKey = "setting_{$key}";
         $value = $cache->get($cacheKey);
 
+        if ($value === self::MISSING) {
+            return $default;
+        }
+
         if ($value === null) {
             $setting = $this->where('key', $key)->first();
             if (!$setting) {
                 try {
-                    $cache->save($cacheKey, $default, 3600);
+                    $cache->save($cacheKey, self::MISSING, 3600);
                 } catch (\Exception $e) {}
                 return $default;
             }
