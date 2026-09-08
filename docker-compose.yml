@@ -10,7 +10,8 @@ services:
     volumes:
       - ./src:/var/www/html
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
-      - ./docker/nginx/html:/usr/share/nginx/html:ro
+      # Dibuat installer dari template docker/nginx/html dan memuat token lokal.
+      - ./.runtime/nginx/html:/usr/share/nginx/html:ro
     depends_on:
       - php
       - websocket
@@ -166,7 +167,8 @@ services:
     #   - "127.0.0.1:6379:6379"    # localhost only
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD} --maxmemory 2gb --maxmemory-policy volatile-lru
+    # Bentuk argv menjaga password dengan spasi/#/$ tetap satu argumen.
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}", "--maxmemory", "2gb", "--maxmemory-policy", "volatile-lru"]
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
       interval: 10s
