@@ -2,6 +2,7 @@
 
 namespace App\Filters;
 
+use App\Libraries\MultiLoginPolicy;
 use App\Libraries\SessionTakeover;
 use CodeIgniter\Filters\FilterInterface;
 use CodeIgniter\HTTP\RequestInterface;
@@ -33,27 +34,12 @@ class MultiLoginFilter implements FilterInterface
             // DB unreachable, don't block
         }
 
-        // Check if multi-login prevention is enabled (cached for 5 mins)
-        try {
-            $isEnabled = service('cache')->get('setting_prevent_multi_login');
-            if ($isEnabled === null) {
-                $db = \Config\Database::connect();
-                $setting = $db->table('settings')
-                              ->where('key', 'prevent_multi_login')
-                              ->get()
-                              ->getRow();
-                $isEnabled = $setting ? $setting->value : '0';
-                service('cache')->save('setting_prevent_multi_login', $isEnabled, 300);
-            }
-        } catch (\Exception $e) {
-            // Fallback if cache driver fails
-            $db = \Config\Database::connect();
-            $setting = $db->table('settings')->where('key', 'prevent_multi_login')->get()->getRow();
-            $isEnabled = $setting ? $setting->value : '0';
-        }
-
-        // If prevent multi-login is NOT enabled, skip check
-        if ($isEnabled === '0') {
+        // Setelan dibaca lewat penyelesai bersama, BUKAN dengan membuka
+        // kunci cache milik SettingModel sendiri. Membacanya langsung berarti
+        // menebak bentuk nilai yang disimpan pihak lain, dan tebakan itu
+        // (`=== '0'`) meleset persis ketika barisnya bertipe boolean —
+        // sakelar admin mati, filter tetap menegakkan.
+        if (!MultiLoginPolicy::isEnabled()) {
             return;
         }
 

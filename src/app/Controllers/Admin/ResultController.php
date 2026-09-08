@@ -210,6 +210,7 @@ class ResultController extends BaseController
         }
 
         $db->transStart();
+        $this->attemptModel->clearCacheWhereIn('id', $attemptId);
 
         // Delete log answers
         $logIds = $db->table('test_logs')
@@ -233,16 +234,6 @@ class ResultController extends BaseController
             log_message('error', 'Redis error on delete attempt: ' . $e->getMessage());
         }
 
-        // Clear CI4 Application Cache to prevent ghost sessions
-        try {
-            $cache = \Config\Services::cache();
-            $cache->delete("attempt_{$attemptId}");
-            $cache->delete("active_attempt_{$attempt->test_id}_{$attempt->user_id}");
-            $cache->delete("attempt_questions_{$attemptId}");
-            $cache->delete("attempt_answers_{$attemptId}");
-        } catch (\Exception $e) {
-            log_message('error', 'Cache error on delete attempt: ' . $e->getMessage());
-        }
 
         // Publish a kick event so the student is kicked instantly if they are currently taking the exam
         try {
@@ -270,6 +261,8 @@ class ResultController extends BaseController
             }
             return redirect()->back()->with('error', 'Gagal menghapus hasil ujian.');
         }
+
+        $this->attemptModel->clearCacheForAttempt($attempt->id, $attempt->test_id, $attempt->user_id);
 
         if ($this->request->isAJAX()) {
             return $this->response->setJSON(['status' => 'success', 'message' => 'Hasil ujian berhasil dihapus.']);
