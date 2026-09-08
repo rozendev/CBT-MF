@@ -70,6 +70,7 @@ coverage/
 *.war
 *.ear
 .gradle/
+.kotlin/
 build/
 !gradle/
 gradle-app.setting
@@ -81,6 +82,13 @@ out/
 # Docker (specific to your setup)
 docker/php-fpm/*.log
 docker/nginx/*.log
+
+# Kunci penandatanganan Android. Yang dipakai sekarang hidup di luar repo,
+# aturan ini jaring pengaman kalau ada yang menyalinnya ke sini.
+*.jks
+*.keystore
+*.p12
+keystore.properties
 
 # Runtime data
 logs/

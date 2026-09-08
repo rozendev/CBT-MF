@@ -28,8 +28,26 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    signingConfigs {
+        // Kunci rilis tinggal di luar repo; path dan sandinya dibaca dari
+        // ~/.gradle/gradle.properties. Kalau propertinya tidak ada — mesin lain,
+        // CI, kontributor baru — varian rilis tetap bisa dibangun, hanya keluar
+        // tanpa tanda tangan. Lebih baik begitu daripada build yang gagal total
+        // hanya karena tidak memegang kunci.
+        val storePath = providers.gradleProperty("CBT_KIOSK_STORE_FILE").orNull
+        if (storePath != null) {
+            create("release") {
+                storeFile = file(storePath)
+                storePassword = providers.gradleProperty("CBT_KIOSK_STORE_PASSWORD").get()
+                keyAlias = providers.gradleProperty("CBT_KIOSK_KEY_ALIAS").get()
+                keyPassword = providers.gradleProperty("CBT_KIOSK_KEY_PASSWORD").get()
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
