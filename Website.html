@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>CBT-MF - Aplikasi Ujian Berbasis Komputer Open Source</title>
+  <meta name="description" content="CBT-MF adalah aplikasi ujian berbasis komputer open source untuk sekolah dan madrasah dengan CodeIgniter 4, Docker, EXAMBRO Android, live proctoring, dan analisis soal.">
+  <meta name="keywords" content="CBT, aplikasi ujian online, ujian berbasis komputer, CBT sekolah, CBT madrasah, EXAMBRO, CodeIgniter 4, Docker, open source Indonesia">
+  <meta name="author" content="Rozendev">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="theme-color" content="#f05a28">
+  <link rel="canonical" href="https://rozendev.github.io/CBT-MF/Website.html">
+
+  <meta property="og:locale" content="id_ID">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="CBT-MF">
+  <meta property="og:title" content="CBT-MF - Aplikasi Ujian Berbasis Komputer Open Source">
+  <meta property="og:description" content="Platform CBT untuk sekolah dan madrasah dengan Docker, EXAMBRO Android, live proctoring, mode ujian statis, dan analisis butir soal.">
+  <meta property="og:url" content="https://rozendev.github.io/CBT-MF/Website.html">
+  <meta property="og:image" content="https://rozendev.github.io/CBT-MF/docs/images/admin-dashboard.png">
+  <meta property="og:image:width" content="1920">
+  <meta property="og:image:height" content="966">
+  <meta property="og:image:alt" content="Dashboard administrator aplikasi CBT-MF">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CBT-MF - Aplikasi Ujian Berbasis Komputer Open Source">
+  <meta name="twitter:description" content="Platform CBT open source untuk sekolah dan madrasah, dibangun dengan CodeIgniter 4 dan Docker.">
+  <meta name="twitter:image" content="https://rozendev.github.io/CBT-MF/docs/images/admin-dashboard.png">
+  <meta name="twitter:image:alt" content="Dashboard administrator aplikasi CBT-MF">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://github.com/rozendev/CBT-MF#software",
+        "name": "CBT-MF",
+        "alternateName": "Computer Based Test untuk Sekolah dan Madrasah",
+        "description": "Aplikasi ujian berbasis komputer open source untuk sekolah dan madrasah dengan live proctoring, EXAMBRO Android, mode ujian statis, dan analisis butir soal.",
+        "applicationCategory": "EducationalApplication",
+        "applicationSubCategory": "Computer Based Testing",
+        "softwareVersion": "1.30",
+        "operatingSystem": "Linux, Android, Web",
+        "isAccessibleForFree": true,
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+        "downloadUrl": "https://github.com/rozendev/CBT-MF",
+        "codeRepository": "https://github.com/rozendev/CBT-MF",
+        "image": "https://rozendev.github.io/CBT-MF/docs/images/admin-dashboard.png",
+        "inLanguage": "id-ID",
+        "author": {
+          "@type": "Person",
+          "name": "Rozendev",
+          "url": "https://github.com/rozendev"
+        },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "IDR"
+        }
+      },
+      {
+        "@type": "SoftwareSourceCode",
+        "@id": "https://github.com/rozendev/CBT-MF#source",
+        "name": "CBT-MF Source Code",
+        "codeRepository": "https://github.com/rozendev/CBT-MF",
+        "programmingLanguage": ["PHP", "Kotlin", "JavaScript", "Shell"],
+        "runtimePlatform": "PHP 8.2+, Docker Compose, Android",
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+        "inLanguage": "id-ID",
+        "about": { "@id": "https://github.com/rozendev/CBT-MF#software" }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Apa itu CBT-MF?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "CBT-MF adalah aplikasi ujian berbasis komputer open source untuk sekolah dan madrasah. Aplikasi dibangun dengan CodeIgniter 4 dan berjalan di dalam Docker."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Apa syarat instalasi CBT-MF?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Instalasi membutuhkan host Linux, Docker, Docker Compose V2, dan akses root untuk mengatur kepemilikan direktori web server."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Apakah CBT-MF gratis?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Ya. CBT-MF merupakan perangkat lunak open source yang dilisensikan dengan AGPL-3.0-or-later."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --surface-muted: #eef1f4;
+      --text: #1c2128;
+      --muted: #57606a;
+      --line: #d8dee4;
+      --accent: #c43f12;
+      --accent-strong: #9f3210;
+      --accent-soft: #fff0e8;
+      --code-bg: #20252b;
+      --code-text: #f2f4f7;
+      --shadow: 0 16px 40px rgba(31, 35, 40, 0.08);
+      --radius: 14px;
+      --max: 1180px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1215;
+        --surface: #171b20;
+        --surface-muted: #20262c;
+        --text: #eef1f4;
+        --muted: #aeb7c2;
+        --line: #343c45;
+        --accent: #ff7545;
+        --accent-strong: #ff946f;
+        --accent-soft: #352018;
+        --code-bg: #0a0c0f;
+        --code-text: #f2f4f7;
+        --shadow: 0 16px 40px rgba(0, 0, 0, 0.24);
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 5.5rem; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 1rem;
+      line-height: 1.7;
+      text-rendering: optimizeLegibility;
+    }
+    img { display: block; max-width: 100%; height: auto; }
+    a { color: var(--accent); text-underline-offset: 0.2em; }
+    a:hover { color: var(--accent-strong); }
+    a:focus-visible, summary:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 4px;
+      border-radius: 4px;
+    }
+    h1, h2, h3 { line-height: 1.15; letter-spacing: -0.03em; text-wrap: balance; }
+    h1 { max-width: 14ch; margin: 0; font-size: clamp(2.8rem, 7vw, 5.9rem); }
+    h2 { margin: 0 0 1.25rem; font-size: clamp(2rem, 4vw, 3.4rem); }
+    h3 { margin: 0 0 0.7rem; font-size: 1.3rem; }
+    p { max-width: 72ch; }
+    code, pre, kbd { font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace; }
+    :not(pre) > code {
+      padding: 0.15em 0.4em;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--surface-muted);
+      font-size: 0.9em;
+    }
+    pre {
+      overflow-x: auto;
+      margin: 1.3rem 0;
+      padding: 1.2rem 1.35rem;
+      border-radius: var(--radius);
+      background: var(--code-bg);
+      color: var(--code-text);
+      line-height: 1.65;
+      box-shadow: var(--shadow);
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.9rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--text); font-size: 0.9rem; }
+    td { color: var(--muted); }
+
+    .skip-link {
+      position: fixed;
+      top: 0.8rem;
+      left: 0.8rem;
+      z-index: 10;
+      transform: translateY(-160%);
+      padding: 0.7rem 1rem;
+      border-radius: 8px;
+      background: var(--text);
+      color: var(--bg);
+      font-weight: 700;
+    }
+    .skip-link:focus { transform: translateY(0); }
+    .container { width: min(calc(100% - 2.5rem), var(--max)); margin-inline: auto; }
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: blur(16px);
+    }
+    .nav {
+      display: flex;
+      min-height: 68px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 2rem;
+    }
+    .brand { color: var(--text); font-size: 1.05rem; font-weight: 850; text-decoration: none; letter-spacing: -0.02em; }
+    .brand span { color: var(--accent); }
+    .nav-links { display: flex; align-items: center; gap: 1.35rem; white-space: nowrap; }
+    .nav-links a { color: var(--muted); font-size: 0.9rem; font-weight: 650; text-decoration: none; }
+    .nav-links a:hover { color: var(--text); }
+
+    .hero {
+      display: grid;
+      min-height: min(780px, calc(100dvh - 69px));
+      grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+      align-items: center;
+      gap: clamp(2.5rem, 6vw, 7rem);
+      padding-block: clamp(3rem, 8vw, 6rem);
+    }
+    .eyebrow {
+      margin: 0 0 1rem;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .lead { max-width: 58ch; margin: 1.4rem 0 0; color: var(--muted); font-size: clamp(1.05rem, 1.7vw, 1.25rem); }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 2rem; }
+    .button {
+      display: inline-flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: center;
+      padding: 0.72rem 1.15rem;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 750;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+    .button:hover { transform: translateY(-2px); border-color: var(--accent); color: var(--text); }
+    .button:active { transform: translateY(1px); }
+    .button-primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .button-primary:hover { border-color: var(--accent-strong); background: var(--accent-strong); color: #fff; }
+    .hero-media { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); transform: rotate(1.25deg); }
+    .hero-media img { width: 100%; }
+    .hero-media figcaption { padding: 0.75rem 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+
+    .badges { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 1.1rem 0; border-block: 1px solid var(--line); }
+    .badge { padding: 0.35rem 0.7rem; border-radius: 7px; background: var(--surface-muted); color: var(--muted); font-size: 0.8rem; font-weight: 750; }
+    .section { padding-block: clamp(4.5rem, 9vw, 8rem); }
+    .section + .section { border-top: 1px solid var(--line); }
+    .section-intro { max-width: 68ch; margin: -0.3rem 0 2.4rem; color: var(--muted); font-size: 1.08rem; }
+    .feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 3rem; }
+    .feature { padding: 1.25rem 0; border-bottom: 1px solid var(--line); }
+    .feature p { margin: 0; color: var(--muted); }
+    .gallery { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 1.2rem; align-items: start; }
+    .shot { overflow: hidden; margin: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+    .shot img { width: 100%; }
+    .shot figcaption { padding: 0.75rem 1rem; color: var(--muted); font-size: 0.86rem; }
+    .shot-mobile { grid-row: span 2; }
+    .shot-mobile img { width: min(100%, 400px); margin-inline: auto; }
+    .steps { counter-reset: installation; display: grid; gap: 1rem; }
+    .step { counter-increment: installation; display: grid; grid-template-columns: 2.6rem 1fr; gap: 1rem; align-items: start; }
+    .step::before { content: counter(installation); display: grid; width: 2.3rem; height: 2.3rem; place-items: center; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-weight: 850; }
+    .step p { margin-top: 0; color: var(--muted); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .architecture { display: grid; grid-template-columns: repeat(7, minmax(100px, 1fr)); gap: 0.7rem; margin: 2rem 0; }
+    .architecture div { padding: 0.8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); text-align: center; font-size: 0.8rem; font-weight: 700; }
+    .architecture .primary { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .note { margin: 1.5rem 0; padding: 1.2rem 1.4rem; border-left: 4px solid var(--accent); border-radius: 0 var(--radius) var(--radius) 0; background: var(--accent-soft); }
+    .note p { margin: 0; }
+    details { padding: 1.2rem 0; border-bottom: 1px solid var(--line); }
+    summary { cursor: pointer; color: var(--text); font-weight: 780; }
+    details p, details ol { color: var(--muted); }
+    .cta {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 2rem;
+      padding: clamp(2rem, 5vw, 4rem);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .cta h2 { margin-bottom: 0.7rem; }
+    .cta p { margin: 0; color: var(--muted); }
+    footer { padding: 2.5rem 0 3.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
+    .footer-row { display: flex; justify-content: space-between; gap: 1.5rem; }
+
+    @media (max-width: 860px) {
+      .nav { overflow-x: auto; }
+      .nav-links { gap: 1rem; }
+      .nav-links a:not(.repository-link) { display: none; }
+      .hero { min-height: auto; grid-template-columns: 1fr; padding-block: 4rem; }
+      .hero-media { transform: none; }
+      .feature-grid, .gallery, .cta { grid-template-columns: 1fr; }
+      .shot-mobile { grid-row: auto; }
+      .architecture { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .cta .button { justify-self: start; }
+    }
+
+    @media (max-width: 560px) {
+      .container { width: min(calc(100% - 1.5rem), var(--max)); }
+      h1 { font-size: clamp(2.5rem, 14vw, 4rem); }
+      .actions { align-items: stretch; flex-direction: column; }
+      .button { width: 100%; }
+      th, td { min-width: 150px; padding: 0.75rem; }
+      .architecture { grid-template-columns: 1fr; }
+      .footer-row { flex-direction: column; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+    }
+
+    @media print {
+      .site-header, .actions, .cta { display: none; }
+      body { background: #fff; color: #111; }
+      .section { padding-block: 2rem; break-inside: avoid; }
+      .hero { min-height: auto; }
+      a { color: #111; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#konten</body>">Lewati ke konten utama</a>
+
+  <header class="site-header">
+    <nav class="container nav" aria-label="Navigasi utama">
+      <a class="brand" href="#atas" aria-label="CBT-MF, kembali ke atas">CBT<span>-MF</span></a>
+      <div class="nav-links">
+        <a href="#fitur">Fitur</a>
+        <a href="#tampilan">Tampilan</a>
+        <a href="#instalasi">Instalasi</a>
+        <a href="#arsitektur">Arsitektur</a>
+        <a class="repository-link" href="https://github.com/rozendev/CBT-MF" target="_blank" rel="noopener noreferrer">Repository GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="konten">
+    <section class="container hero" id="atas" aria-labelledby="judul-utama">
+      <div>
+        <p class="eyebrow">Open source untuk pendidikan Indonesia</p>
+        <h1 id="judul-utama">U</div>jian digital yang siap menghadapi beban sekolah.</h1>
+        <p class="lead">CBT-MF menggabungkan CodeIgniter 4, Docker, live proctoring, dan EXAMBRO Android dalam satu platform ujian.</p>
+        <div class="actions" aria-label="Tautan utama">
+          <a class="button button-primary" href="https://github.com/rozendev/CBT-MF" target="_blank" rel="noopener noreferrer">Buka GitHub</a>
+          <a class="button" href="#instalasi">Lihat instalasi</a>
+        </div>
+      </div>
+      <figure class="hero-media">
+        <img src="docs/images/admin-dashboard.png" width="1920" height="966" alt="Dashboard administrator CBT-MF yang menampilkan statistik ujian" fetchpriority="high">
+        <figcaption>Dashboard administrator CBT-MF</figcaption>
+      </figure>
+    </</figcaption>section>
+
+    <div class="container badges" aria-label="Teknologi dan lisensi">
+      <span class="badge">PHP 8.2+</span>
+      <span class="badge">CodeIgniter 4.7</span>
+      <span class="badge">Docker Compose</span>
+      <span class="badge">AGPL-3.0-or-later</span>
+      <span class="badge">Versi 1.30</span>
+    </div>
+
+    <section class="container section" aria-labelledby="tentang-heading">
+      <h2 id="tentang-heading">Tentang CBT-MF</h2>
+      <p class="section-intro">CBT-MF adalah aplikasi ujian berbasis komputer untuk sekolah dan madrasah. Seluruh layanan berjalan di dalam Docker agar pemasangan dan operasionalnya konsisten.</p>
+      <p>Komunikasi real-time dit</p>angani daemon WebSocket terpisah, sehingga ratusan peserta serentak tidak menghabiskan worker PHP-FPM. Halaman soal juga dapat dibekukan menjadi berkas statis agar tahan terhadap lonjakan akses pada menit pertama ujian.</p>
+    </section>
+
+    <section class="container section" id="fitur" aria-labelledby="fitur-heading">
+      <h2 id="fitur-heading">Fitur utama</h2>
+      <p class="section-intro">Fitur dirancang untuk alur kerja sekolah, mulai dari penyusunan soal hingga pengawasan dan analisis hasil.</p>
+      <div class="feature-grid">
+        <article class="feature">
+          <h3>Bank</h3> soal enam tipe</h3>
+          <p>Pilihan ganda, pilihan ganda kompleks, esai, menjodohkan, benar atau salah, dan mengurutkan.</p>
+        </article>
+        <article class="feature">
+          <h3>Import</h3> soal dari Word</h3>
+          <p>Soal dari berkas <code>.docx</code> dapat memakai pen</p>omoran biasa. Gambar yang tertanam ikut terbawa.</p>
+        </article>
+        <article class="feature">
+          <h3>Mode ujian statis</h3>
+          <p</h3>>Halaman soal dibekukan menjadi HTML untuk mengurangi kerja PHP saat beban akses mencapai puncak.</p>
+        </article>
+        <article class="feature">
+          <h3>Live proctoring</h3>
+          <p>Pengawas dapat memant</h3></p>au peserta, menambah waktu, mengeluarkan, atau memblokir sesi secara real-time.</p>
+        </article>
+        <article class="feature">
+          <h3></h3>EXAMBRO Android</h3>
+          <p>Aplikasi pengunci layar BYOD dengan overlay guard, blokir clipboard, sirine, dan deteksi root atau emulator.</p>
+        </article>
+        <article class="feature">
+          <h3></h3>Deteksi kecurangan</h3>
+          <p>Peringatan otomatis diberikan saat peserta keluar dari fullscreen atau berpindah tab browser.</p>
+        </article>
+        <article class="feature">
+          <h3></h3>Antrean dan throttling login</h3>
+          <p>Batas peserta serentak dan pembatasan login per-IP dirancang agar tetap ramah untuk jaringan sekolah di balik CGNAT.</p>
+        </article>
+        <article class="feature">
+          <h3>Analisis butir soal</h3>
+          <</h3>p>Tingkat kesukaran, daya beda, dan rincian pengecoh dapat dianalisis per butir lalu diekspor ke CSV.</p>
+        </article>
+        <article class="feature">
+          <h3>Audit trail dan laporan</h3>
+          <p>Aktivitas pengguna</h3></p>, status online real-time, dan laporan ujian tersedia untuk ditinjau atau diekspor.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="container section" id="tampilan" aria-labelledby="tampilan-heading">
+      <h2 id="tampilan-heading">Tampilan aplikasi</h2>
+      <p class="section-intro">Antarmuka mencakup panel administrator, kontrol pengawas, halaman peserta desktop, dan pengalaman ujian di ponsel.</p>
+      <div class="gallery">
+        <figure class="shot">
+          <img src="docs/images/daftar-ujian.png" width="1917" height="962" alt="Daftar dan manajemen ujian CBT-MF" loading="lazy" decoding="async">
+          <figcaption></figcaption>Manajemen jadwal, durasi, dan mode pelaksanaan ujian</figcaption>
+        </figure>
+        <figure class="shot shot-mobile">
+          <img src="docs/images/ujian-mobile.png" width="400" height="870" alt="Halaman pengerjaan soal CBT-MF pada ponsel" loading="lazy" decoding="async">
+          <figcaption>Pengerjaan soal pada perangkat ponsel</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="docs/images/import-word.png" width="1647" height="961" alt="Halaman import soal dari dokumen Word di CBT-MF" loading="lazy" decoding="async">
+          <figcaption>Import soal dari dokumen Word beserta gambar</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="docs/images/akses-siswa.png" width="1652" height="960" alt="Kontrol akses</figcaption> dan sesi siswa di CBT-MF" loading="lazy" decoding="async">
+          <figcaption>Kontrol sesi dan akses peserta oleh</figcaption> pengawas</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="docs/images/exambro.png" width="1647" height="958" alt="Konfigurasi EXAMBRO Android pada CBT-MF" loading="lazy" decoding="async">
+          <figcaption>Konfigurasi pengunc</figcaption>ian layar EXAMBRO Android</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="docs/images/ujian-desktop.png" width="1920" height="912" alt="Halaman mulai ujian CBT-MF pada komputer desktop" loading="lazy" decoding="async">
+          <figcaption>Halaman mulai ujian pada komputer desktop</figcaption>
+        </figure>
+      </div>
+    </section>
+
+</figcaption>    <section class="container section" id="instalasi" aria-labelledby="instalasi-heading">
+      <h2 id="instalasi-heading">Instalasi</h2>
+      <p class="section-intro">Installer interaktif menyiapkan konfigurasi, container, dependensi, migrasi database, permission, dan akun administrator pertama.</p>
+
+      <h3></h3>Prasyarat</h3>
+      <ul>
+        <</ul>li>Docker dan Docker Compose V2</li>
+        <li>Host Linux</li>
+        <li>Akses</li> root untuk mengatur kepemilikan direktori ke GID 33 (<code>www-data</code>)</li>
+      </ul>
+
+      <h3>Pemas</code>angan cepat</h3>
+      <pre aria-label="Perintah instalasi CBT-MF"><code>git</code> clone https://github.com/rozendev/CBT-MF.git
+cd CBT-MF
+sudo bash scripts/cbt.sh install</code></pre>
+
+      <div class="steps" aria-label="Proses installer">
+        <div class="step">
+          <div>
+            <h3>Isi konfigurasi</h3>
+            <p>Installer menanyakan database, prefix container</div></h3></p>, base URL, Redis, Cloudflare Tunnel opsional, dan akun admin.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Bangun layanan</h3>
+            <p>Konfigurasi ditulis ke berkas</div></h3></p> lingkungan, lalu seluruh container dibangun dan dinyalakan.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div>
+            <h3>Siapkan aplikasi</h3>
+            <p</div></h3>>Composer, migrasi database, permission direktori, dan administrator pertama disiapkan secara otomatis.</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>Layanan yang berjalan</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="</table>col">Layanan</th><th scope="col">Alamat</th><th scope="col">Keterangan</th></tr></thead>
+          <tbody>
+            <tr><td>Aplikasi Ngin</tbody>x</td><td><code>http://localhost:8080</code></td><td>Satu-satunya port yang terekspos ke jaringan</td></tr>
+            <tr><td>WebSocket</code></td></td><td><code>127.0.0.1:8060</code></td><td>Terikat ke localhost dan diproksi lewat <code>/ws/</code></td></tr>
+           </code></td> <tr><td>MariaDB</td><td>Internal</td><td>Hanya tersedia di jaringan Docker</td></tr>
+            <tr><td>Redis</td><td>Internal</td</td></td></td></td></td>><td>Hanya tersedia di jaringan Docker</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="container section</td>" id="penggunaan" aria-labelledby="penggunaan-heading">
+      <h2 id="penggunaan-heading">Penggunaan</h2>
+      <p class="section-intro"><code>scripts/cbt.sh</code> adalah pint</code>u utama untuk mengoperasikan seluruh layanan CBT-MF.</p>
+      <pre><code>sudo</code> bash scripts/cbt.sh
+sudo bash scripts/cbt.sh &lt;grup&gt; &lt;perintah&gt;</code></pre>
+
+      <div class="table-wrap">
+        <table></table>
+          <thead><tr><th scope="col">Grup</th><th scope="col">Perintah</th></tr></thead>
+          <tbody>
+            <tr</tbody>><td><code>docker</code></td><td><code>up</code>, <code>down</code>, <code>restart</code>, <code>logs</code>, <code</code></code></code></code></code>>status</code></td></tr>
+            <tr><td><code>app</code></td><td><code>shell</code>, <code>php</code>, <code>composer</code></td></tr>
+            <tr><td><</code></code></code></code>code>db</code></td><td><code>shell</code></code>, <code>root</code>, <code>export</code></code></code>, <code>import</code>, <code>reset-password</code></td></tr>
+            <tr><td</code></code>><code>redis</code></td><td><code>shell</code>, <code>flush</code></td></tr>
+            <tr><td><code>bundle</code></td><td><code</code></code></code>>build</code>, <code>status</code></</code></code>td></tr>
+            <tr><td><code>data</code></td><td><code>images</code>, <code>optimize</code>, <code>cache-clear</code>, <code>finalize</code>, <code>prune-kiosk</code></td></tr>
+            <tr</code></code></code></code></code>><td><code>migrate</code></td><td><code</code></code>>up</code>, <code>status</code>, <code>rollback</code></</code></code>td></tr>
+            <tr><td><code>tune</code></td><td><code>show</code>, <code>set</code></td></tr>
+          </tbody>
+</code></code></code>        </table>
+      </div>
+
+      <p>Perintah tingkat atas meliputi <code>backup</code>, <code>log-</p></code></code>rotate</code>, <code>reset-install</code>, <code>test-k6</code>, <code>install</</code></code></code>code>, dan <code>help</</code>code>. Perintah yang berisiko merusak data meminta konfirmasi dengan mengetik ulang nama perintah.</p>
+
+      <h3>Perintah harian</h3>
+      <pre><code></h3></code>sudo bash scripts/cbt.sh docker status
+sudo bash scripts/cbt.sh docker logs
+sudo bash scripts/cbt.sh backup
+sudo bash scripts/cbt.sh db reset-password
+sudo bash scripts/cbt.sh data finalize</code></pre>
+
+      <div class="note">
+        <p><strong>Setelah mengubah UI ujian:</strong> jalankan <code>sudo bash scripts/cbt.sh bundle build</code> agar EXAMBRO menerima bundle terbaru.</p>
+      </div</strong></code>>
+    </section>
+
+    <section class="container section" id="arsitektur" aria-labelledby="arsitektur-heading">
+      <h2 id="arsitektur-heading">Arsitektur</h2>
+      <p class="section-intro">Nginx menjadi pintu masuk tunggal. PHP-FPM menangani aplikasi, daemon WebSocket menangani komunikasi real-time, dan Redis mengurangi beban penulisan MariaDB.</p>
+
+      <div class="architecture" role="img" aria-label="Alur arsitektur dari browser dan EXAMBRO menuju Nginx, PHP-FPM, WebSocket, Redis, MariaDB, dan cron">
+        <div>Browser peserta</div>
+        <div>EXAMBRO Android</div>
+        <div class="primary">Nginx</div>
+        <div>PHP-FPM</div>
+        <div></div></div></div></div>WebSocket</div>
+        <div>Redis</div>
+        <div>MariaDB</</div></div>div>
+      </div>
+
+      <div class="feature-grid">
+        <article class="feature">
+          <h3>Daemon WebSocket terpisah</h3>
+          <p>Komunikasi server ke klien tidak menahan worker PHP-FPM. ReactPHP mendengarkan Redis Pub/Sub dan</h3></p> menyiarkan perintah pengawas.</p>
+        </article>
+        <article class="feature">
+          <h3>Autosave ke Redis</h3>
+          <p>Jawaban peserta ditulis ke Redis selama uj</h3></p>ian, lalu dipindahkan secara massal ke MariaDB pada akhir proses.</p>
+        </article>
+        <article class="feature">
+          <h3>Mode ujian statis</h3>
+          <p>Pembacaan soal tidak mem</h3>erlukan kerja PHP atau kueri database untuk setiap permintaan peserta.</p>
+        </article>
+        <article class="feature">
+          <h3>Tujuh service Docker</h3>
+          <p>Nginx, PHP, WebSocket, cron, Cloudflared, MariaDB, dan Redis diorkestrasi melalui Docker Compose.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="container section" id="struktur" aria-labelledby="struktur-heading">
+      <h2 id="struktur-heading">Struktur repository</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col"></table>Lokasi</th><th scope="col">Isi</th></tr></thead>
+          <tbody>
+            <tr><td><code>src/</code></td><td>Aplikasi CodeIgniter 4</td></tr>
+            <tr><td><Dengan kode yang terbuka untuk publik, sistem seperti CBT-MF punya potensi keamanan yang lebih baik karena:
+            
+            Prosescode>docker/</code></td><td>Dockerfile dan konfigurasi Nginx, PHP-FPM, dan MariaDB</td></tr>
+            <tr><td><code>scripts/</code></td><td><code>cbt.sh</code> dan utilitas pendukung</td></tr>
+            <tr><td><code>cbt-kiosk-app/</code></td><td>Sumber aplikasi Android EXAMBRO</td></tr>
+            <tr><td><code>docs/</code></td><td>Panduan teknis</tbody></code> dan rancangan fitur</td></tr>
+            <tr><td><code>docker-compose.yml</code></</code></td>td><td>Orkestr</code>asi container</td></tr>
+            <tr><td><code>Docker</code></code></code></code></td></code>file.railway</code> dan <code>railway.json</code</code>></td><td>Dukungan deployment ke Railway</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p></p>Selain instalasi Docker pada VPS, CBT-MF menyediakan jalur deployment Railway untuk lingkungan uji. Baca <a href="RAILWAY.md">panduan Railway</a> untuk detailnya.</p>
+    </section>
+
+    <section class="container section" id="keamanan" aria-labelledby="keamanan-heading">
+      <h2 id="keamanan-heading">Keamanan produksi</h2>
+      <p class="section-intro">Repository ini bersifat publik. Seluruh kredensial, token, dan rahasia wajib dibuat sendiri dan disimpan di konfigurasi lingkungan.</p>
+      <div class="feature-grid">
+        <article class="feature">
+          <h3>Token penyusup</h3>
+          <p></h3></p>Installer membuat <code>INTRUDER_TOKEN</code></code> acak dan menyelaraskannya dengan halaman honeypot Nginx.</p>
+        </article>
+        <article class="feature">
+          <h3>Password database</h3>
+          <p>Isi <code>DB_PASSWORD</code</p></code>> dan <code>MYSQL_ROOT_PASSWORD</code>. Tidak tersedia password bawaan.</p>
+        </article</code>>
+        <article class="feature">
+          <h3></h3>Secret aplikasi kiosk</h3>
+          <p>Isi <code>KIOSK_APP_SECRET</code> agar endpoint verifikasi</p> keluar kiosk tidak hanya mengandalkan rate limit.</p>
+        </article>
+        <article class="feature">
+          <h3>Mode production</h3>
+          <p>Setel <code</h3></p>>CI_ENVIRONMENT = production</code> dan batasi port 8080 jika memakai tunnel atau reverse proxy.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="container section" id="pemecahan-masalah" aria-labelledby="faq-heading">
+      <h2 id="faq-heading">Pemecahan masalah</h2>
+      <details>
+       </details> <summary>WebSocket tidak terhubung</summary>
+        <ol>
+          <li></summary></ol></li>Periksa container dengan <code>sudo bash scripts/cbt.sh docker status</code>.</li>
+          <li>B</code>aca log dengan <code>sudo bash scripts/cbt.sh docker logs</code>.</li>
+          <li>Muat ulang proxy dengan <code>sudo bash scripts/cbt.sh docker restart</code>.</</code></code>li>
+          <li>Untuk mode statis, hapus halaman</li> lama dari admin lalu buat ulang.</li>
+        </ol>
+      </details>
+      <details>
+        <summary>Gagal membuat halaman statis atau</details></summary> mengunggah gambar</summary>
+        <p>Pastikan <code>src/writable/</code>, <code</p></code>>src/public/static/</code>, dan <code>src/public/uploads/</code></code> dapat ditulis oleh grup web server. Gunakan permission <code>775</code</code>>, bukan <code></code>777</code>.</p>
+        <pre><code>mkdir -p src/writable src/public/static src/public/uploads</code>
+sudo chown -R :33 src/writable src/public/static src/public/uploads
+sudo chmod -R 775 src/writable src/public/static src/public/uploads</code></pre>
+      </details>
+      <details>
+        <summary>Migrasi</details> gagal karena akses database ditolak</summary>
+        <p>MariaDB menerapkan username dan password ketika volume pertama kali dibuat. Jika volume masih menyimpan kredensial lama, hapus volume lalu ulangi instalasi. Perintah ini menghapus seluruh data database.</p>
+        <pre><code>docker compose down -v
+sudo bash scripts/cbt.sh install</code></pre>
+      </details>
+      <p>Kasus lain tersedia di <a href="Troubleshooting.md">Troubleshooting.md</a>.</p>
+    </section>
+
+    <section class="container section" id="kontribusi" aria-labelledby="kontribusi-heading">
+      <h2 id="kontribusi-heading">Kon</p></code></p>tribusi dan dukungan</h2>
+      <p class="section-intro">Laporkan bug, usulkan fitur, atau ajukan pull request melalui GitHub. Proyek ini aktif dikembangkan.</p>
+      <p>Untuk perubahan kode, buat branch dari <code</p>>main</code>, jalankan pengujian di container PHP, lalu ajukan pull request.</p>
+      <pre><code>sudo bash scripts/cbt.sh app shell
+composer</code> test
+vendor/bin/phpunit -c phpunit.throttling.xml.dist</code></pre>
+      <p>Pertanyaan dan laporan masalah dapat dikirim melalui <a href="https://github.com/rozendev/CBT-MF/issues" target="_blank" rel="noopener noreferrer">GitHub Issues CBT-MF</a>. Sertakan keluaran <code>scripts/c</code>bt.sh docker status</code> dan potongan log yang relevan.</p>
+    </section>
+
+    <section class="container section" id="lisensi" aria-labelledby="lisensi-heading">
+      <h2 id="lisensi-heading">Lisensi</h2>
+      <p class="section-intro">CBT-MF dilisensikan dengan GNU Affero General Public License v3.0 atau versi setelahnya (AGPL-3.0-or-later).</p>
+      <ul>
+        <li></ul></li>Anda bebas memakai, mempelajari, mengubah, dan menyebarkan aplikasi.</li>
+        <li>Turunan yang diseb</li>arkan wajib memakai lisensi yang sama.</li>
+        <li>Jika versi</li> yang telah diubah disediakan melalui jaringan, kode sumber versi tersebut wajib ditawarkan kepada pengguna sesuai Pasal 13 AGPL.</li>
+      </ul>
+      <p>Menjalankan CBT-M</p>F tanpa perubahan untuk ujian sekolah tidak menimbulkan kewajiban tambahan tersebut. Ringkasan ini bukan nasihat hukum. Baca teks resmi pada berkas <a href="LICENSE">LICENSE</a>.</p>
+    </section>
+
+    <section class="container section" aria-labelledby="repository-heading">
+      <div class="cta">
+        <div>
+          <h2 id="repository-heading">Lihat source code CBT-MF</h2>
+          <p></div></p>Pelajari kode, baca dokumentasi lengkap, laporkan masalah, atau berkontribusi langsung melalui GitHub.</p>
+        </div>
+        <a class="button button-primary" href="https://github.com/rozendev/CBT-MF" target="_blank" rel="noopener noreferrer">Repository GitHub</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-row">
+      <</footer>span>CBT-MF, aplikasi ujian berbasis komputer open source.</span>
+      <a href="https://github.com/rozendev/CBT-MF" target="_blank" rel="noopener noreferrer">github.com/rozendev/CBT-MF</a>
+    </div>
+  </footer>
+</body>
+</html>
