@@ -27,10 +27,11 @@ class CommsBridge(private val activity: MainActivity) {
     @JavascriptInterface
     fun startKiosk(examId: String, token: String): Boolean {
         val result = activity.kioskManager.startKiosk(examId, token)
-        if (result) {
-            sendEventToJS(activity.webView, "kiosk_started", "{\"examId\": \"$examId\"}")
-        } else {
-            sendEventToJS(activity.webView, "kiosk_failed", "{\"error\": \"Failed to pin screen\"}")
+        // `kiosk_started` hanya boleh dikirim oleh callback native setelah
+        // ActivityManager mengonfirmasi lock-task. Return value ini berarti
+        // permintaan sesi diterima, bukan perangkat sudah terkunci.
+        if (!result) {
+            sendEventToJS(activity.webView, "kiosk_failed", "{\"error\": \"Failed to start secure kiosk session\"}")
         }
         return result
     }
@@ -52,13 +53,6 @@ class CommsBridge(private val activity: MainActivity) {
         activity.uiBundleManager.examActive = active
     }
 
-    @JavascriptInterface
-    fun closeApp() {
-        activity.runOnUiThread {
-            activity.kioskManager.stopKiosk()
-            activity.finishAffinity()
-        }
-    }
 
     @JavascriptInterface
     fun getKioskStatus(): String {

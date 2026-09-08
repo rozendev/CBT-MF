@@ -42,4 +42,34 @@
     <string name="device_blocked_body">Perangkat ini diblokir oleh pengawas dan tidak dapat digunakan untuk ujian. Serahkan perangkat kepada pengawas.</string>
     <string name="device_blocked_reason_prefix">Alasan:</string>
     <string name="device_blocked_close">Tutup Aplikasi</string>
+    <string name="session_blocked_title">Sesi Ujian Diblokir</string>
+    <string name="session_invalid_body">Sesi ujian tidak lagi valid. Halaman ujian ditutup dan perangkat tetap terkunci. Hubungi pengawas.</string>
+    <string name="session_blocked_proctor_unlock">Buka oleh Pengawas</string>
+
+    <!-- Overlay penghalang saat siswa keluar dari layar ujian -->
+    <string name="overlay_title">Kembali ke Ujian</string>
+    <string name="overlay_body">Anda keluar dari layar ujian. Kejadian ini tercatat dan dilaporkan ke pengawas.</string>
+    <string name="overlay_return">Kembali ke Ujian</string>
+
+    <!-- Gerbang izin overlay di layar setup -->
+    <string name="overlay_perm_title">Izin "Tampilkan di atas aplikasi lain"</string>
+    <string name="overlay_perm_message">Tanpa izin ini, aplikasi TIDAK dapat menarik siswa kembali ke layar ujian bila mereka berpindah aplikasi — Android memblokirnya. Yang tersisa hanya bunyi alarm.\n\nNyalakan izin ini di Pengaturan sebelum ujian dimulai.</string>
+    <string name="overlay_perm_open">Buka Pengaturan</string>
+    <string name="overlay_perm_skip">Lanjut Tanpa Perlindungan</string>
+    <string name="overlay_perm_skipped">Ujian dimulai TANPA perlindungan overlay. Status ini dilaporkan ke pengawas.</string>
+    <string name="overlay_perm_no_settings">Tidak dapat membuka halaman izin di perangkat ini.</string>
+
+    <!-- Gerbang HOME launcher dari policy server -->
+    <string name="home_launcher_title">Jadikan CBT-MF sebagai Aplikasi Beranda</string>
+    <string name="home_launcher_message">Kebijakan sekolah mewajibkan CBT-MF menjadi aplikasi Beranda selama perangkat dipakai untuk ujian. Pilih CBT-MF Kiosk pada layar berikut, lalu kembali ke aplikasi.</string>
+    <string name="home_launcher_open">Buka Pengaturan Beranda</string>
+    <string name="home_launcher_no_settings">Tidak dapat membuka pengaturan aplikasi Beranda di perangkat ini.</string>
+
+    <!-- Penguncian layar ditolak / tidak terpasang -->
+    <string name="pin_refused_title">Penguncian Layar Tidak Aktif</string>
+    <string name="pin_refused_retry_message">Perangkat ini TIDAK terkunci. Ujian tidak boleh berjalan tanpa penguncian layar.\n\nTekan "Coba Lagi", lalu pilih tombol persetujuan pada dialog sistem yang muncul — jangan pilih "No thanks".</string>
+    <string name="pin_refused_retry">Coba Lagi</string>
+    <string name="pin_refused_final_message">Penguncian layar tetap tidak aktif setelah dua kali percobaan, jadi ujian dihentikan.\n\nSerahkan perangkat kepada pengawas.</string>
+    <string name="pin_refused_close">Tutup</string>
+    <string name="toast_kiosk_waiting_lock">Menunggu konfirmasi penguncian layar\u2026</string>
 </resources>
