@@ -4,6 +4,7 @@ namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
 use App\Models\TestModel;
+use App\Models\TestAttemptModel;
 use App\Models\ActivityLogModel;
 
 class TestController extends BaseController
@@ -167,6 +168,9 @@ class TestController extends BaseController
 
         // 1. Clean up all attempts, logs, and answers for this test
         $attempts = $db->table('test_attempts')->where('test_id', $id)->get()->getResult();
+        $attemptModel = new TestAttemptModel();
+        $attemptModel->clearCacheWhereIn('test_id', $id);
+
         foreach ($attempts as $attempt) {
             $logIds = $db->table('test_logs')
                 ->where('test_attempt_id', $attempt->id)
@@ -197,6 +201,9 @@ class TestController extends BaseController
         $db->transComplete();
 
         if ($db->transStatus() !== false) {
+            foreach ($attempts as $attempt) {
+                $attemptModel->clearCacheForAttempt($attempt->id, $attempt->test_id, $attempt->user_id);
+            }
             $this->activityLog->log('delete', session('user_id'), 'test', $id, "Menghapus ujian: {$test->name}");
             return redirect()->back()->with('success', 'Ujian beserta seluruh sesi siswa berhasil dihapus.');
         }
