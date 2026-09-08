@@ -8,7 +8,15 @@
 set -euo pipefail
 
 CYAN='\033[0;36m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'
-RED='\033[0;31m'; BLUE='\033[0;34m'; BOLD='\033[1m'; NC='\033[0m'
+RED='\033[0;31m'; BLUE='\033[0;34m'; MAGENTA='\033[0;35m'
+WHITE='\033[0;37m'; DIM='\033[2m'; BOLD='\033[1m'; NC='\033[0m'
+
+# Output non-interaktif (redirect, cron, CI) harus tetap bersih dan mudah
+# diparsing. NO_COLOR mengikuti konvensi https://no-color.org/.
+if [ ! -t 1 ] || [ -n "${NO_COLOR:-}" ]; then
+    CYAN=''; GREEN=''; YELLOW=''; RED=''; BLUE=''; MAGENTA=''
+    WHITE=''; DIM=''; BOLD=''; NC=''
+fi
 
 # die() sering dipanggil dari dalam $( ), dan 'exit' di sana hanya
 # mematikan subshell-nya: skrip induk jalan terus dengan nilai kosong.
@@ -45,6 +53,7 @@ load_env() {
         key=${line%%=*}
         value=${line#*=}
         key=$(printf '%s' "$key" | tr -d '[:space:]')
+        value=$(printf '%s' "$value" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         case "$key" in
             ''|*[!A-Za-z0-9_]*) continue ;;
         esac
@@ -63,11 +72,16 @@ load_env() {
 # penulisan berkas secara utuh akan menghapusnya diam-diam setiap kali
 # installer dijalankan ulang.
 env_get() {
-    local file="$1" key="$2" line value
+    local file="$1" key="$2" line lhs value
     [ -f "$file" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
-        case "$line" in "$key"=*) ;; *) continue ;; esac
+        case "$line" in *=*) ;; *) continue ;; esac
+        lhs=${line%%=*}
+        lhs=$(printf '%s' "$lhs" | tr -d '[:space:]')
+        [ "$lhs" = "$key" ] || continue
+
         value=${line#*=}
+        value=$(printf '%s' "$value" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
         case "$value" in
             \"*\") value=${value#\"}; value=${value%\"} ;;
             \'*\') value=${value#\'}; value=${value%\'} ;;
@@ -108,18 +122,67 @@ Nyalakan dulu:  sudo ./scripts/cbt.sh docker up"
 }
 
 # --- Helper Functions ---
+print_rule() {
+    printf '%b\n' "${DIM}  ────────────────────────────────────────────────────────────────────${NC}"
+}
+
 print_header() {
-    clear
-    printf '%b\n' "${CYAN}${BOLD}"
-    echo "============================================================"
-    echo "                 CBT-MF CLI HELPER                          "
-    echo "============================================================"
-    printf '%b\n' "${NC}"
+    if [ -t 1 ] && command -v clear >/dev/null 2>&1; then
+        clear
+    fi
+
+    local setup_state setup_color
+    if [ -f "$PROJECT_DIR/.env" ] && [ -f "$PROJECT_DIR/src/.env" ]; then
+        setup_state="SIAP DIGUNAKAN"
+        setup_color="$GREEN"
+    else
+        setup_state="BELUM DIKONFIGURASI"
+        setup_color="$YELLOW"
+    fi
+
+    printf '%b\n' "${CYAN}  ╭────────────────────────────────────────────────────────────────────╮${NC}"
+    printf '  %b│%b  %bCBT–MF CONTROL CENTER%b%*s%b│%b\n' \
+        "$CYAN" "$NC" "$BOLD" "$NC" 45 "" "$CYAN" "$NC"
+    printf '  %b│%b  %bKelola layanan, data, keamanan, dan konfigurasi deployment%b%*s%b│%b\n' \
+        "$CYAN" "$NC" "$DIM" "$NC" 8 "" "$CYAN" "$NC"
+    printf '%b\n' "${CYAN}  ╰────────────────────────────────────────────────────────────────────╯${NC}"
+    printf '  Status  %b● %s%b    Project  %b%s%b\n' \
+        "$setup_color" "$setup_state" "$NC" "$DIM" "$(basename "$PROJECT_DIR")" "$NC"
 }
 
 pause() {
     echo ""
-    read -r -p "Press [Enter] to continue..."
+    read -r -p "Tekan [Enter] untuk kembali..."
+}
+
+menu_group_label() {
+    case "$1" in
+        docker)  printf 'Docker & Layanan' ;;
+        config)  printf 'Konfigurasi' ;;
+        app)     printf 'Aplikasi' ;;
+        db)      printf 'Database' ;;
+        redis)   printf 'Redis' ;;
+        bundle)  printf 'Bundle Kiosk' ;;
+        data)    printf 'Pemeliharaan Data' ;;
+        migrate) printf 'Migrasi' ;;
+        tune)    printf 'Performa' ;;
+        *)       printf '%s' "$1" ;;
+    esac
+}
+
+menu_group_hint() {
+    case "$1" in
+        docker)  printf 'Kontrol container dan pantau kesehatan layanan' ;;
+        config)  printf 'Ubah deployment tanpa menjalankan ulang installer' ;;
+        app)     printf 'Akses shell, PHP, dan Composer di container' ;;
+        db)      printf 'Operasi database, ekspor, impor, dan akun admin' ;;
+        redis)   printf 'Kelola cache dan sesi aplikasi' ;;
+        bundle)  printf 'Bangun dan periksa bundle UI kiosk' ;;
+        data)    printf 'Rawat data ujian dan cache aplikasi' ;;
+        migrate) printf 'Kelola skema database CodeIgniter' ;;
+        tune)    printf 'Sesuaikan kapasitas PHP-FPM dan MariaDB' ;;
+        *)       printf 'Perintah operasional CBT-MF' ;;
+    esac
 }
 
 # ── Senarai perintah ────────────────────────────────────────
@@ -134,6 +197,11 @@ reg docker  down        do_docker_down      0 "Matikan semua layanan"
 reg docker  restart     do_docker_restart   0 "Nyalakan ulang semua layanan"
 reg docker  logs        do_docker_logs      0 "Ikuti log semua layanan"
 reg docker  status      do_docker_status    0 "Status container"
+
+reg config  show        do_config_show       0 "Ringkasan konfigurasi aktif"
+reg config  cloudflare  do_config_cloudflare 0 "Atur atau nonaktifkan Cloudflare Tunnel"
+reg config  base-url    do_config_base_url   0 "Ubah URL publik aplikasi"
+reg config  cors        do_config_cors       0 "Atur origin tambahan yang diizinkan"
 
 reg app     shell       do_app_shell        0 "Buka bash di container PHP"
 reg app     php         do_app_php          0 "Jalankan perintah php di container"
@@ -210,9 +278,33 @@ run_entry() {
 # --- Command Functions ---
 
 # 1. Docker
-do_docker_up()      { cd "$PROJECT_DIR" && $COMPOSE up -d --build; ok "Layanan siap: http://localhost:8080"; }
+# Compose tetap mendefinisikan cloudflared agar instalasi lama kompatibel.
+# Sesudah up/restart, tunnel tanpa token segera dihentikan supaya tidak masuk
+# restart-loop dan memenuhi kontrak README: aktif hanya ketika token diisi.
+ensure_cloudflare_state() {
+    local token container
+    token=$(env_get "$PROJECT_DIR/.env" CF_TUNNEL_TOKEN)
+    [ -z "$token" ] || return 0
+    container="${CONTAINER_CLOUDFLARED:-}"
+    [ -n "$container" ] || return 0
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
+        if ! (cd "$PROJECT_DIR" && $COMPOSE stop cloudflared >/dev/null); then
+            warn "Cloudflare Tunnel tidak memiliki token, tetapi gagal dihentikan."
+            return 1
+        fi
+        info "Cloudflare Tunnel tidak diaktifkan (token kosong)."
+    fi
+}
+
+do_docker_up() {
+    local base
+    cd "$PROJECT_DIR" && $COMPOSE up -d --build
+    ensure_cloudflare_state
+    base=$(app_base_url || true)
+    ok "Layanan siap: ${base:-http://localhost:8080}"
+}
 do_docker_down()    { cd "$PROJECT_DIR" && $COMPOSE down; }
-do_docker_restart() { cd "$PROJECT_DIR" && $COMPOSE restart; }
+do_docker_restart() { cd "$PROJECT_DIR" && $COMPOSE restart; ensure_cloudflare_state; }
 do_docker_logs()    { cd "$PROJECT_DIR" && $COMPOSE logs -f; }
 do_docker_status()  { cd "$PROJECT_DIR" && $COMPOSE ps; }
 
@@ -274,26 +366,312 @@ do_db_import() {
 # kutip penutupnya ikut ter-escape dan kuerinya rusak.
 sql_quote() { printf "'%s'" "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/''/g")"; }
 
-# Penulis key=value yang tidak memakai sed. Delimiter sed di installer
-# adalah '|', jadi nilai yang memuat '|' merusak berkasnya; ini menulis
-# nilai apa adanya. 'cat >' dipakai, bukan 'mv', agar kepemilikan dan
-# izin berkas .env tidak berubah.
+# Penulis key=value yang tidak memakai sed. Temporary file dibuat pada
+# filesystem yang sama, lalu di-rename secara atomik agar .env tidak pernah
+# terlihat kosong/parsial. Owner lama dipertahankan, sedangkan mode selalu 0600
+# karena berkas akar memuat password database, Redis, dan token tunnel.
 env_set() {
-    local key="$1" value="$2" file="$PROJECT_DIR/.env" tmp line found=0
-    tmp=$(mktemp)
+    local key="$1" value="$2" file="$PROJECT_DIR/.env" tmp line lhs found=0
+    case "$value" in
+        *\'*) die "Nilai $key tidak boleh memuat kutip tunggal." ;;
+        *$'\n'*|*$'\r'*) die "Nilai $key tidak boleh memuat baris baru." ;;
+    esac
+    tmp=$(mktemp "$PROJECT_DIR/.env.tmp.XXXXXX") \
+        || die "Gagal membuat temporary file konfigurasi."
     if [ -f "$file" ]; then
+        chown --reference="$file" "$tmp" \
+            || { rm -f "$tmp"; die "Gagal mempertahankan owner $file."; }
         while IFS= read -r line || [ -n "$line" ]; do
-            if [ "${line%%=*}" = "$key" ] && [ "$line" != "${line%%=*}" ]; then
-                printf '%s=%s\n' "$key" "$value" >> "$tmp"
+            lhs=${line%%=*}
+            lhs=$(printf '%s' "$lhs" | tr -d '[:space:]')
+            if [ "$lhs" = "$key" ] && [ "$line" != "${line%%=*}" ]; then
+                printf "%s='%s'\n" "$key" "$value" >> "$tmp"
                 found=1
             else
                 printf '%s\n' "$line" >> "$tmp"
             fi
         done < "$file"
     fi
-    [ "$found" = "1" ] || printf '%s=%s\n' "$key" "$value" >> "$tmp"
-    cat "$tmp" > "$file"
-    rm -f "$tmp"
+    [ "$found" = "1" ] || printf "%s='%s'\n" "$key" "$value" >> "$tmp"
+    chmod 600 "$tmp" || { rm -f "$tmp"; die "Gagal mengamankan temporary .env."; }
+    mv -f "$tmp" "$file" || { rm -f "$tmp"; die "Gagal memasang konfigurasi baru ke $file."; }
+}
+
+# Penulis generik untuk .env CodeIgniter. Perbandingan dilakukan pada sisi
+# kiri '=' setelah spasi dibuang, sehingga "app.baseURL = ..." diperbarui dan
+# tidak ditambahkan sebagai kunci duplikat. Mode quoted melindungi spasi dan #.
+env_file_set() {
+    local file="$1" key="$2" value="$3" mode="${4:-plain}"
+    local tmp line lhs replacement found=0
+    [ -f "$file" ] || die "Berkas konfigurasi tidak ditemukan: $file
+Jalankan installer lebih dulu."
+    case "$value" in
+        *$'\n'*|*$'\r'*) die "Nilai konfigurasi tidak boleh memuat baris baru." ;;
+    esac
+    if [ "$mode" = "quoted" ]; then
+        case "$value" in *\'*) die "Nilai konfigurasi tidak boleh memuat kutip tunggal." ;; esac
+        replacement="$key = '$value'"
+    else
+        replacement="$key=$value"
+    fi
+
+    tmp=$(mktemp "${file}.tmp.XXXXXX") \
+        || die "Gagal membuat temporary file konfigurasi."
+    chown --reference="$file" "$tmp" \
+        || { rm -f "$tmp"; die "Gagal mempertahankan owner $file."; }
+    if [ "$file" = "$PROJECT_DIR/src/.env" ]; then
+        chgrp 33 "$tmp" \
+            || { rm -f "$tmp"; die "Gagal memberi akses $file ke grup container (GID 33)."; }
+        chmod 640 "$tmp" \
+            || { rm -f "$tmp"; die "Gagal mengamankan izin $file ke mode 0640."; }
+    else
+        chmod --reference="$file" "$tmp" \
+            || { rm -f "$tmp"; die "Gagal mempertahankan izin $file."; }
+    fi
+    while IFS= read -r line || [ -n "$line" ]; do
+        lhs=${line%%=*}
+        lhs=$(printf '%s' "$lhs" | tr -d '[:space:]')
+        if [ "$lhs" = "$key" ] && [ "$line" != "${line%%=*}" ]; then
+            if [ "$found" = "0" ]; then
+                printf '%s\n' "$replacement" >> "$tmp"
+                found=1
+            fi
+        else
+            printf '%s\n' "$line" >> "$tmp"
+        fi
+    done < "$file"
+    [ "$found" = "1" ] || printf '%s\n' "$replacement" >> "$tmp"
+    mv -f "$tmp" "$file" || { rm -f "$tmp"; die "Gagal memasang konfigurasi baru ke $file."; }
+}
+
+config_require_installed() {
+    [ -f "$PROJECT_DIR/.env" ] && [ -f "$PROJECT_DIR/src/.env" ] \
+        || die "Konfigurasi belum tersedia. Jalankan: sudo ./scripts/cbt.sh install"
+}
+
+ask_yes_no() {
+    local prompt="$1" default="${2:-y}" answer suffix
+    [ "$default" = "y" ] && suffix="[Y/n]" || suffix="[y/N]"
+    read -r -p "$prompt $suffix " answer
+    answer=${answer:-$default}
+    case "$answer" in y|Y|yes|YES|Ya|ya) return 0 ;; *) return 1 ;; esac
+}
+
+config_row() {
+    local label="$1" value="$2" color="${3:-$WHITE}"
+    printf '  %b%-20s%b %b%s%b\n' "$DIM" "$label" "$NC" "$color" "$value" "$NC"
+}
+
+do_config_show() {
+    config_require_installed
+    local base token cors secret tunnel_state tunnel_color container
+    base=$(app_base_url || true)
+    token=$(env_get "$PROJECT_DIR/.env" CF_TUNNEL_TOKEN)
+    cors=$(env_get "$PROJECT_DIR/src/.env" CORS_ALLOWED_ORIGINS)
+    secret=$(env_get "$PROJECT_DIR/src/.env" KIOSK_APP_SECRET)
+    container="${CONTAINER_CLOUDFLARED:-}"
+
+    if [ -z "$token" ]; then
+        tunnel_state="Nonaktif — token belum diisi"
+        tunnel_color="$DIM"
+    elif [ -n "$container" ] && docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$container"; then
+        tunnel_state="Aktif — container berjalan"
+        tunnel_color="$GREEN"
+    else
+        tunnel_state="Dikonfigurasi — container tidak berjalan"
+        tunnel_color="$YELLOW"
+    fi
+
+    printf '\n%b\n' "${BOLD}  RINGKASAN DEPLOYMENT${NC}"
+    print_rule
+    config_row "Base URL" "${base:-(belum diatur)}" "$CYAN"
+    config_row "Cloudflare Tunnel" "$tunnel_state" "$tunnel_color"
+    config_row "CORS tambahan" "${cors:-(tidak ada)}"
+    config_row "Secret kiosk" "$([ -n "$secret" ] && printf 'terpasang' || printf 'tidak terpasang')" "$([ -n "$secret" ] && printf '%s' "$GREEN" || printf '%s' "$DIM")"
+    config_row "PHP-FPM worker" "${PHP_FPM_MAX_CHILDREN:-(otomatis, 4x core)}"
+    config_row "DB buffer pool" "${DB_BUFFER_POOL:-(default, 512M)}"
+    printf '\n%b\n' "${DIM}  Nilai token dan secret sengaja tidak pernah ditampilkan.${NC}"
+}
+
+do_config_cloudflare() {
+    config_require_installed
+    local value="" apply=1 interactive=0 arg token_state
+
+    if [ $# -eq 0 ]; then
+        interactive=1
+        if [ -n "$(env_get "$PROJECT_DIR/.env" CF_TUNNEL_TOKEN)" ]; then
+            token_state="sudah terpasang"
+        else
+            token_state="belum diisi"
+        fi
+        printf '%b\n' "${BOLD}Cloudflare Tunnel${NC} — token $token_state."
+        printf '%b\n' "${DIM}Token tidak akan ditampilkan atau dicatat ke layar.${NC}"
+        read -r -s -p "Token baru, 'off' untuk menonaktifkan, kosong untuk batal: " value
+        printf '\n'
+        if [ -z "$value" ]; then
+            info "Tidak ada perubahan."
+            return 0
+        fi
+        apply=1
+    else
+        case "$1" in
+            off|disable|disabled|none)
+                value="off"
+                shift
+                ;;
+            --token-stdin)
+                shift
+                IFS= read -r value || die "Token tidak terbaca dari stdin."
+                [ -n "$value" ] || die "Token dari stdin tidak boleh kosong."
+                ;;
+            *)
+                die "Demi keamanan, token tidak boleh dikirim sebagai argumen proses.
+Jalankan tanpa argumen untuk prompt tersembunyi, atau gunakan --token-stdin." ;;
+        esac
+        for arg in "$@"; do
+            case "$arg" in
+                --apply) apply=1 ;;
+                --no-apply) apply=0 ;;
+                *) die "Opsi tidak dikenal: $arg
+Pilihan yang didukung: --apply, --no-apply" ;;
+            esac
+        done
+    fi
+
+    case "${value,,}" in off|disable|disabled|none) value="" ;; esac
+    if [ -n "$value" ]; then
+        [ "${#value}" -ge 20 ] || die "Token Cloudflare tampak terlalu pendek. Periksa kembali token Anda."
+        case "$value" in
+            *[!A-Za-z0-9._=+/-]*) die "Token Cloudflare memuat karakter yang tidak valid." ;;
+        esac
+    fi
+
+    env_set CF_TUNNEL_TOKEN "$value"
+    chmod 600 "$PROJECT_DIR/.env" \
+        || die "Token tersimpan, tetapi izin .env gagal diamankan ke mode 0600."
+    export CF_TUNNEL_TOKEN="$value"
+    if [ -n "$value" ]; then
+        ok "Token Cloudflare Tunnel disimpan; izin .env disetel ke 0600."
+    else
+        ok "Cloudflare Tunnel dinonaktifkan."
+    fi
+
+    if [ "$interactive" = "1" ] && [ "$apply" = "1" ]; then
+        ask_yes_no "Terapkan perubahan sekarang?" y || apply=0
+    fi
+    if [ "$apply" != "1" ]; then
+        info "Konfigurasi disimpan tanpa diterapkan (--no-apply)."
+        return 0
+    fi
+
+    if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+        warn "Konfigurasi tersimpan, tetapi Docker tidak tersedia untuk menerapkannya."
+        return 0
+    fi
+
+    cd "$PROJECT_DIR"
+    if [ -n "$value" ]; then
+        $COMPOSE up -d --no-deps --force-recreate cloudflared
+        ok "Cloudflare Tunnel dijalankan ulang dengan token baru."
+    else
+        if ! $COMPOSE stop cloudflared >/dev/null 2>&1; then
+            die "Konfigurasi tersimpan, tetapi container tunnel gagal dihentikan."
+        fi
+        if ! $COMPOSE rm -sf cloudflared >/dev/null 2>&1; then
+            die "Tunnel sudah dihentikan, tetapi containernya gagal dihapus."
+        fi
+        ok "Container Cloudflare Tunnel telah dihentikan dan dihapus."
+    fi
+}
+
+validate_url_authority() {
+    local authority="$1" port="" host label
+    local -a labels=()
+    if [[ "$authority" =~ ^\[([0-9A-Fa-f:.]+)\](:([0-9]{1,5}))?$ ]]; then
+        port="${BASH_REMATCH[3]:-}"
+        [[ "${BASH_REMATCH[1]}" == *:* ]] || return 1
+    elif [[ "$authority" =~ ^[A-Za-z0-9.-]+(:([0-9]{1,5}))?$ ]]; then
+        port="${BASH_REMATCH[2]:-}"
+        host=${authority%%:*}
+        [ "${#host}" -le 253 ] || return 1
+        IFS='.' read -r -a labels <<< "$host"
+        for label in "${labels[@]}"; do
+            [ -n "$label" ] && [ "${#label}" -le 63 ] || return 1
+            case "$label" in -*|*-) return 1 ;; esac
+        done
+    else
+        return 1
+    fi
+    if [ -n "$port" ] && { [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; }; then
+        return 1
+    fi
+    return 0
+}
+
+validate_base_url() {
+    local value="$1" rest authority
+    case "$value" in http://*|https://*) ;; *) return 1 ;; esac
+    case "$value" in *[[:space:]\'\"]*|*\?*|*\#*|*@*) return 1 ;; esac
+    rest=${value#*://}
+    authority=${rest%%/*}
+    validate_url_authority "$authority"
+}
+
+do_config_base_url() {
+    config_require_installed
+    local value="${1:-}" current
+    [ $# -le 1 ] || die "Pemakaian: ./scripts/cbt.sh config base-url https://ujian.example.sch.id/"
+    current=$(app_base_url || true)
+    if [ -z "$value" ]; then
+        printf 'Base URL saat ini: %s\n' "${current:-(belum diatur)}"
+        read -r -p "Base URL baru (kosong untuk batal): " value
+        [ -n "$value" ] || { info "Tidak ada perubahan."; return 0; }
+    fi
+    validate_base_url "$value" || die "Base URL harus berupa URL http:// atau https:// yang valid tanpa spasi."
+    value="${value%/}/"
+    env_file_set "$PROJECT_DIR/src/.env" app.baseURL "$value" quoted
+    ok "Base URL diubah menjadi $value"
+    info "Perubahan berlaku pada request aplikasi berikutnya; restart tidak diperlukan."
+}
+
+normalize_cors_origins() {
+    local raw="$1" item rest normalized=""
+    local -a origins=()
+    IFS=',' read -r -a origins <<< "$raw"
+    for item in "${origins[@]}"; do
+        item=$(printf '%s' "$item" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [ -n "$item" ] || continue
+        case "$item" in http://*|https://*) ;; *) return 1 ;; esac
+        rest=${item#*://}
+        case "$rest" in */*|*\?*|*\#*|*@*|'') return 1 ;; esac
+        case "$item" in *\**) return 1 ;; esac
+        validate_url_authority "$rest" || return 1
+        if [ -n "$normalized" ]; then normalized="$normalized,$item"; else normalized="$item"; fi
+    done
+    printf '%s' "$normalized"
+}
+
+do_config_cors() {
+    config_require_installed
+    local value="${1:-}" current normalized
+    [ $# -le 1 ] || die "Pemakaian: ./scripts/cbt.sh config cors https://panel.example.id,https://admin.example.id"
+    current=$(env_get "$PROJECT_DIR/src/.env" CORS_ALLOWED_ORIGINS)
+    if [ -z "$value" ]; then
+        printf 'Origin tambahan saat ini: %s\n' "${current:-(tidak ada)}"
+        printf '%b\n' "${DIM}Base URL dan origin WebView kiosk selalu diizinkan otomatis.${NC}"
+        read -r -p "Origin tambahan (pisahkan dengan koma, 'off' untuk kosong): " value
+        [ -n "$value" ] || { info "Tidak ada perubahan."; return 0; }
+    fi
+    case "${value,,}" in off|none|default) normalized="" ;;
+        *) normalized=$(normalize_cors_origins "$value") \
+            || die "Setiap origin harus berbentuk http(s)://host[:port], tanpa path, query, atau wildcard." ;;
+    esac
+    env_file_set "$PROJECT_DIR/src/.env" CORS_ALLOWED_ORIGINS "$normalized" plain
+    if [ -n "$normalized" ]; then
+        ok "Origin CORS tambahan diperbarui: $normalized"
+    else
+        ok "Origin CORS tambahan dikosongkan. Base URL dan WebView tetap diizinkan."
+    fi
 }
 
 do_db_reset_pw() {
@@ -508,7 +886,17 @@ Contoh: ./scripts/cbt.sh tune set DB_BUFFER_POOL 1G" ;;
     esac
     [ -n "$value" ] || die "Nilai belum disebut. Contoh: tune set $key 1G"
 
+    case "$key" in
+        PHP_FPM_MAX_CHILDREN)
+            [[ "$value" =~ ^[1-9][0-9]*$ ]] \
+                || die "PHP_FPM_MAX_CHILDREN harus bilangan bulat positif." ;;
+        DB_BUFFER_POOL)
+            [[ "$value" =~ ^[1-9][0-9]*[KkMmGg]?$ ]] \
+                || die "DB_BUFFER_POOL harus berupa ukuran seperti 512M atau 2G." ;;
+    esac
+
     env_set "$key" "$value"
+    export "$key=$value"
     ok "$key=$value disimpan ke .env"
 
     # Sengaja tidak diterapkan sendiri: menyalakan ulang layanan di tengah
@@ -601,6 +989,10 @@ run_reset() {
     r=$(redis_container); require_container "$r"
     db="${DB_DATABASE:-}"
     [ -n "$db" ] || die "DB_DATABASE belum ada di .env; menolak menebak nama database."
+    case "$db" in
+        [!A-Za-z]*|*[!A-Za-z0-9_-]*)
+            die "DB_DATABASE tidak aman untuk reset. Perbaiki identifier di .env terlebih dahulu." ;;
+    esac
 
     info "Memulai proses reset..."
     if [ -f "$PROJECT_DIR/src/.env" ]; then
@@ -650,7 +1042,8 @@ run_install() {
     read -p "Masukkan Prefix Nama Container [ujian]: " input_prefix
     input_prefix=${input_prefix:-ujian}
 
-    read -p "Masukkan Cloudflare Tunnel Token (Kosongkan jika tidak pakai): " input_cf_token
+    read -sp "Masukkan Cloudflare Tunnel Token (Kosongkan jika tidak pakai): " input_cf_token
+    echo ""
     
     read -p "Masukkan Base URL Aplikasi [http://localhost:8080/]: " input_baseurl
     input_baseurl=${input_baseurl:-"http://localhost:8080/"}
@@ -695,17 +1088,35 @@ run_install() {
     
     echo -e "\n${YELLOW}Menyimpan konfigurasi...${NC}"
     
-    # Nilai yang memuat kutip tunggal atau baris baru menghasilkan berkas env
-    # rusak. Ditolak di sini, bukan dibiarkan lolos: berkas env yang rusak
-    # baru bersuara jauh kemudian sebagai galat koneksi yang tidak menunjuk
-    # ke installer sama sekali.
+    # Identifier dipakai sebagai nama database/container dan sebagian masuk ke
+    # SQL ber-backtick. Batasi ke bentuk yang memang didukung agar karakter
+    # pemisah atau backtick tidak pernah mengubah struktur konfigurasi/perintah.
+    case "$input_dbname" in
+        ''|[!A-Za-z]*|*[!A-Za-z0-9_-]*)
+            die "Nama database harus diawali huruf dan hanya memuat huruf, angka, _ atau -." ;;
+    esac
+    [ "${#input_dbname}" -le 64 ] || die "Nama database maksimal 64 karakter."
+    case "$input_dbuser" in
+        ''|[!A-Za-z_]*|*[!A-Za-z0-9_]*)
+            die "Username database harus berupa identifier (huruf/angka/underscore)." ;;
+    esac
+    [ "${#input_dbuser}" -le 32 ] || die "Username database maksimal 32 karakter."
+    case "$input_prefix" in
+        ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_-]*)
+            die "Prefix container harus diawali huruf/angka dan hanya memuat huruf, angka, _ atau -." ;;
+    esac
+    [ "${#input_prefix}" -le 40 ] || die "Prefix container maksimal 40 karakter."
+
+    # Nilai ditulis sebagai dotenv single-quoted supaya $, spasi, dan # tetap
+    # literal dan konsisten dengan nilai yang dibaca CodeIgniter. Kutip tunggal
+    # dan baris baru ditolak karena keduanya memutus serialisasi tersebut.
     local nilai
     for nilai in "$input_dbname" "$input_dbuser" "$input_dbpass" \
                  "$input_redispass" "$input_baseurl" "$input_cf_token" \
                  "$input_prefix"; do
         case "$nilai" in
-            *\'*)   die "Jawaban instalasi memuat kutip tunggal, yang merusak berkas env. Ulangi tanpa karakter itu." ;;
-            *$'\n'*) die "Jawaban instalasi memuat baris baru, yang merusak berkas env." ;;
+            *\'*) die "Jawaban instalasi memuat kutip tunggal, yang merusak berkas env. Ulangi tanpa karakter itu." ;;
+            *$'\n'*|*$'\r'*) die "Jawaban instalasi memuat baris baru, yang merusak berkas env." ;;
         esac
     done
 
@@ -716,9 +1127,26 @@ run_install() {
     buffer_pool=$(env_get "$PROJECT_DIR/.env" DB_BUFFER_POOL)
     max_conn=$(env_get "$PROJECT_DIR/.env" DB_MAX_CONNECTIONS)
     fpm_children=$(env_get "$PROJECT_DIR/.env" PHP_FPM_MAX_CHILDREN)
+    if [ -n "$buffer_pool" ] && [[ ! "$buffer_pool" =~ ^[1-9][0-9]*[KkMmGg]?$ ]]; then
+        die "DB_BUFFER_POOL lama tidak valid: gunakan ukuran seperti 512M atau 2G."
+    fi
+    if [ -n "$max_conn" ] && [[ ! "$max_conn" =~ ^[1-9][0-9]*$ ]]; then
+        die "DB_MAX_CONNECTIONS lama harus berupa bilangan bulat positif."
+    fi
+    if [ -n "$fpm_children" ] && [[ ! "$fpm_children" =~ ^[1-9][0-9]*$ ]]; then
+        die "PHP_FPM_MAX_CHILDREN lama harus berupa bilangan bulat positif."
+    fi
     kiosk_secret=$(env_get "$PROJECT_DIR/src/.env" KIOSK_APP_SECRET)
     cors_origins=$(env_get "$PROJECT_DIR/src/.env" CORS_ALLOWED_ORIGINS)
     cors_origins=${cors_origins:-https://appassets.androidplatform.net}
+
+    for nilai in "$buffer_pool" "$max_conn" "$fpm_children" \
+                 "$kiosk_secret" "$cors_origins"; do
+        case "$nilai" in
+            *\'*) die "Konfigurasi lama memuat kutip tunggal dan tidak dapat diserialisasi aman. Perbaiki berkas env lalu ulangi." ;;
+            *$'\n'*|*$'\r'*) die "Konfigurasi lama memuat baris baru dan tidak dapat dipertahankan." ;;
+        esac
+    done
 
     # Token honeypot, unik per pemasangan. Nilai lama dipertahankan supaya
     # halaman 403/404 yang sudah disulih tidak berubah tanpa alasan.
@@ -730,6 +1158,9 @@ run_install() {
             intruder_token=$(tr -dc a-f0-9 </dev/urandom | head -c 64)
         fi
     fi
+    case "$intruder_token" in
+        *\'*|*$'\n'*|*$'\r'*) die "INTRUDER_TOKEN lama tidak dapat diserialisasi aman." ;;
+    esac
 
     # ── Berkas env DITULIS UTUH, bukan disalin lalu ditambal sed ─────────
     # Pola lama menyalin .env.example dan src/env lalu menjalankan sed per
@@ -746,10 +1177,14 @@ run_install() {
     #      auth(), dan permintaan pertama mati dengan 'NOAUTH Authentication
     #      required' yang tidak menyebut-nyebut installer.
     #
-    # 'cat >' mengosongkan berkas lalu menulisnya, dan tidak mengganti inode,
-    # jadi bind mount docker yang sudah berjalan tetap menunjuk berkas yang sama.
+    # Kedua berkas dirakit di temporary file pada filesystem yang sama, lalu
+    # di-rename secara atomik. Mount ./src adalah mount DIREKTORI, sehingga
+    # container tetap melihat src/.env baru setelah rename.
+    local root_env_tmp app_env_tmp
+    root_env_tmp=$(mktemp "$PROJECT_DIR/.env.tmp.XXXXXX") \
+        || die "Gagal membuat temporary file untuk .env akar."
 
-    cat > "$PROJECT_DIR/.env" <<EOF
+    cat > "$root_env_tmp" <<EOF
 # Dibuat oleh 'cbt.sh install'. Jangan diedit sambil container berjalan.
 # Berkas ini dibaca docker-compose untuk interpolasi \${...}.
 #
@@ -759,42 +1194,52 @@ run_install() {
 # src/.env, tempat CodeIgniter membacanya.
 
 # ── Database ────────────────────────────────────────────────
-DB_HOST=${input_prefix}_mariadb
+DB_HOST='${input_prefix}_mariadb'
 DB_PORT=3306
-DB_DATABASE=$input_dbname
-DB_USERNAME=$input_dbuser
-DB_PASSWORD=$input_dbpass
-MYSQL_ROOT_PASSWORD=$input_dbpass
+DB_DATABASE='$input_dbname'
+DB_USERNAME='$input_dbuser'
+DB_PASSWORD='$input_dbpass'
+MYSQL_ROOT_PASSWORD='$input_dbpass'
 
 # Kosong = 512M buffer pool dan 500 koneksi.
-DB_BUFFER_POOL=$buffer_pool
-DB_MAX_CONNECTIONS=$max_conn
+DB_BUFFER_POOL='$buffer_pool'
+DB_MAX_CONNECTIONS='$max_conn'
 
 # ── Redis ───────────────────────────────────────────────────
 # Nilai ini disuntikkan ke container php; Config/Cache.php dan
 # Config/Session.php membacanya dari sana. JANGAN menulis ulang di src/.env:
 # dua sumber untuk nilai yang sama akan menyimpang diam-diam.
-REDIS_HOST=${input_prefix}_redis
+REDIS_HOST='${input_prefix}_redis'
 REDIS_PORT=6379
-REDIS_PASSWORD=$input_redispass
+REDIS_PASSWORD='$input_redispass'
 
 # Kosong = 4x jumlah core, dirender entrypoint saat container start.
-PHP_FPM_MAX_CHILDREN=$fpm_children
+PHP_FPM_MAX_CHILDREN='$fpm_children'
 
 # ── Cloudflare Tunnel (opsional) ────────────────────────────
-CF_TUNNEL_TOKEN=$input_cf_token
+CF_TUNNEL_TOKEN='$input_cf_token'
 
 # ── Nama container ──────────────────────────────────────────
-CONTAINER_NGINX=${input_prefix}_nginx
-CONTAINER_PHP=${input_prefix}_php
-CONTAINER_WEBSOCKET=${input_prefix}_websocket
-CONTAINER_CLOUDFLARED=${input_prefix}_cloudflared
-CONTAINER_DB=${input_prefix}_mariadb
-CONTAINER_REDIS=${input_prefix}_redis
+CONTAINER_NGINX='${input_prefix}_nginx'
+CONTAINER_PHP='${input_prefix}_php'
+CONTAINER_WEBSOCKET='${input_prefix}_websocket'
+CONTAINER_CLOUDFLARED='${input_prefix}_cloudflared'
+CONTAINER_DB='${input_prefix}_mariadb'
+CONTAINER_REDIS='${input_prefix}_redis'
 EOF
-    ok "✓ .env (akar) ditulis."
+    if [ -f "$PROJECT_DIR/.env" ]; then
+        chown --reference="$PROJECT_DIR/.env" "$root_env_tmp" \
+            || { rm -f "$root_env_tmp"; die "Gagal mempertahankan owner .env akar."; }
+    fi
+    chmod 600 "$root_env_tmp" \
+        || { rm -f "$root_env_tmp"; die "Gagal mengamankan izin .env ke mode 0600."; }
+    mv -f "$root_env_tmp" "$PROJECT_DIR/.env" \
+        || { rm -f "$root_env_tmp"; die "Gagal memasang .env akar."; }
+    ok "✓ .env (akar) ditulis dengan izin 0600."
 
-    cat > "$PROJECT_DIR/src/.env" <<EOF
+    app_env_tmp=$(mktemp "$PROJECT_DIR/src/.env.tmp.XXXXXX") \
+        || die "Gagal membuat temporary file untuk src/.env."
+    cat > "$app_env_tmp" <<EOF
 # Dibuat oleh 'cbt.sh install'.
 # Rujukan lengkap semua kunci yang dikenali aplikasi ada di src/env, yang
 # seluruhnya berkomentar dan sengaja tidak dipakai sebagai bahan salinan.
@@ -820,33 +1265,48 @@ database.default.password = '$input_dbpass'
 # Dibaca IntruderReportController lewat env(). Halaman honeypot 403/404
 # disajikan nginx sebagai berkas statis dan tidak bisa membaca berkas ini,
 # jadi nilainya disulihkan ke sana oleh installer.
-INTRUDER_TOKEN=$intruder_token
+INTRUDER_TOKEN='$intruder_token'
 
 # Origin yang diizinkan untuk bundled UI kiosk (WebView lokal).
-CORS_ALLOWED_ORIGINS=$cors_origins
+CORS_ALLOWED_ORIGINS='$cors_origins'
 
 # Opsional. Kosong berarti lapisan ini dilewati, bukan galat.
-KIOSK_APP_SECRET=$kiosk_secret
+KIOSK_APP_SECRET='$kiosk_secret'
 
 INSTALLER_LOCKED=true
 EOF
-    ok "✓ src/.env ditulis."
+    if [ -f "$PROJECT_DIR/src/.env" ]; then
+        chown --reference="$PROJECT_DIR/src/.env" "$app_env_tmp" \
+            || { rm -f "$app_env_tmp"; die "Gagal mempertahankan owner src/.env."; }
+    fi
+    chgrp 33 "$app_env_tmp" \
+        || { rm -f "$app_env_tmp"; die "Gagal memberi akses src/.env ke grup container (GID 33)."; }
+    chmod 640 "$app_env_tmp" \
+        || { rm -f "$app_env_tmp"; die "Gagal mengamankan izin src/.env ke mode 0640."; }
+    mv -f "$app_env_tmp" "$PROJECT_DIR/src/.env" \
+        || { rm -f "$app_env_tmp"; die "Gagal memasang src/.env."; }
+    ok "✓ src/.env ditulis dengan izin 0640."
 
-    # Halaman honeypot memakai token yang sama dengan sisi server. Ditulis
-    # dengan 'cat >' lewat berkas sementara, bukan 'sed -i', supaya inode-nya
-    # tidak berganti dan nginx yang sedang berjalan tetap menyajikan berkas
-    # yang sama. Polanya mencocokkan isi kutip apa pun, bukan hanya penanda
-    # __INTRUDER_TOKEN__, agar installer yang dijalankan ulang tetap bekerja.
-    local berkas tmp_honeypot
-    for berkas in "$PROJECT_DIR/docker/nginx/html/errors/403.html" \
-                  "$PROJECT_DIR/docker/nginx/html/errors/404.html"; do
+    # Template yang dilacak Git tidak boleh memuat state deployment. Buat salinan
+    # runtime terabaikan lalu sulih token hanya di sana; docker-compose memasang
+    # direktori ini sebagai document root nginx.
+    local runtime_html berkas tmp_honeypot
+    runtime_html="$PROJECT_DIR/.runtime/nginx/html"
+    rm -rf "$runtime_html"
+    mkdir -p "$runtime_html" \
+        || die "Gagal membuat direktori runtime nginx."
+    cp -a "$PROJECT_DIR/docker/nginx/html/." "$runtime_html/" \
+        || die "Gagal menyalin template halaman nginx."
+    for berkas in "$runtime_html/errors/403.html" "$runtime_html/errors/404.html"; do
         [ -f "$berkas" ] || continue
-        tmp_honeypot=$(mktemp)
-        sed "s|var TOKEN = '[^']*';|var TOKEN = '${intruder_token}';|" "$berkas" > "$tmp_honeypot"
-        cat "$tmp_honeypot" > "$berkas"
-        rm -f "$tmp_honeypot"
+        tmp_honeypot=$(mktemp "${berkas}.tmp.XXXXXX") \
+            || die "Gagal membuat temporary halaman honeypot."
+        sed "s|var TOKEN = '[^']*';|var TOKEN = '${intruder_token}';|" "$berkas" > "$tmp_honeypot" \
+            || { rm -f "$tmp_honeypot"; die "Gagal menyulih token honeypot."; }
+        mv -f "$tmp_honeypot" "$berkas" \
+            || { rm -f "$tmp_honeypot"; die "Gagal memasang halaman honeypot runtime."; }
     done
-    ok "✓ Token honeypot disinkronkan ke halaman 403/404."
+    ok "✓ Halaman 403/404 runtime dibuat tanpa mengubah template Git."
 
     # Muat ulang .env supaya nama container yang baru ditulis dikenali skrip.
     # load_env dipakai, bukan 'export $(... | xargs)': xargs memecah kata dan
@@ -868,6 +1328,10 @@ EOF
         install_failed=1
         exit 1
     fi
+    if ! ensure_cloudflare_state; then
+        install_failed=1
+        warn "Instalasi dilanjutkan, tetapi status Cloudflare Tunnel perlu diperiksa manual."
+    fi
     
     echo -e "\n${YELLOW}Menunggu Database siap (estimasi 15 detik)...${NC}"
     sleep 15
@@ -887,15 +1351,12 @@ EOF
             exit 1
         fi
 
-        echo -e "${CYAN}Mengupdate dan Menginstall dependensi Composer...${NC}"
+        echo -e "${CYAN}Menginstall dependensi Composer dari lockfile...${NC}"
+        # Installer harus reproducible: update dependency dilakukan terpisah,
+        # direview, diuji, lalu lockfile-nya dikomit. Di deployment hanya install.
         # Tanpa '-i': perintah ini tidak membaca stdin, dan 'docker exec -i'
-        # ikut melahap masukan yang tersisa di terminal, sehingga prompt
-        # sesudahnya terbaca kosong.
-        if ! docker exec "$PHP_CONTAINER" composer update --no-dev --optimize-autoloader; then
-            echo -e "${RED}Error: composer update gagal!${NC}"
-            install_failed=1
-        fi
-        if ! docker exec "$PHP_CONTAINER" composer install --no-dev --optimize-autoloader; then
+        # ikut melahap masukan yang tersisa di terminal.
+        if ! docker exec "$PHP_CONTAINER" composer install --no-dev --optimize-autoloader --no-interaction; then
             echo -e "${RED}Error: composer install gagal!${NC}"
             install_failed=1
         fi
@@ -966,10 +1427,14 @@ do_test_k6() {
 
 # --- Main Interactive Menu ---
 menu_group() {
-    local group="$1" entry g n fn danger desc
+    local group="$1" entry g n fn danger desc title hint
+    title=$(menu_group_label "$group")
+    hint=$(menu_group_hint "$group")
     while true; do
         print_header
-        printf '%b\n' "${BLUE}=== ${group} ===${NC}"
+        printf '\n  %b%s%b\n' "$BOLD" "$title" "$NC"
+        printf '  %b%s%b\n' "$DIM" "$hint" "$NC"
+        print_rule
         local -a names=() fns=() dangers=()
         local i=1
         for entry in "${CMD[@]}"; do
@@ -977,20 +1442,21 @@ menu_group() {
             [ "$g" = "$group" ] || continue
             names+=("$n"); fns+=("$fn"); dangers+=("$danger")
             if [ "$danger" = "1" ]; then
-                printf '%b%d) %s — %s%b\n' "$RED" "$i" "$n" "$desc" "$NC"
+                printf '  %b[%02d]  %-17s  %s%b\n' "$RED" "$i" "$n" "$desc" "$NC"
             else
-                printf '%d) %s — %s\n' "$i" "$n" "$desc"
+                printf '  %b[%02d]%b  %b%-17s%b  %s\n' "$CYAN" "$i" "$NC" "$BOLD" "$n" "$NC" "$desc"
             fi
             i=$((i + 1))
         done
-        echo "0) Kembali"
-        echo ""
-        read -r -p "Pilih: " pick
-        [ "$pick" = "0" ] && return 0
+        print_rule
+        printf '  %b[00]%b  Kembali ke menu utama\n\n' "$DIM" "$NC"
+        read -r -p "  Pilih menu › " pick
+        case "$pick" in 0|00) return 0 ;; esac
         if [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -lt "$i" ]; then
             local idx=$((pick - 1))
+            printf '\n'
             run_entry "${fns[$idx]}" "${dangers[$idx]}" "$group ${names[$idx]}"
-            echo ""; read -r -p "Tekan [Enter] untuk lanjut..."
+            pause
         else
             warn "Pilihan tidak valid."; sleep 1
         fi
@@ -998,41 +1464,49 @@ menu_group() {
 }
 
 main_menu() {
-    local entry g n fn danger desc
+    local entry g n fn danger desc display
     while true; do
         print_header
         local -a kinds=() labels=() fns=() dangers=()
         local i=1 grp
+        printf '\n  %bMENU OPERASIONAL%b\n' "$BOLD" "$NC"
+        print_rule
         while IFS= read -r grp; do
             kinds+=("group"); labels+=("$grp"); fns+=(""); dangers+=("0")
-            printf '%d) %s\n' "$i" "$grp"
+            display=$(menu_group_label "$grp")
+            printf '  %b[%02d]%b  %b%-23s%b  %s\n' \
+                "$CYAN" "$i" "$NC" "$BOLD" "$display" "$NC" "$(menu_group_hint "$grp")"
             i=$((i + 1))
         done < <(groups)
+
+        printf '\n  %bAKSI CEPAT%b\n' "$BOLD" "$NC"
+        print_rule
         for entry in "${CMD[@]}"; do
             IFS='|' read -r g n fn danger desc <<< "$entry"
             [ -z "$g" ] || continue
             kinds+=("cmd"); labels+=("$n"); fns+=("$fn"); dangers+=("$danger")
             if [ "$danger" = "1" ]; then
-                printf '%b%d) %s — %s%b\n' "$RED" "$i" "$n" "$desc" "$NC"
+                printf '  %b[%02d]  %-23s  %s%b\n' "$RED" "$i" "$n" "$desc" "$NC"
             else
-                printf '%d) %s — %s\n' "$i" "$n" "$desc"
+                printf '  %b[%02d]%b  %b%-23s%b  %s\n' "$MAGENTA" "$i" "$NC" "$BOLD" "$n" "$NC" "$desc"
             fi
             i=$((i + 1))
         done
-        echo "0) Keluar"
-        echo ""
-        read -r -p "Pilih: " pick
-        [ "$pick" = "0" ] && { ok "Selesai."; exit 0; }
+        print_rule
+        printf '  %b[00]%b  Keluar\n\n' "$DIM" "$NC"
+        read -r -p "  Pilih menu › " pick
+        case "$pick" in 0|00) ok "Selesai."; exit 0 ;; esac
         if [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -lt "$i" ]; then
             local idx=$((pick - 1))
             if [ "${kinds[$idx]}" = "group" ]; then
                 menu_group "${labels[$idx]}"
             else
-                # Kegagalan satu perintah tidak boleh menutup menu; status
-                # sebenarnya tetap diteruskan lewat jalur CLI (dispatch).
-                run_entry "${fns[$idx]}" "${dangers[$idx]}" "${labels[$idx]}" \
-                    || warn "Perintah berakhir dengan galat."
-                echo ""; read -r -p "Tekan [Enter] untuk lanjut..."
+                printf '\n'
+                # Jalankan langsung agar `set -e` tetap aktif di dalam handler.
+                # Lebih aman menutup menu saat gagal daripada meneruskan langkah
+                # berikutnya dan mencetak status sukses yang keliru.
+                run_entry "${fns[$idx]}" "${dangers[$idx]}" "${labels[$idx]}"
+                pause
             fi
         else
             warn "Pilihan tidak valid."; sleep 1
