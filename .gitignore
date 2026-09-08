@@ -109,3 +109,7 @@ src/writable.maintenance_manual
 src/writable/maintenance*
 # Dump database dari "cbt.sh db export" mendarat di root repo.
 *.sql
+
+# Salinan runtime yang dihasilkan cbt.sh: berisi INTRUDER_TOKEN asli
+# hasil substitusi per-pemasangan, jadi tidak boleh masuk repo publik.
+.runtime/
