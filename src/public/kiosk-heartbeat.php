@@ -9,7 +9,8 @@
  * down it answers 503 {mode:redis} so the kiosk can back off.
  *
  * Contract (POST, JSON body):
- *   {token, device_id, battery, charging, network, app_version}
+ *   {token, device_id, battery, charging, network, app_version,
+ *    overlay_guard, pinned}
  *   200 {"status":"ok"} | 401 {"status":"invalid_token"} |
  *   403 {"status":"device_banned"} | 503 {"status":"maintenance","mode":"redis"}
  */
@@ -71,13 +72,24 @@ try {
         $battery = -1;
     }
 
+    $pinnedRaw = $req['pinned'] ?? null;
+    if ($pinnedRaw === true || $pinnedRaw === 1 || $pinnedRaw === '1' || $pinnedRaw === 'yes') {
+        $pinned = '1';
+    } elseif ($pinnedRaw === false || $pinnedRaw === 0 || $pinnedRaw === '0' || $pinnedRaw === 'no') {
+        $pinned = '0';
+    } else {
+        $pinned = 'unknown';
+    }
+
     $fields = [
-        'battery'     => (string) $battery,
-        'charging'    => !empty($req['charging']) ? '1' : '0',
-        'network'     => in_array(($req['network'] ?? ''), ['wifi', 'mobile', 'none'], true) ? $req['network'] : 'unknown',
-        'app_version' => substr((string) ($req['app_version'] ?? ''), 0, 32),
-        'device_id'   => substr((string) ($req['device_id'] ?? ''), 0, 64),
-        'ts'          => (string) $now,
+        'battery'      => (string) $battery,
+        'charging'     => !empty($req['charging']) ? '1' : '0',
+        'network'      => in_array(($req['network'] ?? ''), ['wifi', 'mobile', 'none'], true) ? $req['network'] : 'unknown',
+        'app_version'  => substr((string) ($req['app_version'] ?? ''), 0, 32),
+        'device_id'    => substr((string) ($req['device_id'] ?? ''), 0, 64),
+        'overlay_guard'=> ($req['overlay_guard'] ?? null) === true ? '1' : '0',
+        'pinned'       => $pinned,
+        'ts'           => (string) $now,
     ];
 
     // Perangkat terblokir: jangan tulis kiosk_live sama sekali. Selain
@@ -223,7 +235,9 @@ try {
                     'device_id'   => $fields['device_id'],
                     'battery'     => $fields['battery'],
                     'network'     => $fields['network'],
-                    'app_version' => $fields['app_version'],
+                    'app_version'  => $fields['app_version'],
+                    'overlay_guard'=> $fields['overlay_guard'] === '1',
+                    'pinned'       => $fields['pinned'],
                 ], JSON_UNESCAPED_UNICODE),
                 date('Y-m-d H:i:s', $now),
             ]);

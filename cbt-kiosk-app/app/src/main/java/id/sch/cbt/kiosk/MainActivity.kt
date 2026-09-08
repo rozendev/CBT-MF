@@ -1,18 +1,21 @@
 package id.sch.cbt.kiosk
 
+import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
+import android.app.role.RoleManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.util.Log
 import android.view.View
@@ -30,14 +33,17 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import id.sch.cbt.kiosk.bridge.CommsBridge
 import id.sch.cbt.kiosk.bundle.UiBundleManager
 import id.sch.cbt.kiosk.kiosk.HeartbeatManager
 import id.sch.cbt.kiosk.kiosk.KioskGuardService
 import id.sch.cbt.kiosk.kiosk.KioskManager
+import id.sch.cbt.kiosk.kiosk.KioskOverlay
 import id.sch.cbt.kiosk.security.RootDetector
 import id.sch.cbt.kiosk.security.SecurityManager
 import id.sch.cbt.kiosk.security.SirenAlarmManager
@@ -77,10 +83,32 @@ class MainActivity : AppCompatActivity() {
     private var examFlowRequested = false
     private var bundleFlowStarted = false
     private var bundleDownloadActive = false
+    private var serverPolicyResolved = false
+    private var overlayWaivedForCurrentSession = false
+    private var activeBlockDialog: AlertDialog? = null
 
-    companion object {
-        private const val REQ_IMPORT_BUNDLE = 4001
+    private val policySettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        continueExamAfterResolvedPolicies()
     }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            Log.w("MainActivity", "Izin notifikasi ditolak; foreground guard tetap dijalankan")
+        }
+    }
+
+    private val bundleImportLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null && ::uiBundleManager.isInitialized && uiBundleManager.importBundle(uri)) {
+            continueExamFlowAfterImport()
+        }
+    }
+
 
     fun getSafeWebView(): WebView? {
         return try { webView } catch (e: UninitializedPropertyAccessException) { null }
@@ -103,7 +131,7 @@ class MainActivity : AppCompatActivity() {
                 prefs,
                 onReady = { ready ->
                     if (ready) {
-                        runOnUiThread { proceedToBundleExam() }
+                        runOnUiThread { continueExamAfterResolvedPolicies() }
                     }
                 },
                 onError = { message ->
@@ -120,20 +148,42 @@ class MainActivity : AppCompatActivity() {
             kioskManager.setSecurityManager(securityManager)
 
             kioskManager.setHeartbeatManager(
-                HeartbeatManager(this) {
-                    val safeWebView = getSafeWebView()
-                    if (safeWebView != null) {
-                        CommsBridge.sendEventToJS(
-                            safeWebView,
-                            "kiosk_failed",
-                            "{\"error\": \"Sesi kiosk tidak valid (401)\"}"
+                HeartbeatManager(
+                    activity = this,
+                    onUnauthorized = {
+                        getSafeWebView()?.let {
+                            CommsBridge.sendEventToJS(
+                                it,
+                                "kiosk_failed",
+                                "{\"error\": \"Sesi kiosk tidak valid (401)\"}"
+                            )
+                        }
+                        showActiveSessionBlocked(getString(R.string.session_invalid_body))
+                    },
+                    onDeviceBanned = { reason ->
+                        showActiveSessionBlocked(
+                            buildString {
+                                append(getString(R.string.device_blocked_body))
+                                if (reason.isNotBlank()) {
+                                    append("\n\n")
+                                    append(getString(R.string.device_blocked_reason_prefix))
+                                    append(' ')
+                                    append(reason)
+                                }
+                            }
                         )
-                    }
-                }
+                    },
+                )
             )
 
             // Ensure the device id exists up front so the first heartbeat is never blank.
             getOrCreateDeviceId()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
 
             setupLayout = findViewById(R.id.setupLayout)
             examContainer = findViewById(R.id.examContainer)
@@ -168,12 +218,8 @@ class MainActivity : AppCompatActivity() {
             setupToolbarListeners()
 
             btnImportBundle.setOnClickListener {
-                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    type = "application/zip"
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                }
                 try {
-                    startActivityForResult(intent, REQ_IMPORT_BUNDLE)
+                    bundleImportLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
                 } catch (e: Throwable) {
                     Toast.makeText(this, "Tidak ada aplikasi pemilih file.", Toast.LENGTH_LONG).show()
                 }
@@ -216,24 +262,144 @@ class MainActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
 
-                // HTTPS ONLY: plaintext HTTP is a MITM risk for exam integrity.
-                var finalUrl = inputUrl
-                if (finalUrl.startsWith("http://")) {
-                    finalUrl = "https://" + finalUrl.removePrefix("http://")
+                val finalUrl = normalizeServerUrl(inputUrl)
+                // Beri tahu HANYA kalau pengalihan benar-benar terjadi. Di build
+                // debug http:// dibiarkan, jadi toast ini pun tidak muncul —
+                // pesannya tetap jujur terhadap apa yang sungguh dilakukan.
+                if (inputUrl.startsWith("http://") && finalUrl.startsWith("https://")) {
                     Toast.makeText(this, getString(R.string.toast_https_redirect), Toast.LENGTH_LONG).show()
-                } else if (!finalUrl.startsWith("https://")) {
-                    finalUrl = "https://$finalUrl"
                 }
 
                 if (!enforceDevicePolicy()) return@setOnClickListener
-
-                // Save URL to preferences
-                prefs.edit().putString("server_url", finalUrl).apply()
-
-                startExamAndLockKiosk(finalUrl)
+                beginExam(finalUrl)
             }
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error in onCreate", e)
+        }
+    }
+
+    private fun beginExam(finalUrl: String) {
+        overlayWaivedForCurrentSession = false
+        serverPolicyResolved = false
+        prefs.edit().putString("server_url", finalUrl).apply()
+        startExamAndLockKiosk(finalUrl)
+    }
+
+    /**
+     * Gerbang izin overlay. Sengaja TIDAK memblokir mutlak: sebagian ROM
+     * menyembunyikan atau menolak izin ini, dan menahan ujian karenanya menukar
+     * satu kegagalan dengan kegagalan yang lebih buruk. Yang dijamin di sini
+     * adalah keputusannya jadi sadar dan tercatat — pengawas memilihnya, dan
+     * status perangkatnya ikut terkirim di heartbeat.
+     */
+    private fun showOverlayPermissionDialog() {
+        try {
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.overlay_perm_title))
+                .setMessage(getString(R.string.overlay_perm_message))
+                .setCancelable(false)
+                .setPositiveButton(getString(R.string.overlay_perm_open)) { _, _ ->
+                    openOverlaySettings()
+                }
+                .setNegativeButton(getString(R.string.overlay_perm_skip)) { _, _ ->
+                    overlayWaivedForCurrentSession = true
+                    Toast.makeText(this, getString(R.string.overlay_perm_skipped), Toast.LENGTH_LONG).show()
+                    continueExamAfterResolvedPolicies()
+                }
+                .show()
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Gagal menampilkan dialog izin overlay", e)
+            showSetupScreen()
+        }
+    }
+
+    private fun openOverlaySettings() {
+        try {
+            policySettingsLauncher.launch(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+            )
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Tidak dapat membuka pengaturan izin overlay", e)
+            Toast.makeText(this, getString(R.string.overlay_perm_no_settings), Toast.LENGTH_LONG).show()
+            showOverlayPermissionDialog()
+        }
+    }
+
+    /** Lanjut hanya setelah konfigurasi server dan seluruh policy wajib terpenuhi. */
+    private fun continueExamAfterResolvedPolicies() {
+        if (!examFlowRequested || !serverPolicyResolved) return
+
+        if (!enforceDevicePolicy()) {
+            showSetupScreen()
+            return
+        }
+
+        if (prefs.getBoolean("kiosk_enforce_home_launcher", true) && !isDefaultHomeLauncher()) {
+            showHomeLauncherDialog()
+            return
+        }
+
+        val overlayRequired = prefs.getBoolean("kiosk_overlay_guard_enabled", true)
+        if (overlayRequired && !overlayWaivedForCurrentSession && !KioskOverlay.isGranted(this)) {
+            showOverlayPermissionDialog()
+            return
+        }
+
+        proceedToBundleExam()
+    }
+
+    private fun isDefaultHomeLauncher(): Boolean {
+        return try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val resolved = packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+            resolved?.activityInfo?.packageName == packageName
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Tidak dapat membaca launcher HOME aktif", e)
+            false
+        }
+    }
+
+    private fun showHomeLauncherDialog() {
+        try {
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.home_launcher_title))
+                .setMessage(getString(R.string.home_launcher_message))
+                .setCancelable(false)
+                .setPositiveButton(getString(R.string.home_launcher_open)) { _, _ ->
+                    openHomeLauncherSettings()
+                }
+                .setNegativeButton(getString(R.string.exit_dialog_cancel)) { _, _ ->
+                    showSetupScreen()
+                }
+                .show()
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Gagal menampilkan dialog HOME launcher", e)
+            showSetupScreen()
+        }
+    }
+
+    private fun openHomeLauncherSettings() {
+        try {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val roleManager = getSystemService(RoleManager::class.java)
+                if (roleManager.isRoleAvailable(RoleManager.ROLE_HOME) &&
+                    !roleManager.isRoleHeld(RoleManager.ROLE_HOME)
+                ) {
+                    roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME)
+                } else {
+                    Intent(Settings.ACTION_HOME_SETTINGS)
+                }
+            } else {
+                Intent(Settings.ACTION_HOME_SETTINGS)
+            }
+            policySettingsLauncher.launch(intent)
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Tidak dapat membuka pengaturan HOME launcher", e)
+            Toast.makeText(this, getString(R.string.home_launcher_no_settings), Toast.LENGTH_LONG).show()
+            showSetupScreen()
         }
     }
 
@@ -314,6 +480,8 @@ class MainActivity : AppCompatActivity() {
                 verifyExitPassword(enteredPassword) { allowed, message ->
                     runOnUiThread {
                         if (allowed) {
+                            activeBlockDialog?.dismiss()
+                            activeBlockDialog = null
                             SirenAlarmManager.stopSiren()
                             kioskManager.stopKiosk()
                             Toast.makeText(this, getString(R.string.toast_kiosk_unlocked), Toast.LENGTH_SHORT).show()
@@ -389,6 +557,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * Heartbeat 401/403 di tengah ujian adalah keputusan keamanan, bukan outage.
+     * Lock-task tetap hidup dan halaman ujian disembunyikan sampai pengawas
+     * membuka sesi memakai password server.
+     */
+    private fun showActiveSessionBlocked(message: String) {
+        runOnUiThread {
+            if (!::kioskManager.isInitialized || !kioskManager.isSessionActive) return@runOnUiThread
+
+            try {
+                webView.loadUrl("about:blank")
+                webView.visibility = View.GONE
+            } catch (e: Throwable) {
+                Log.w("MainActivity", "Gagal menyembunyikan WebView pada sesi terblokir", e)
+            }
+
+            activeBlockDialog?.dismiss()
+            val dialog = AlertDialog.Builder(this)
+                .setTitle(getString(R.string.session_blocked_title))
+                .setMessage(message)
+                .setCancelable(false)
+                .setPositiveButton(getString(R.string.session_blocked_proctor_unlock), null)
+                .create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    showExitPasswordDialog()
+                }
+            }
+            activeBlockDialog = dialog
+            dialog.show()
+        }
+    }
+
+    /**
      * Verify the proctor password against the server (rate-limited there).
      * The password is never stored on the device.
      */
@@ -422,7 +623,7 @@ class MainActivity : AppCompatActivity() {
      * genuinely finished and only then unlocks the kiosk.
      */
     fun handleKioskExitRequest(token: String) {
-        if (!kioskManager.isKioskActive) return
+        if (!kioskManager.isSessionActive) return
 
         val baseUrl = prefs.getString("server_url", "") ?: ""
         if (baseUrl.isBlank()) {
@@ -495,13 +696,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startExamAndLockKiosk(url: String) {
         try {
-            var finalUrl = url.trimEnd('/')
-            if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
-                finalUrl = "https://$finalUrl"
-            }
-            if (finalUrl.startsWith("http://")) {
-                finalUrl = "https://" + finalUrl.removePrefix("http://")
-            }
+            val finalUrl = normalizeServerUrl(url)
 
             pendingBundleBaseUrl = finalUrl
             examFlowRequested = true
@@ -610,24 +805,101 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun lockKioskSession() {
+        // Dipasang SEBELUM startKiosk: permintaan pin dikirim di dalamnya, dan
+        // jawabannya bisa datang kapan saja sesudah itu.
+        kioskManager.onLockTaskConfirmed = {
+            runOnUiThread {
+                Toast.makeText(this, getString(R.string.toast_kiosk_locked), Toast.LENGTH_LONG).show()
+                val detail = org.json.JSONObject()
+                    .put("examId", kioskManager.currentExamId)
+                    .put("status", "active")
+                    .toString()
+                CommsBridge.sendEventToJS(webView, "kiosk_started", detail)
+            }
+        }
+        kioskManager.onLockTaskRefused = { isFinal ->
+            runOnUiThread { handleLockTaskRefused(isFinal) }
+        }
+
         val started = kioskManager.startKiosk("EXAM_SESSION", "TOKEN")
-        if (started) {
-            Toast.makeText(this, getString(R.string.toast_kiosk_locked), Toast.LENGTH_LONG).show()
-            CommsBridge.sendEventToJS(webView, "kiosk_started", "{\"examId\": \"EXAM_SESSION\", \"status\": \"active\"}")
-        } else {
+        if (!started) {
             Toast.makeText(this, getString(R.string.toast_kiosk_failed), Toast.LENGTH_LONG).show()
             CommsBridge.sendEventToJS(webView, "kiosk_failed", "{\"error\": \"LOCK_TASK_FAILED\"}")
+            return
+        }
+
+        // TIDAK mengatakan "terkunci" di sini. Sesi memang dimulai, tapi pinnya
+        // belum tentu terpasang — dialog sistem punya tombol "No thanks", dan
+        // klaim prematur di titik inilah yang dulu membuat ujian tanpa kunci
+        // terlihat normal bagi semua orang.
+        Toast.makeText(this, getString(R.string.toast_kiosk_waiting_lock), Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Penguncian ditolak atau tidak terpasang. Tidak bisa dicegah tanpa Device
+     * Owner — "No thanks" adalah pilihan sah yang diberikan Android — jadi yang
+     * dijamin di sini adalah ia tidak bisa lolos tanpa ketahuan.
+     */
+    private fun handleLockTaskRefused(isFinal: Boolean) {
+        SirenAlarmManager.playWarningBeep(this)
+
+        if (!isFinal) {
+            try {
+                AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.pin_refused_title))
+                    .setMessage(getString(R.string.pin_refused_retry_message))
+                    .setCancelable(false)
+                    .setPositiveButton(getString(R.string.pin_refused_retry)) { _, _ ->
+                        kioskManager.requestLockTask()
+                    }
+                    .show()
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "Gagal menampilkan dialog coba-lagi pin", e)
+                kioskManager.requestLockTask()
+            }
+            return
+        }
+
+        // Percobaan habis: ujian dihentikan dan halamannya dilepas, bukan
+        // sekadar diberi peringatan.
+        CommsBridge.sendEventToJS(webView, "kiosk_failed", "{\"error\": \"LOCK_TASK_REFUSED\"}")
+        kioskManager.stopKiosk()
+        try {
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.pin_refused_title))
+                .setMessage(getString(R.string.pin_refused_final_message))
+                .setCancelable(false)
+                .setPositiveButton(getString(R.string.pin_refused_close)) { d, _ -> d.dismiss() }
+                .show()
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Gagal menampilkan dialog pin final", e)
+            Toast.makeText(this, getString(R.string.pin_refused_final_message), Toast.LENGTH_LONG).show()
         }
     }
 
-    /** HTTPS-only, sama seperti jalur "Mulai Ujian". */
+    /**
+     * SATU-SATUNYA tempat kebijakan skema URL server ditegakkan. Dulu logika
+     * yang sama disalin di empat tempat dengan bentuk yang sedikit berbeda —
+     * kebijakan keamanan yang diduplikasi adalah kebijakan yang cepat atau
+     * lambat menyimpang di salah satu salinannya.
+     *
+     * Rilis: HTTP polos SELALU ditulis ulang jadi HTTPS. Cleartext di jaringan
+     * sekolah berarti jawaban ujian dan cookie sesi bisa dibaca dan diubah
+     * siapa pun yang satu WiFi.
+     *
+     * Debug: alamat http:// dibiarkan apa adanya supaya perangkat uji bisa
+     * menunjuk stack lokal yang tidak punya sertifikat. [BuildConfig.DEBUG]
+     * adalah konstanta compile-time — di varian rilis cabang ini dibuang
+     * compiler, sehingga tidak ada cara menghidupkannya dari luar: tidak lewat
+     * konfigurasi server, tidak lewat prefs, tidak lewat intent. Izin cleartext
+     * yang menyertainya pun hanya ada di src/debug/AndroidManifest.xml, yang
+     * tidak pernah ikut ke build rilis.
+     */
     private fun normalizeServerUrl(raw: String): String {
-        var url = raw.trim().trimEnd('/')
-        if (url.startsWith("http://")) {
-            url = "https://" + url.removePrefix("http://")
-        } else if (!url.startsWith("https://")) {
-            url = "https://$url"
-        }
+        val url = raw.trim().trimEnd('/')
+        if (BuildConfig.DEBUG && url.startsWith("http://")) return url
+        if (url.startsWith("http://")) return "https://" + url.removePrefix("http://")
+        if (!url.startsWith("https://")) return "https://$url"
         return url
     }
 
@@ -701,12 +973,12 @@ class MainActivity : AppCompatActivity() {
                     return@thread
                 }
 
-                val zipUrl = info.optString("url").takeIf { it.isNotBlank() }
+                val zipUrl = info?.optString("url")?.takeIf { it.isNotBlank() }
                     ?: "$baseUrl/ui-bundle/ui-bundle.zip"
 
                 // Sidik jari zip resmi, datang lewat HTTPS di luar zip itu sendiri.
                 // Dipin supaya side-load manual (offline) tetap punya pembanding.
-                val serverSha = info.optString("sha256").takeIf { it.isNotBlank() }
+                val serverSha = info?.optString("sha256")?.takeIf { it.isNotBlank() }
                 if (serverSha == null) {
                     runOnUiThread {
                         btnUpdateBundle.isEnabled = true
@@ -764,13 +1036,7 @@ class MainActivity : AppCompatActivity() {
         if (serverUrl.isBlank()) return
         kotlin.concurrent.thread(start = true, isDaemon = true, name = "KioskConfigFetcher") {
             try {
-                var baseUrl = serverUrl.trimEnd('/')
-                if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
-                    baseUrl = "https://$baseUrl"
-                }
-                if (baseUrl.startsWith("http://")) {
-                    baseUrl = "https://" + baseUrl.removePrefix("http://")
-                }
+                val baseUrl = normalizeServerUrl(serverUrl)
                 // device_id dikirim supaya server bisa menjawab blocked SEBELUM
                 // WebView dijalankan — itulah yang membuat halaman ujian benar-
                 // benar tidak termuat, bukan sekadar ditolak setelah tampil.
@@ -852,6 +1118,16 @@ class MainActivity : AppCompatActivity() {
                         val strictness = it.optString("root_detection_strictness", "warning")
                         if (strictness.isNotBlank()) prefs.edit().putString("kiosk_root_strictness", strictness).apply()
                     }
+                    if (it.has("enforce_home_launcher")) {
+                        prefs.edit()
+                            .putBoolean("kiosk_enforce_home_launcher", it.optBoolean("enforce_home_launcher", true))
+                            .apply()
+                    }
+                    if (it.has("overlay_guard_enabled")) {
+                        prefs.edit()
+                            .putBoolean("kiosk_overlay_guard_enabled", it.optBoolean("overlay_guard_enabled", true))
+                            .apply()
+                    }
                 }
             }
 
@@ -865,7 +1141,14 @@ class MainActivity : AppCompatActivity() {
                 .putBoolean("kiosk_siren_max_volume", SirenAlarmManager.isSirenMaxVolume)
                 .apply()
 
-            Log.d("MainActivity", "Applied kiosk config: sirenEnabled=${SirenAlarmManager.isSirenEnabled}, sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}")
+            serverPolicyResolved = true
+            Log.d(
+                "MainActivity",
+                "Applied kiosk config: sirenEnabled=${SirenAlarmManager.isSirenEnabled}, " +
+                    "sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}, " +
+                    "homeLauncher=${prefs.getBoolean("kiosk_enforce_home_launcher", true)}, " +
+                    "overlayGuard=${prefs.getBoolean("kiosk_overlay_guard_enabled", true)}"
+            )
 
             // ---- Bundle UI ----
             // Memulai ujian TIDAK lagi mengunduh apa pun. Dulu setiap tekan
@@ -897,7 +1180,7 @@ class MainActivity : AppCompatActivity() {
                 setBundleStatus("Bundle v${localBundleVersion.take(8)} — sudah terbaru.")
             }
 
-            proceedToBundleExam()
+            continueExamAfterResolvedPolicies()
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error parsing kiosk config JSON", e)
         }
@@ -914,9 +1197,17 @@ class MainActivity : AppCompatActivity() {
     public fun showSetupScreen() {
         runOnUiThread {
             try {
+                activeBlockDialog?.dismiss()
+                activeBlockDialog = null
                 SirenAlarmManager.stopSiren()
+                examFlowRequested = false
+                bundleFlowStarted = false
+                serverPolicyResolved = false
+                overlayWaivedForCurrentSession = false
+                pendingBundleBaseUrl = null
                 setupLayout.visibility = View.VISIBLE
                 examContainer.visibility = View.GONE
+                webView.visibility = View.VISIBLE
                 webView.loadUrl("about:blank")
             } catch (e: Throwable) {
                 Log.e("MainActivity", "Error showing setup screen", e)
@@ -941,19 +1232,6 @@ class MainActivity : AppCompatActivity() {
         // sadar operator) atau unduhan terverifikasi dari server.
     }
 
-    @Suppress("DEPRECATION")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_IMPORT_BUNDLE && resultCode == Activity.RESULT_OK) {
-            data?.data?.let { uri ->
-                if (uiBundleManager.importBundle(uri)) {
-                    // onReady(true) → proceedToBundleExam (bila exam flow sudah diminta);
-                    // tanpa itu, lanjut via Start / continueExamFlowAfterImport.
-                    continueExamFlowAfterImport()
-                }
-            }
-        }
-    }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
@@ -1029,6 +1307,7 @@ class MainActivity : AppCompatActivity() {
         updateNetworkStatus()
     }
 
+    @Suppress("DEPRECATION")
     private fun updateNetworkStatus() {
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -1072,14 +1351,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isKioskLocked(): Boolean =
-        ::kioskManager.isInitialized && kioskManager.isKioskActive
+        ::kioskManager.isInitialized && kioskManager.isSessionActive
 
     /**
      * Satu-satunya tempat back ditangani. Dipanggil dari tiga jalur karena back
      * bisa sampai lewat rute berbeda tergantung versi Android dan mode navigasi:
-     * dispatchKeyEvent (tombol/gesture mentah), OnBackPressedDispatcher
-     * (androidx, rute utama di AppCompatActivity modern), dan onBackPressed()
-     * lama. Debounce di SirenAlarmManager menjaga bunyinya tetap sekali.
+     * dispatchKeyEvent (tombol mentah) dan OnBackPressedDispatcher (androidx,
+     * termasuk gesture). Debounce di SirenAlarmManager menjaga bunyinya sekali.
      */
     private fun handleBackAttempt() {
         if (isKioskLocked()) {
@@ -1114,14 +1392,10 @@ class MainActivity : AppCompatActivity() {
         return super.dispatchKeyEvent(event)
     }
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        handleBackAttempt()
-    }
 
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean) {
         super.onMultiWindowModeChanged(isInMultiWindowMode)
-        if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+        if (::kioskManager.isInitialized && kioskManager.isSessionActive) {
             SirenAlarmManager.playWarningBeep(this)
             if (::securityManager.isInitialized) {
                 securityManager.handleMultiWindow(isInMultiWindowMode, isInPictureInPictureMode)
@@ -1134,7 +1408,7 @@ class MainActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode)
-        if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+        if (::kioskManager.isInitialized && kioskManager.isSessionActive) {
             SirenAlarmManager.playWarningBeep(this)
             if (::securityManager.isInitialized) {
                 securityManager.handleMultiWindow(isInMultiWindowMode = false, isInPictureInPictureMode = isInPictureInPictureMode)
@@ -1148,13 +1422,33 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         KioskGuardService.isMainActivityVisible = true
         registerStatusReceivers()
+
+        // Siswa baru saja kembali ke layar ujian — entah ditarik penutup layar
+        // atau kembali sendiri. Kalau pin sudah lepas, DI SINILAH satu-satunya
+        // kesempatan memasangnya lagi: `startLockTask()` menuntut activity yang
+        // sedang di depan. Tanpa ini, layar ujian kembali tapi perangkatnya
+        // tetap terbuka — shade dan Recents hidup, dan aplikasinya bisa
+        // di-swipe mati dari Recents.
+        //
+        // Di-post supaya transaksi resume selesai lebih dulu; dipanggil
+        // langsung di dalam onResume, activity belum benar-benar dianggap
+        // berada di depan.
+        if (::kioskManager.isInitialized) {
+            window.decorView.post {
+                try {
+                    kioskManager.ensureLockTask()
+                } catch (e: Throwable) {
+                    Log.e("MainActivity", "Gagal memasang ulang lock task", e)
+                }
+            }
+        }
     }
 
     override fun onPause() {
         super.onPause()
         KioskGuardService.isMainActivityVisible = false
         unregisterStatusReceivers()
-        if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+        if (::kioskManager.isInitialized && kioskManager.isSessionActive) {
             // Sekadar ter-pause belum tentu lolos: dialog sistem, notification
             // shade, dan animasi lock task juga memicu onPause. Bunyikan beep
             // saja; KioskGuardService yang memutuskan kapan ini jadi sirene.
@@ -1166,16 +1460,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         try {
-            // Tear down the kiosk (stops the heartbeat timer/worker via stopKiosk)
-            // so it never outlives the activity. Guarded: normal exits already ran
-            // stopKiosk, which cleared isKioskActive, so this does not double-stop.
-            if (::kioskManager.isInitialized && kioskManager.isKioskActive) {
+            activeBlockDialog?.dismiss()
+            activeBlockDialog = null
+            // Bersihkan sebelum super.onDestroy(); sesudah itu Activity tidak lagi
+            // aman dipakai untuk stopLockTask atau transisi UI.
+            if (::kioskManager.isInitialized && kioskManager.state != KioskManager.State.INACTIVE) {
                 kioskManager.stopKiosk()
             }
         } catch (e: Throwable) {
             Log.e("MainActivity", "Error stopping kiosk in onDestroy", e)
         }
+        super.onDestroy()
     }
 }
