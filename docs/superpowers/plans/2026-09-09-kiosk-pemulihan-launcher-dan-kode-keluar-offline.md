@@ -797,7 +797,7 @@ Di method `config()`, sesudah `$payload = [...]` (±baris 64) dan sebelum blok `
 - [ ] **Step 3: Verifikasi manual dengan toggle mati**
 
 ```bash
-docker compose exec -T php php spark db:seed SettingSeeder </dev/null 2>/dev/null || true
+# (tidak ada SettingSeeder di repo ini; setting dibuat saat pertama disimpan dari panel admin)
 curl -s "http://localhost:8080/api/kiosk/config?device_id=$(printf 'a%.0s' {1..32})" | python3 -m json.tool | head -40
 ```
 
@@ -810,7 +810,7 @@ Bila `curl` ke `localhost` gagal, pakai host yang dipakai stack ini (lihat `dock
 Nyalakan setting lewat SQL langsung (panel admin baru dibuat di Task 5):
 
 ```bash
-docker compose exec -T mariadb sh -c 'mysql -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE" -e "INSERT INTO settings (\`key\`,\`value\`,\`type\`,\`group\`) VALUES (\"kiosk_offline_exit_enabled\",\"1\",\"boolean\",\"kiosk\") ON DUPLICATE KEY UPDATE \`value\`=\"1\";"' </dev/null
+docker compose exec -T mariadb sh -c 'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e "INSERT INTO settings (\`key\`,\`value\`,\`type\`,\`group\`) VALUES (\"kiosk_offline_exit_enabled\",\"1\",\"boolean\",\"kiosk\") ON DUPLICATE KEY UPDATE \`value\`=\"1\";"' </dev/null
 curl -s "http://localhost:8080/api/kiosk/config?device_id=$(printf 'a%.0s' {1..32})" | python3 -c "
 import json,sys
 d = json.load(sys.stdin)['offline_exit']
@@ -976,7 +976,7 @@ Expected: baris pertama `400`; baris kedua menunjukkan `200` sampai iterasi 10 l
 - [ ] **Step 5: Verifikasi entri masuk log aktivitas**
 
 ```bash
-docker compose exec -T mariadb sh -c 'mysql -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE" -e "SELECT action, description, created_at FROM activity_logs WHERE action=\"kiosk_offline_exit\" ORDER BY id DESC LIMIT 3;"' </dev/null
+docker compose exec -T mariadb sh -c 'mariadb -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE" -e "SELECT action, description, created_at FROM activity_logs WHERE action=\"kiosk_offline_exit\" ORDER BY id DESC LIMIT 3;"' </dev/null
 ```
 
 Expected: ada baris `kiosk_offline_exit` dengan device dan `kode_hari=2026-09-09`.
