@@ -42,4 +42,10 @@
     <string name="device_blocked_body">Perangkat ini diblokir oleh pengawas dan tidak dapat digunakan untuk ujian. Serahkan perangkat kepada pengawas.</string>
     <string name="device_blocked_reason_prefix">Alasan:</string>
     <string name="device_blocked_close">Tutup Aplikasi</string>
+
+    <string name="restore_home_title">Kembalikan Layar Utama</string>
+    <string name="restore_home_message">Ujian sudah selesai, tetapi perangkat ini masih memakai aplikasi ujian sebagai layar utama. Buka pengaturan untuk mengembalikan launcher bawaan Anda.</string>
+    <string name="restore_home_open">Buka Pengaturan</string>
+    <string name="restore_home_later">Nanti</string>
+    <string name="restore_home_manual">Buka Pengaturan → Aplikasi → Aplikasi default → Aplikasi Beranda, lalu pilih launcher bawaan.</string>
 </resources>

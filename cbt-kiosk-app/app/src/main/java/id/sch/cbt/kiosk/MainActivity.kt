@@ -36,6 +36,7 @@ import androidx.webkit.WebViewAssetLoader
 import id.sch.cbt.kiosk.bridge.CommsBridge
 import id.sch.cbt.kiosk.bundle.UiBundleManager
 import id.sch.cbt.kiosk.kiosk.HeartbeatManager
+import id.sch.cbt.kiosk.kiosk.HomeLauncherGuard
 import id.sch.cbt.kiosk.kiosk.KioskGuardService
 import id.sch.cbt.kiosk.kiosk.KioskManager
 import id.sch.cbt.kiosk.security.RootDetector
@@ -67,6 +68,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnReloadPage: ImageButton
     private lateinit var btnExitKiosk: ImageButton
     private lateinit var prefs: SharedPreferences
+    private var restoreHomeDialog: AlertDialog? = null
 
     private var batteryReceiver: BroadcastReceiver? = null
 
@@ -848,6 +850,11 @@ class MainActivity : AppCompatActivity() {
                         prefs.edit().putBoolean("kiosk_block_clipboard", blockClipboard).apply()
                         securityManager.setClipboardGuard(blockClipboard)
                     }
+                    if (it.has("enforce_home_launcher")) {
+                        prefs.edit()
+                            .putBoolean("kiosk_enforce_home_launcher", it.optBoolean("enforce_home_launcher", true))
+                            .apply()
+                    }
                     if (it.has("root_detection_strictness")) {
                         val strictness = it.optString("root_detection_strictness", "warning")
                         if (strictness.isNotBlank()) prefs.edit().putString("kiosk_root_strictness", strictness).apply()
@@ -911,7 +918,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    public fun showSetupScreen() {
+    @JvmOverloads
+    public fun showSetupScreen(afterKioskExit: Boolean = false) {
         runOnUiThread {
             try {
                 SirenAlarmManager.stopSiren()
@@ -921,6 +929,39 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Throwable) {
                 Log.e("MainActivity", "Error showing setup screen", e)
             }
+            // Hanya sesudah kiosk benar-benar dilepas. Memanggilnya di setiap
+            // layar setup akan menyuruh siswa membatalkan peran Home yang baru
+            // saja mereka tetapkan untuk memulai ujian.
+            if (afterKioskExit) promptRestoreHomeLauncher()
+        }
+    }
+
+    /**
+     * Sengaja tanpa flag "sudah pernah ditampilkan": syaratnya dievaluasi ulang
+     * tiap kali dipanggil, sehingga prompt berhenti muncul dengan sendirinya
+     * begitu launcher dikembalikan — tidak ada state yang bisa basi.
+     */
+    private fun promptRestoreHomeLauncher() {
+        if (!prefs.getBoolean("kiosk_enforce_home_launcher", true)) return
+        if (!HomeLauncherGuard.isHoldingHomeRole(this)) return
+        if (isFinishing || isDestroyed) return
+        if (restoreHomeDialog?.isShowing == true) return
+
+        try {
+            restoreHomeDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.restore_home_title)
+                .setMessage(R.string.restore_home_message)
+                .setCancelable(false)
+                .setPositiveButton(R.string.restore_home_open) { d, _ ->
+                    d.dismiss()
+                    if (!HomeLauncherGuard.openHomeSettings(this)) {
+                        Toast.makeText(this, R.string.restore_home_manual, Toast.LENGTH_LONG).show()
+                    }
+                }
+                .setNegativeButton(R.string.restore_home_later) { d, _ -> d.dismiss() }
+                .show()
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Gagal menampilkan prompt pemulihan launcher", e)
         }
     }
 
