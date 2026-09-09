@@ -4,6 +4,7 @@ namespace App\Controllers\Api;
 
 use App\Controllers\BaseController;
 use App\Libraries\DeviceBan;
+use App\Libraries\KioskOfflineCode;
 use App\Models\KioskBannedDeviceModel;
 use App\Models\SettingModel;
 
@@ -61,6 +62,24 @@ class KioskController extends BaseController
             ],
             'ui_bundle'       => $bundleInfo,
         ];
+
+        // Amplop kode keluar offline. Password TIDAK ikut: perangkat hanya
+        // menerima hash lambat dari kodenya, sehingga HP yang dibongkar tidak
+        // membocorkan password pengawas — yang juga menjaga verify-exit.
+        $offlineEnabled = (bool) $settingModel->getValue('kiosk_offline_exit_enabled', false);
+        if ($offlineEnabled) {
+            $exitPassword = (string) $settingModel->getValue('kiosk_exit_password', '123456');
+            $payload['offline_exit'] = [
+                'enabled'    => true,
+                'iterations' => KioskOfflineCode::PBKDF2_ITERATIONS,
+                'days'       => KioskOfflineCode::buildEnvelope($exitPassword),
+            ];
+        } else {
+            // Dikirim eksplisit, bukan dihilangkan: perangkat harus MENGHAPUS
+            // amplop lamanya saat toggle dimatikan, dan blok yang hilang tidak
+            // bisa dibedakan dari respons versi lama.
+            $payload['offline_exit'] = ['enabled' => false, 'iterations' => 0, 'days' => []];
+        }
 
         // Perangkat terblokir tetap dijawab 200 dengan konfigurasi lengkap,
         // bukan 4xx. Dua alasan: layar terkunci masih bisa menampilkan nama
