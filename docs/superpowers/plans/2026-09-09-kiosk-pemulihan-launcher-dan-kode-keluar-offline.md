@@ -736,17 +736,19 @@ git commit -m "feat(kiosk): library kode keluar offline harian"
 
 - [ ] **Step 1: Daftarkan key setting**
 
-Di `src/app/Controllers/Admin/KioskSettingsController.php`, tambahkan ke `ALLOWED_KEYS` (sesudah `'kiosk_overlay_guard_enabled',`):
+Di `src/app/Controllers/Admin/KioskSettingsController.php`, tambahkan ke **`BOOLEAN_KEYS`** (baris 14-20, sesudah `'kiosk_overlay_guard_enabled',`):
 
 ```php
         'kiosk_offline_exit_enabled',
 ```
 
-dan ke `KEY_META`:
+dan ke `KEY_META` (baris 22-31):
 
 ```php
         'kiosk_offline_exit_enabled' => ['group' => 'kiosk', 'type' => 'boolean'],
 ```
+
+Keduanya wajib. `update()` memakai `BOOLEAN_KEYS` untuk memaksa nilai `'0'` saat checkbox tidak dicentang — checkbox yang tidak dicentang tidak mengirim apa pun. Tanpa entri di sana, toggle hanya bisa dinyalakan dan tidak pernah bisa dimatikan, yang langsung melanggar janji spec §4.8 bahwa mematikan toggle mencabut jalur offline dari seluruh perangkat.
 
 Di `src/app/Controllers/Admin/SettingController.php`, tambahkan ke peta key (dekat baris 67):
 
@@ -1048,16 +1050,18 @@ Di `src/app/Views/admin/kiosk/index.php`, tambahkan kartu berikut sesudah kartu 
                                 <div class="form-check form-switch m-0 ms-3 fs-4">
                                     <input class="form-check-input" type="checkbox" role="switch" id="kioskOfflineExit"
                                            name="settings[kiosk_offline_exit_enabled]" value="1"
-                                           <?= kioskSettingChecked($kioskSettings, 'kiosk_offline_exit_enabled') ? 'checked' : '' ?>>
+                                           <?= kioskSettingChecked($kioskSettings, 'kiosk_offline_exit_enabled', false) ? 'checked' : '' ?>>
                                 </div>
                             </div>
                         </div>
 ```
 
+> Argumen ketiga `false` wajib ditulis eksplisit. `kioskSettingChecked` (baris 12 di berkas view) memakai `bool $default = true`, sehingga tanpa argumen itu instalasi yang belum menjalankan seeder akan menampilkan toggle menyala — kebalikan dari mati-secara-default yang diwajibkan spec §4.8.
+
 Lalu tambahkan panel daftar kode sebagai kartu tersendiri, di bawah kartu pengaturan (sebelum penutup kontainer halaman):
 
 ```php
-<?php if (kioskSettingChecked($kioskSettings, 'kiosk_offline_exit_enabled')): ?>
+<?php if (kioskSettingChecked($kioskSettings, 'kiosk_offline_exit_enabled', false)): ?>
 <div class="card border-0 shadow-sm mt-4">
     <div class="card-header bg-white py-3">
         <h5 class="fw-bold mb-0 text-dark">Kode Keluar Offline</h5>
