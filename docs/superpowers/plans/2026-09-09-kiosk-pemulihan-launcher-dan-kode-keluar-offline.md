@@ -798,7 +798,7 @@ Di method `config()`, sesudah `$payload = [...]` (±baris 64) dan sebelum blok `
 
 ```bash
 docker compose exec -T php php spark db:seed SettingSeeder </dev/null 2>/dev/null || true
-curl -sk "https://localhost/api/kiosk/config?device_id=$(printf 'a%.0s' {1..32})" | python3 -m json.tool | head -40
+curl -s "http://localhost:8080/api/kiosk/config?device_id=$(printf 'a%.0s' {1..32})" | python3 -m json.tool | head -40
 ```
 
 Expected: ada `"offline_exit": {"enabled": false, "iterations": 0, "days": []}`.
@@ -811,7 +811,7 @@ Nyalakan setting lewat SQL langsung (panel admin baru dibuat di Task 5):
 
 ```bash
 docker compose exec -T mariadb sh -c 'mysql -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE" -e "INSERT INTO settings (\`key\`,\`value\`,\`type\`,\`group\`) VALUES (\"kiosk_offline_exit_enabled\",\"1\",\"boolean\",\"kiosk\") ON DUPLICATE KEY UPDATE \`value\`=\"1\";"' </dev/null
-curl -sk "https://localhost/api/kiosk/config?device_id=$(printf 'a%.0s' {1..32})" | python3 -c "
+curl -s "http://localhost:8080/api/kiosk/config?device_id=$(printf 'a%.0s' {1..32})" | python3 -c "
 import json,sys
 d = json.load(sys.stdin)['offline_exit']
 print('enabled   :', d['enabled'])
@@ -948,7 +948,7 @@ use App\Models\ActivityLogModel;
 
 ```bash
 DEV=$(printf 'a%.0s' {1..32})
-curl -sk -X POST "https://localhost/api/kiosk/offline-exit-log" \
+curl -s -X POST "http://localhost:8080/api/kiosk/offline-exit-log" \
   -H 'Content-Type: application/json' \
   -d "{\"device_id\":\"$DEV\",\"events\":[{\"at\":1757400000,\"code_day\":\"2026-09-09\",\"app_version\":\"1.0.0\"}]}"
 ```
@@ -959,13 +959,13 @@ Expected: `{"status":"ok","recorded":1}`.
 
 ```bash
 # device_id tidak sah -> 400
-curl -sk -o /dev/null -w '%{http_code}\n' -X POST "https://localhost/api/kiosk/offline-exit-log" \
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "http://localhost:8080/api/kiosk/offline-exit-log" \
   -H 'Content-Type: application/json' -d '{"device_id":"spasi tidak boleh","events":[]}'
 
 # throttle: kirim 12 kali, permintaan ke-11 dan seterusnya harus 429
 DEV=$(printf 'b%.0s' {1..32})
 for i in $(seq 1 12); do
-  curl -sk -o /dev/null -w "$i:%{http_code} " -X POST "https://localhost/api/kiosk/offline-exit-log" \
+  curl -s -o /dev/null -w "$i:%{http_code} " -X POST "http://localhost:8080/api/kiosk/offline-exit-log" \
     -H 'Content-Type: application/json' \
     -d "{\"device_id\":\"$DEV\",\"events\":[{\"at\":1757400000,\"code_day\":\"2026-09-09\",\"app_version\":\"1.0.0\"}]}"
 done; echo
@@ -1100,7 +1100,7 @@ Lalu tambahkan panel daftar kode sebagai kartu tersendiri, di bawah kartu pengat
 
 - [ ] **Step 3: Verifikasi halaman dengan password lemah**
 
-Buka `https://<host>/admin/kiosk` di browser sebagai admin, dengan `kiosk_offline_exit_enabled` masih hidup dari Task 3 dan `kiosk_exit_password` masih `123456`.
+Buka `http://localhost:8080/admin/kiosk` di browser sebagai admin, dengan `kiosk_offline_exit_enabled` masih hidup dari Task 3 dan `kiosk_exit_password` masih `123456`.
 
 Expected: panel muncul, peringatan merah tampil, kode hari ini **25967489** (cocok dengan vektor tetap di Task 2 untuk tanggal 2026-09-09; untuk tanggal lain nilainya tentu berbeda), 7 baris tanggal berurutan.
 
