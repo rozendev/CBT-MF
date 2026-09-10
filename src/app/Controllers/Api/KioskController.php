@@ -69,10 +69,38 @@ class KioskController extends BaseController
         $offlineEnabled = (bool) $settingModel->getValue('kiosk_offline_exit_enabled', false);
         if ($offlineEnabled) {
             $exitPassword = (string) $settingModel->getValue('kiosk_exit_password', '123456');
+
+            // Membangun amplop = 7x PBKDF2 120rb-iterasi, diukur ~1.27 detik
+            // waktu blocking worker PHP-FPM per request. Endpoint ini dipanggil
+            // setiap start aplikasi, retry reload, mulai ujian, dan "Update UI"
+            // manual — pagi ujian dengan puluhan device menyala berbarengan
+            // adalah beban puncaknya, justru saat keandalan paling penting.
+            // Caching aman: kode harian bersifat GLOBAL per sekolah (bukan per
+            // device), jadi hash untuk satu hari identik untuk semua perangkat
+            // berapa pun salt-nya — salt unik per request tidak menambah apa
+            // pun. Yang harus tetap benar hanya salt BEDA antar hari, dan itu
+            // terjaga karena key mengikutkan tanggal. Key juga mengikutkan
+            // HASH password (bukan password mentah, demi §2.1) supaya §4.7
+            // tetap terpenuhi: mengganti password mengubah amplop yang
+            // disajikan seketika, tanpa langkah rotasi terpisah.
+            $today = (new \DateTimeImmutable('now'))
+                ->setTimezone(new \DateTimeZone(KioskOfflineCode::TIMEZONE))
+                ->format('Y-m-d');
+            // NB: colon/slash/dsb tidak boleh dipakai di cache key CI4
+            // (reservedCharacters) — lihat juga komentar di verifyExit().
+            $cacheKey = 'kiosk_offline_envelope_' . hash('sha256', $exitPassword) . '_' . $today;
+
+            $cache = service('cache');
+            $days = $cache->get($cacheKey);
+            if (!is_array($days)) {
+                $days = KioskOfflineCode::buildEnvelope($exitPassword);
+                $cache->save($cacheKey, $days, 3600);
+            }
+
             $payload['offline_exit'] = [
                 'enabled'    => true,
                 'iterations' => KioskOfflineCode::PBKDF2_ITERATIONS,
-                'days'       => KioskOfflineCode::buildEnvelope($exitPassword),
+                'days'       => $days,
             ];
         } else {
             // Dikirim eksplisit, bukan dihilangkan: perangkat harus MENGHAPUS
