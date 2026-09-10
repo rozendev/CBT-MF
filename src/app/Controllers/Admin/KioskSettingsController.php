@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Libraries\KioskOfflineCode;
 use App\Models\SettingModel;
 use App\Models\ActivityLogModel;
 
@@ -43,8 +44,22 @@ class KioskSettingsController extends BaseController
         $groupedSettings = $this->settingModel->getGroupedSettings();
         $kioskSettings   = $groupedSettings['kiosk'] ?? [];
 
+        $exitPassword = (string) $this->settingModel->getValue('kiosk_exit_password', '123456');
+
+        // Dihitung ulang tiap kali halaman dibuka, bukan disimpan: kode berubah
+        // otomatis begitu password diganti, tanpa langkah rotasi terpisah.
+        $offlineCodes = [];
+        foreach (KioskOfflineCode::upcomingDays() as $day) {
+            $offlineCodes[] = [
+                'day'  => $day,
+                'code' => KioskOfflineCode::codeForDay($exitPassword, $day),
+            ];
+        }
+
         return view('admin/kiosk/index', [
-            'kioskSettings' => $kioskSettings
+            'kioskSettings'      => $kioskSettings,
+            'offlineCodes'       => $offlineCodes,
+            'passwordWeaknesses' => KioskOfflineCode::passwordWeaknesses($exitPassword),
         ]);
     }
 

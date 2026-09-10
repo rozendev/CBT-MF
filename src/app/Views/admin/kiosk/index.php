@@ -168,6 +168,20 @@ if (!function_exists('kioskSettingChecked')) {
                         </div>
 
                         <div class="col-md-6">
+                            <div class="d-flex align-items-center justify-content-between p-3 rounded-3 border">
+                                <div>
+                                    <h6 class="fw-bold mb-1 text-dark">Kode Keluar Offline</h6>
+                                    <p class="text-muted fs-7 mb-0">Mengizinkan pengawas membuka kiosk dengan kode harian saat server tidak terjangkau.</p>
+                                </div>
+                                <div class="form-check form-switch m-0 ms-3 fs-4">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="kioskOfflineExit"
+                                           name="settings[kiosk_offline_exit_enabled]" value="1"
+                                           <?= kioskSettingChecked($kioskSettings, 'kiosk_offline_exit_enabled', false) ? 'checked' : '' ?>>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
                             <div class="p-3 rounded-3 border">
                                 <label class="form-label fw-bold text-dark mb-1" for="kioskRootStrictness">
                                     Tingkat Penanganan Root / Emulator
@@ -197,5 +211,41 @@ if (!function_exists('kioskSettingChecked')) {
         </button>
     </div>
 </form>
+
+<?php if (kioskSettingChecked($kioskSettings, 'kiosk_offline_exit_enabled', false)): ?>
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white py-3">
+        <h5 class="fw-bold mb-0 text-dark">Kode Keluar Offline</h5>
+        <p class="text-muted fs-7 mb-0">Bawa daftar ini saat ujian. Kode berubah otomatis bila password pengawas diganti.</p>
+    </div>
+    <div class="card-body p-4">
+        <?php if (!empty($passwordWeaknesses)): ?>
+            <div class="alert alert-danger">
+                <strong>Password pengawas lemah.</strong>
+                Seluruh kekuatan kode di bawah bertumpu pada password ini, dan algoritmanya ada di dalam APK yang bisa dibongkar siapa pun.
+                <ul class="mb-0 mt-2">
+                    <?php foreach ($passwordWeaknesses as $reason): ?>
+                        <li><?= esc($reason) ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Tanggal</th><th>Kode</th></tr></thead>
+                <tbody>
+                <?php foreach ($offlineCodes as $i => $row): ?>
+                    <tr<?= $i === 0 ? ' class="table-warning"' : '' ?>>
+                        <td><?= esc($row['day']) ?><?= $i === 0 ? ' <span class="badge bg-warning text-dark">hari ini</span>' : '' ?></td>
+                        <td class="fw-bold fs-5 font-monospace"><?= esc($row['code']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <?= $this->endSection() ?>
