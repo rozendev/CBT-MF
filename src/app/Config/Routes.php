@@ -42,6 +42,7 @@ $routes->group('api', static function ($routes) {
     $routes->get('kiosk/config', 'Api\KioskController::config');
     $routes->post('kiosk/verify-exit', 'Api\KioskController::verifyExit');
     $routes->post('kiosk/can-exit', 'Api\KioskController::canExit');
+    $routes->post('kiosk/offline-exit-log', 'Api\KioskController::offlineExitLog');
     $routes->post('intruder/report', 'Api\IntruderReportController::report');
 });
 

@@ -98,6 +98,7 @@ class Filters extends BaseFilters
                 'api/intruder/report',
                 'api/kiosk/verify-exit',
                 'api/kiosk/can-exit',
+                'api/kiosk/offline-exit-log',
                 // Rute API kiosk: kioskcsrflogin (KioskOriginCsrfFilter) yang
                 // menjaga — skip CSRF hanya untuk origin kiosk (validasi Origin
                 // di CorsApiFilter); origin lain tetap diverifikasi di sana.

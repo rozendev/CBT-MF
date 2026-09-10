@@ -3,6 +3,7 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Libraries\KioskOfflineCode;
 use App\Models\SettingModel;
 use App\Models\ActivityLogModel;
 
@@ -17,6 +18,7 @@ class KioskSettingsController extends BaseController
         'kiosk_enforce_home_launcher',
         'kiosk_block_clipboard',
         'kiosk_overlay_guard_enabled',
+        'kiosk_offline_exit_enabled',
     ];
 
     private const KEY_META = [
@@ -28,6 +30,7 @@ class KioskSettingsController extends BaseController
         'kiosk_overlay_guard_enabled' => ['group' => 'kiosk', 'type' => 'boolean'],
         'kiosk_min_app_version'       => ['group' => 'kiosk', 'type' => 'string'],
         'kiosk_root_strictness'        => ['group' => 'kiosk', 'type' => 'string'],
+        'kiosk_offline_exit_enabled' => ['group' => 'kiosk', 'type' => 'boolean'],
     ];
 
     public function __construct()
@@ -41,8 +44,22 @@ class KioskSettingsController extends BaseController
         $groupedSettings = $this->settingModel->getGroupedSettings();
         $kioskSettings   = $groupedSettings['kiosk'] ?? [];
 
+        $exitPassword = (string) $this->settingModel->getValue('kiosk_exit_password', '123456');
+
+        // Dihitung ulang tiap kali halaman dibuka, bukan disimpan: kode berubah
+        // otomatis begitu password diganti, tanpa langkah rotasi terpisah.
+        $offlineCodes = [];
+        foreach (KioskOfflineCode::upcomingDays() as $day) {
+            $offlineCodes[] = [
+                'day'  => $day,
+                'code' => KioskOfflineCode::codeForDay($exitPassword, $day),
+            ];
+        }
+
         return view('admin/kiosk/index', [
-            'kioskSettings' => $kioskSettings
+            'kioskSettings'      => $kioskSettings,
+            'offlineCodes'       => $offlineCodes,
+            'passwordWeaknesses' => KioskOfflineCode::passwordWeaknesses($exitPassword),
         ]);
     }
 

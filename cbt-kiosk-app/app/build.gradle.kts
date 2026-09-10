@@ -28,6 +28,13 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
+
+    testOptions {
+        // Stub android.jar melempar "not mocked" untuk android.util.Log dkk.
+        // Kode yang diuji di sini memang mencatat log di jalur galatnya, dan
+        // itu bukan yang sedang diuji — biarkan mengembalikan nilai bawaan.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -42,6 +49,8 @@ dependencies {
     
     // Testing
     testImplementation("junit:junit:4.13.2")
+    // org.json di android.jar hanya stub; unit test butuh implementasi asli.
+    testImplementation("org.json:json:20231013")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
