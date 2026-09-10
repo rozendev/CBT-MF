@@ -48,4 +48,6 @@
     <string name="restore_home_open">Buka Pengaturan</string>
     <string name="restore_home_later">Nanti</string>
     <string name="restore_home_manual">Buka Pengaturan → Aplikasi → Aplikasi default → Aplikasi Beranda, lalu pilih launcher bawaan.</string>
+    <string name="exit_dialog_hint_with_code">Password Pengawas atau Kode Offline</string>
+    <string name="toast_kiosk_unlocked_offline">Kiosk dibuka dengan kode offline</string>
 </resources>

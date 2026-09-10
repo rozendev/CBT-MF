@@ -37,6 +37,8 @@ import id.sch.cbt.kiosk.bridge.CommsBridge
 import id.sch.cbt.kiosk.bundle.UiBundleManager
 import id.sch.cbt.kiosk.kiosk.HeartbeatManager
 import id.sch.cbt.kiosk.kiosk.HomeLauncherGuard
+import id.sch.cbt.kiosk.security.OfflineExitAudit
+import id.sch.cbt.kiosk.security.OfflineExitCode
 import id.sch.cbt.kiosk.kiosk.KioskGuardService
 import id.sch.cbt.kiosk.kiosk.KioskManager
 import id.sch.cbt.kiosk.security.RootDetector
@@ -308,7 +310,14 @@ class MainActivity : AppCompatActivity() {
 
             val input = EditText(this)
             input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            input.hint = getString(R.string.exit_dialog_hint)
+            // Beri tahu pengawas bahwa kolom ini juga menerima kode offline —
+            // hanya saat amplopnya memang ada, supaya tidak menjanjikan jalur
+            // yang server-nya tidak menyalakan.
+            input.hint = if (OfflineExitCode.storedEnvelope(this).enabled) {
+                getString(R.string.exit_dialog_hint_with_code)
+            } else {
+                getString(R.string.exit_dialog_hint)
+            }
             builder.setView(input)
 
             builder.setPositiveButton(getString(R.string.exit_dialog_confirm)) { dialog, _ ->
@@ -318,7 +327,9 @@ class MainActivity : AppCompatActivity() {
                         if (allowed) {
                             SirenAlarmManager.stopSiren()
                             kioskManager.stopKiosk()
-                            Toast.makeText(this, getString(R.string.toast_kiosk_unlocked), Toast.LENGTH_SHORT).show()
+                            // Pesan datang dari callback: jalur offline melaporkan
+                            // dirinya sendiri, jalur server tidak mengirim pesan sukses.
+                            Toast.makeText(this, message ?: getString(R.string.toast_kiosk_unlocked), Toast.LENGTH_SHORT).show()
                         } else {
                             // Salah password itu percobaan, bukan pelolosan.
                             SirenAlarmManager.playWarningBeep(this)
@@ -396,10 +407,31 @@ class MainActivity : AppCompatActivity() {
      */
     private fun verifyExitPassword(password: String, callback: (Boolean, String?) -> Unit) {
         val baseUrl = prefs.getString("server_url", "") ?: ""
-        if (baseUrl.isBlank() || password.isBlank()) {
+        if (password.isBlank()) {
             callback(false, getString(R.string.toast_password_empty))
             return
         }
+
+        // Kode offline dicocokkan LEBIH DULU, sengaja. Jalur ini justru dipakai
+        // saat server tak terjangkau; mendahulukan server berarti pengawas
+        // menunggu dua kali timeout 8 detik sebelum kode yang benar diterima —
+        // persis pada momen paling menegangkan. Gerbang "8 digit" di dalam
+        // OfflineExitCode membuat percobaan password biasa tidak membayar PBKDF2.
+        val offlineDay = OfflineExitCode.attempt(this, password)
+        if (offlineDay != null) {
+            OfflineExitCode.clearFailures(this)
+            OfflineExitAudit.record(this, offlineDay, BuildConfig.VERSION_NAME)
+            OfflineExitAudit.flush(this, baseUrl, getOrCreateDeviceId())
+            callback(true, getString(R.string.toast_kiosk_unlocked_offline))
+            return
+        }
+
+        if (baseUrl.isBlank()) {
+            OfflineExitCode.recordFailure(this)
+            callback(false, getString(R.string.toast_password_empty))
+            return
+        }
+
         kotlin.concurrent.thread(start = true, isDaemon = true, name = "KioskVerifyPassword") {
             try {
                 val escaped = password.replace("\\", "\\\\").replace("\"", "\\\"")
@@ -410,11 +442,28 @@ class MainActivity : AppCompatActivity() {
                 val message = try {
                     response.first.opt("message")?.toString()?.trim()?.takeIf { it.isNotEmpty() }
                 } catch (e: Throwable) { null }
+
+                if (allowed) OfflineExitCode.clearFailures(this) else OfflineExitCode.recordFailure(this)
                 callback(allowed, message ?: getString(R.string.toast_wrong_password))
             } catch (e: Throwable) {
                 Log.e("MainActivity", "Error verifying exit password", e)
+                OfflineExitCode.recordFailure(this)
                 callback(false, getString(R.string.toast_verify_failed))
             }
+        }
+    }
+
+    /** Header HTTP Date (RFC 1123, selalu GMT) → tanggal YYYY-MM-DD di zona sekolah. */
+    private fun serverDayFromHeader(dateHeader: String?): String? {
+        if (dateHeader.isNullOrBlank()) return null
+        return try {
+            val parser = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US)
+            parser.timeZone = java.util.TimeZone.getTimeZone("GMT")
+            val parsed = parser.parse(dateHeader) ?: return null
+            OfflineExitCode.dayOf(parsed.time)
+        } catch (e: Throwable) {
+            Log.w("MainActivity", "Header Date tidak terbaca: $dateHeader", e)
+            null
         }
     }
 
@@ -787,11 +836,16 @@ class MainActivity : AppCompatActivity() {
                 connection.setRequestProperty("Accept", "application/json")
 
                 val responseCode = connection.responseCode
+                // Header Date adalah satu-satunya sumber waktu tepercaya yang
+                // dimiliki perangkat. Ia yang menutup trik memundurkan jam ke
+                // tanggal yang kodenya terlanjur bocor.
+                OfflineExitCode.rememberServerDay(this, serverDayFromHeader(connection.getHeaderField("Date")))
                 if (responseCode == 200) {
                     val jsonString = connection.inputStream.bufferedReader().use { it.readText() }
                     runOnUiThread {
                         applyKioskConfig(jsonString, baseUrl)
                     }
+                    OfflineExitAudit.flush(this, baseUrl, getOrCreateDeviceId())
                 } else {
                     Log.w("MainActivity", "Failed to fetch kiosk config, response code: $responseCode")
                     handleConfigFetchFailure()
@@ -859,6 +913,18 @@ class MainActivity : AppCompatActivity() {
                         val strictness = it.optString("root_detection_strictness", "warning")
                         if (strictness.isNotBlank()) prefs.edit().putString("kiosk_root_strictness", strictness).apply()
                     }
+                }
+            }
+
+            // Toggle mati dikirim eksplisit oleh server, sehingga mematikannya
+            // di admin benar-benar mencabut amplop dari perangkat — blok yang
+            // hilang tidak bisa dibedakan dari respons server versi lama.
+            val offlineExit = json.optJSONObject("offline_exit")
+            if (offlineExit != null) {
+                if (offlineExit.optBoolean("enabled", false)) {
+                    OfflineExitCode.storeEnvelope(this, offlineExit.toString())
+                } else {
+                    OfflineExitCode.storeEnvelope(this, null)
                 }
             }
 

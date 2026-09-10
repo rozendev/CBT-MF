@@ -149,9 +149,32 @@ class HeartbeatManager(
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            conn.responseCode
+            val code = conn.responseCode
+            // Header Date adalah satu-satunya sumber waktu tepercaya yang dimiliki
+            // perangkat, dan heartbeat tiap 15 detik adalah kesempatan paling sering
+            // memperbaruinya. Harus dibaca di sini: pemanggil hanya menerima kode
+            // status, dan koneksinya sudah ditutup di blok finally.
+            id.sch.cbt.kiosk.security.OfflineExitCode.rememberServerDay(
+                activity,
+                serverDayFromHeader(conn.getHeaderField("Date"))
+            )
+            code
         } finally {
             conn.disconnect()
+        }
+    }
+
+    /** Header HTTP Date (RFC 1123, selalu GMT) → tanggal YYYY-MM-DD di zona sekolah. */
+    private fun serverDayFromHeader(dateHeader: String?): String? {
+        if (dateHeader.isNullOrBlank()) return null
+        return try {
+            val parser = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", java.util.Locale.US)
+            parser.timeZone = java.util.TimeZone.getTimeZone("GMT")
+            val parsed = parser.parse(dateHeader) ?: return null
+            id.sch.cbt.kiosk.security.OfflineExitCode.dayOf(parsed.time)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Header Date tidak terbaca: $dateHeader", e)
+            null
         }
     }
 }
