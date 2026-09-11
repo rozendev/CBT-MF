@@ -80,8 +80,17 @@
                                     <span class="ms-1 text-capitalize" x-text="s.network === 'unknown' ? '—' : s.network"></span>
                                 </td>
                                 <td>
-                                    <template x-if="s.pinned === true && s.overlay_guard === true">
+                                    <!--
+                                        "Aman" menuntut DND ikut bersih: perangkat yang ter-pin
+                                        dan ber-overlay tapi notifikasinya hidup BUKAN perangkat
+                                        aman, dan menampilkannya hijau justru menyembunyikan
+                                        satu-satunya hal yang masih perlu ditindak pengawas.
+                                    -->
+                                    <template x-if="s.pinned === true && s.overlay_guard === true && s.dnd !== 'waived'">
                                         <span class="badge bg-success"><i class="bi bi-shield-check me-1"></i>Aman</span>
+                                    </template>
+                                    <template x-if="s.dnd === 'waived'">
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-bell me-1"></i>Notifikasi hidup</span>
                                     </template>
                                     <template x-if="s.pinned === false">
                                         <span class="badge bg-danger"><i class="bi bi-pin-angle me-1"></i>Tidak ter-pin</span>

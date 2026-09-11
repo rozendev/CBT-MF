@@ -12,6 +12,7 @@ import android.os.Looper
 import android.util.Log
 import id.sch.cbt.kiosk.BuildConfig
 import id.sch.cbt.kiosk.DeviceIdentityStore
+import id.sch.cbt.kiosk.security.DndGuard
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -170,6 +171,16 @@ class HeartbeatManager(
             // Tanpa ini pengawas tidak punya cara apa pun mengetahui perangkat
             // yang siswanya menolak "Sematkan layar?" di awal ujian.
             .put("pinned", KioskManager.isInLockTask(activity) ?: JSONObject.NULL)
+            // Tri-state, bukan boolean: "on" = perangkat benar-benar senyap,
+            // "waived" = kebijakan menuntut senyap tapi perangkat ini tidak
+            // (dilewati saat setup ATAU izinnya dicabut di tengah ujian —
+            // sama gentingnya bagi pengawas), "off" = sekolah mematikan
+            // kebijakannya. Boolean akan meleburkan tiga keadaan berbeda ini.
+            .put("dnd", DndGuard.statusFor(
+                activity.getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
+                    .getBoolean("kiosk_enforce_dnd", true),
+                DndGuard.currentFilter(activity)
+            ))
             .toString()
     }
 

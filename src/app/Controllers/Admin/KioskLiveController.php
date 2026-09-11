@@ -66,6 +66,7 @@ class KioskLiveController extends BaseController
                 'device_id'    => '',
                 'overlay_guard'=> null,
                 'pinned'       => null,
+                'dnd'          => null,
                 'last_seen'    => null,
             ];
 
@@ -86,6 +87,12 @@ class KioskLiveController extends BaseController
                         'pinned'       => ($info['pinned'] ?? 'unknown') === '1'
                             ? true
                             : (($info['pinned'] ?? 'unknown') === '0' ? false : null),
+                        // null = perangkat versi lama yang belum mengirim field
+                        // ini; sengaja dibedakan dari "off" agar pengawas tidak
+                        // membaca ketiadaan data sebagai kebijakan yang mati.
+                        'dnd'          => in_array($info['dnd'] ?? '', ['on', 'off', 'waived'], true)
+                            ? $info['dnd']
+                            : null,
                         'last_seen'    => date('Y-m-d H:i:s', $ts),
                     ];
                 }
