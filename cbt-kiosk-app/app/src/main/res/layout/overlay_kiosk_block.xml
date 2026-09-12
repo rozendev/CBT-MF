@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Penutup layar penuh yang digambar sebagai TYPE_APPLICATION_OVERLAY ketika
+    siswa keluar dari layar ujian.
+
+    Sengaja BUKAN activity: meluncurkan activity dari service latar dibatalkan
+    sistem (BAL_BLOCK), sedangkan jendela overlay digambar langsung dan tidak
+    bisa dibatalkan.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface_dark"
+    android:clickable="true"
+    android:focusable="false"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:paddingHorizontal="@dimen/spacing_xl">
+
+    <ImageView
+        android:layout_width="@dimen/logo_size"
+        android:layout_height="@dimen/logo_size"
+        android:layout_marginBottom="@dimen/spacing_lg"
+        android:contentDescription="@string/overlay_title"
+        android:src="@drawable/ic_lock"
+        android:tint="@color/status_danger" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="@string/overlay_title"
+        android:textColor="@color/text_on_dark"
+        android:textSize="@dimen/text_headline"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/spacing_md"
+        android:gravity="center"
+        android:text="@string/overlay_body"
+        android:textColor="@color/text_on_dark_muted"
+        android:textSize="@dimen/text_body" />
+
+    <Button
+        android:id="@+id/btnOverlayReturn"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/button_height"
+        android:layout_marginTop="@dimen/spacing_xl"
+        android:background="@drawable/bg_button_primary"
+        android:text="@string/overlay_return"
+        android:textAllCaps="false"
+        android:textColor="@color/text_on_dark"
+        android:textSize="@dimen/text_body"
+        android:textStyle="bold" />
+</LinearLayout>

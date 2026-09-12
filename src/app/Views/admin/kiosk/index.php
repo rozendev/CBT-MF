@@ -182,6 +182,20 @@ if (!function_exists('kioskSettingChecked')) {
                         </div>
 
                         <div class="col-md-6">
+                            <div class="d-flex align-items-center justify-content-between p-3 rounded-3 border">
+                                <div>
+                                    <h6 class="fw-bold mb-1 text-dark">Paksa Mode Jangan Ganggu</h6>
+                                    <p class="text-muted fs-7 mb-0">Membungkam notifikasi dan dering selama ujian. Alarm pengawas tetap berbunyi.</p>
+                                </div>
+                                <div class="form-check form-switch m-0 ms-3 fs-4">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="kioskEnforceDnd"
+                                           name="settings[kiosk_enforce_dnd]" value="1"
+                                           <?= kioskSettingChecked($kioskSettings, 'kiosk_enforce_dnd') ? 'checked' : '' ?>>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
                             <div class="p-3 rounded-3 border">
                                 <label class="form-label fw-bold text-dark mb-1" for="kioskRootStrictness">
                                     Tingkat Penanganan Root / Emulator

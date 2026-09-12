@@ -16,6 +16,7 @@ class SettingController extends BaseController
         'maintenance_mode', 'default_random_questions', 'default_random_answers',
         'kiosk_siren_enabled', 'kiosk_siren_max_volume',
         'kiosk_enforce_home_launcher', 'kiosk_block_clipboard', 'kiosk_overlay_guard_enabled',
+        'kiosk_enforce_dnd',
     ];
 
     private const INTEGER_KEYS = [
@@ -70,6 +71,7 @@ class SettingController extends BaseController
         'kiosk_enforce_home_launcher' => ['group' => 'kiosk',  'type' => 'boolean'],
         'kiosk_block_clipboard'      => ['group' => 'kiosk',  'type' => 'boolean'],
         'kiosk_overlay_guard_enabled' => ['group' => 'kiosk',  'type' => 'boolean'],
+        'kiosk_enforce_dnd'           => ['group' => 'kiosk',  'type' => 'boolean'],
         'kiosk_min_app_version'       => ['group' => 'kiosk',  'type' => 'string'],
         'kiosk_root_strictness'        => ['group' => 'kiosk',  'type' => 'string'],
         'kiosk_offline_exit_enabled' => ['group' => 'kiosk',  'type' => 'boolean'],
@@ -282,6 +284,7 @@ class SettingController extends BaseController
             ['key' => 'kiosk_enforce_home_launcher', 'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
             ['key' => 'kiosk_block_clipboard',       'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
             ['key' => 'kiosk_overlay_guard_enabled', 'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
+            ['key' => 'kiosk_enforce_dnd',           'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
             ['key' => 'kiosk_min_app_version',       'value' => '1.0.0',   'type' => 'string',  'group' => 'kiosk'],
             ['key' => 'kiosk_root_strictness',       'value' => 'warning', 'type' => 'string',  'group' => 'kiosk'],
             ['key' => 'kiosk_offline_exit_enabled', 'value' => '0', 'type' => 'boolean', 'group' => 'kiosk'],

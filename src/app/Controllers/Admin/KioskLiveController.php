@@ -62,9 +62,12 @@ class KioskLiveController extends BaseController
                 'battery'     => -1,
                 'charging'    => false,
                 'network'     => 'unknown',
-                'app_version' => '',
-                'device_id'   => '',
-                'last_seen'   => null,
+                'app_version'  => '',
+                'device_id'    => '',
+                'overlay_guard'=> null,
+                'pinned'       => null,
+                'dnd'          => null,
+                'last_seen'    => null,
             ];
 
             if ($redis) {
@@ -76,9 +79,21 @@ class KioskLiveController extends BaseController
                         'battery'     => (int) ($info['battery'] ?? -1),
                         'charging'    => ($info['charging'] ?? '0') === '1',
                         'network'     => (string) ($info['network'] ?? 'unknown'),
-                        'app_version' => (string) ($info['app_version'] ?? ''),
-                        'device_id'   => (string) ($info['device_id'] ?? ''),
-                        'last_seen'   => date('Y-m-d H:i:s', $ts),
+                        'app_version'  => (string) ($info['app_version'] ?? ''),
+                        'device_id'    => (string) ($info['device_id'] ?? ''),
+                        'overlay_guard'=> array_key_exists('overlay_guard', $info)
+                            ? $info['overlay_guard'] === '1'
+                            : null,
+                        'pinned'       => ($info['pinned'] ?? 'unknown') === '1'
+                            ? true
+                            : (($info['pinned'] ?? 'unknown') === '0' ? false : null),
+                        // null = perangkat versi lama yang belum mengirim field
+                        // ini; sengaja dibedakan dari "off" agar pengawas tidak
+                        // membaca ketiadaan data sebagai kebijakan yang mati.
+                        'dnd'          => in_array($info['dnd'] ?? '', ['on', 'off', 'waived'], true)
+                            ? $info['dnd']
+                            : null,
+                        'last_seen'    => date('Y-m-d H:i:s', $ts),
                     ];
                 }
             }

@@ -5,7 +5,7 @@ namespace App\Controllers\Api;
 use App\Controllers\BaseController;
 use App\Models\TestModel;
 use App\Models\TestAttemptModel;
-use App\Models\SettingModel;
+use App\Libraries\ExamVisibility;
 
 class StudentApiController extends BaseController
 {
@@ -52,24 +52,15 @@ class StudentApiController extends BaseController
         ";
         $tests = $db->query($sql, [$userId, $userId])->getResult();
 
-        $settingModel = new SettingModel();
-        $globalShowScore = (bool) $settingModel->getValue('show_score_after_exam', false);
-        $globalAllowReview = (bool) $settingModel->getValue('allow_review', false);
+        $globals = ExamVisibility::globals();
 
         $activeAttempt = null;
         $exams = [];
         foreach ($tests as $t) {
-            // ikuti pola DashboardController: nilai per-test menang, fallback ke global
-            if ($t->show_score_after_exam !== null) {
-                $canShowScore = (bool) $t->show_score_after_exam;
-            } else {
-                $canShowScore = $globalShowScore;
-            }
-            if ($t->allow_review !== null) {
-                $canAllowReview = (bool) $t->allow_review;
-            } else {
-                $canAllowReview = $globalAllowReview;
-            }
+            // Sama persis dengan DashboardController — lewat satu penyelesai
+            // yang sama, bukan lewat pola yang ditiru lalu menyimpang.
+            $canShowScore = ExamVisibility::resolve($t->show_score_after_exam, $globals['show_score']);
+            $canAllowReview = ExamVisibility::resolve($t->allow_review, $globals['allow_review']);
 
             $exams[] = [
                 'id' => (int) $t->id,
@@ -220,9 +211,10 @@ class StudentApiController extends BaseController
             return $this->response->setStatusCode(409)->setJSON(['status' => 'error', 'message' => 'Ujian ini belum selesai.']);
         }
 
-        $showScore = $test->show_score_after_exam !== null ? (bool) $test->show_score_after_exam : (bool) (new SettingModel())->getValue('show_score_after_exam', true);
-        $showCorrect = $test->show_correct_answers !== null ? (bool) $test->show_correct_answers : (bool) (new SettingModel())->getValue('show_correct_answers', false);
-        $allowReview = $test->allow_review !== null ? (bool) $test->allow_review : (bool) (new SettingModel())->getValue('allow_review', true);
+        $globals = ExamVisibility::globals();
+        $showScore = ExamVisibility::resolve($test->show_score_after_exam, $globals['show_score']);
+        $showCorrect = ExamVisibility::resolve($test->show_correct_answers, $globals['show_correct']);
+        $allowReview = ExamVisibility::resolve($test->allow_review, $globals['allow_review']);
 
         // Tegakkan di server, bukan di klien. Sebelum ini $allowReview hanya ikut
         // terkirim sebagai field lalu diperiksa review.php setelah fetch selesai —

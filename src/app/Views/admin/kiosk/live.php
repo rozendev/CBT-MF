@@ -54,7 +54,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>Status</th><th>Siswa</th><th>Baterai</th><th>Jaringan</th>
-                            <th>Versi App</th><th>Device ID</th><th>Terakhir Terlihat</th>
+                            <th>Keamanan</th><th>Versi App</th><th>Device ID</th><th>Terakhir Terlihat</th>
                             <th class="text-end">Aksi</th>
                         </tr>
                     </thead>
@@ -78,6 +78,32 @@
                                 <td>
                                     <i class="bi" :class="s.network==='wifi' ? 'bi-wifi text-primary' : (s.network==='mobile' ? 'bi-signal text-primary' : 'bi-x-circle text-muted')"></i>
                                     <span class="ms-1 text-capitalize" x-text="s.network === 'unknown' ? '—' : s.network"></span>
+                                </td>
+                                <td>
+                                    <!--
+                                        "Aman" menuntut DND ikut bersih: perangkat yang ter-pin
+                                        dan ber-overlay tapi notifikasinya hidup BUKAN perangkat
+                                        aman, dan menampilkannya hijau justru menyembunyikan
+                                        satu-satunya hal yang masih perlu ditindak pengawas.
+                                    -->
+                                    <template x-if="s.pinned === true && s.overlay_guard === true && s.dnd !== 'waived'">
+                                        <span class="badge bg-success"><i class="bi bi-shield-check me-1"></i>Aman</span>
+                                    </template>
+                                    <template x-if="s.dnd === 'waived'">
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-bell me-1"></i>Notifikasi hidup</span>
+                                    </template>
+                                    <template x-if="s.pinned === false">
+                                        <span class="badge bg-danger"><i class="bi bi-pin-angle me-1"></i>Tidak ter-pin</span>
+                                    </template>
+                                    <template x-if="s.pinned !== false && s.overlay_guard === false">
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-layers me-1"></i>Overlay mati</span>
+                                    </template>
+                                    <template x-if="s.pinned === null && s.overlay_guard !== null">
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-question-circle me-1"></i>Pin tak diketahui</span>
+                                    </template>
+                                    <template x-if="s.pinned === null && s.overlay_guard === null">
+                                        <span class="text-muted">—</span>
+                                    </template>
                                 </td>
                                 <td><span class="text-muted" x-text="s.app_version || '—'"></span></td>
                                 <td><span class="text-muted small" x-text="s.device_id ? s.device_id.substring(0, 8) + '…' : '—'"></span></td>
@@ -110,7 +136,7 @@
                             </tr>
                         </template>
                         <tr x-show="students.length === 0">
-                            <td colspan="8" class="text-center text-muted py-5">
+                            <td colspan="9" class="text-center text-muted py-5">
                                 <i class="bi bi-inbox fs-3 d-block mb-2"></i>
                                 <template x-if="!selectedTest">Pilih ujian untuk melihat status perangkat.</template>
                                 <template x-if="selectedTest">Belum ada peserta aktif pada ujian ini.</template>

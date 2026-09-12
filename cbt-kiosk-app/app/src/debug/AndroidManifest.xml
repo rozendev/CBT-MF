@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    HANYA varian debug.
+
+    Berkas ini berada di source set src/debug/, jadi ia TIDAK IKUT sama sekali
+    ke dalam build release — bukan dinonaktifkan lewat flag, melainkan tidak
+    pernah ada di sana. APK rilis tetap memakai bawaan targetSdk 28+, yaitu
+    cleartext ditolak.
+
+    Diperlukan supaya perangkat uji bisa menunjuk stack lokal di
+    http://<ip-laptop>:8080 yang tidak punya sertifikat TLS.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true" />
+</manifest>

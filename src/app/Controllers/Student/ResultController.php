@@ -5,7 +5,7 @@ namespace App\Controllers\Student;
 use App\Controllers\BaseController;
 use App\Models\TestModel;
 use App\Models\TestAttemptModel;
-use App\Models\SettingModel;
+use App\Libraries\ExamVisibility;
 
 class ResultController extends BaseController
 {
@@ -18,13 +18,12 @@ class ResultController extends BaseController
         $this->attemptModel = new TestAttemptModel();
     }
 
-    private function resolveSetting($testValue, string $globalKey, $default = false)
+    /**
+     * @return array{show_score: bool, show_correct: bool, allow_review: bool}
+     */
+    private function visibilityGlobals(): array
     {
-        if ($testValue !== null) {
-            return (bool) $testValue;
-        }
-        $settingModel = new SettingModel();
-        return (bool) $settingModel->getValue($globalKey, $default);
+        return ExamVisibility::globals();
     }
 
     public function view($testId)
@@ -49,9 +48,10 @@ class ResultController extends BaseController
             return redirect()->to('/student/exam/take/' . $testId)->with('info', 'Ujian ini belum selesai.');
         }
 
-        $showScore = $this->resolveSetting($test->show_score_after_exam, 'show_score_after_exam', true);
-        $showCorrect = $this->resolveSetting($test->show_correct_answers, 'show_correct_answers', false);
-        $allowReview = $this->resolveSetting($test->allow_review, 'allow_review', true);
+        $globals = $this->visibilityGlobals();
+        $showScore = ExamVisibility::resolve($test->show_score_after_exam, $globals['show_score']);
+        $showCorrect = ExamVisibility::resolve($test->show_correct_answers, $globals['show_correct']);
+        $allowReview = ExamVisibility::resolve($test->allow_review, $globals['allow_review']);
 
         $totalQuestions = 0;
         $correctCount = 0;
@@ -139,13 +139,14 @@ class ResultController extends BaseController
             return redirect()->to('/student/dashboard')->with('error', 'Ujian tidak ditemukan.');
         }
 
-        $allowReview = $this->resolveSetting($test->allow_review, 'allow_review', true);
+        $globals = $this->visibilityGlobals();
+        $allowReview = ExamVisibility::resolve($test->allow_review, $globals['allow_review']);
         if (!$allowReview) {
             return redirect()->to('/student/results/view/' . $testId)->with('error', 'Review tidak diizinkan untuk ujian ini.');
         }
 
-        $showScore = $this->resolveSetting($test->show_score_after_exam, 'show_score_after_exam', true);
-        $showCorrect = $this->resolveSetting($test->show_correct_answers, 'show_correct_answers', false);
+        $showScore = ExamVisibility::resolve($test->show_score_after_exam, $globals['show_score']);
+        $showCorrect = ExamVisibility::resolve($test->show_correct_answers, $globals['show_correct']);
 
         $attempt = $this->attemptModel->where('test_id', $testId)
                                       ->where('user_id', $userId)

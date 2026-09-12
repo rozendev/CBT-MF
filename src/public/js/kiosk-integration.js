@@ -82,10 +82,10 @@ document.addEventListener("DOMContentLoaded", function() {
         window.CBTKioskRequestExit();
     });
 
+    // Penutupan aplikasi mengikuti verifikasi server yang sama dengan kiosk_stop.
+    // Bridge web tidak lagi memiliki jalur langsung untuk melepas lock-task.
     window.addEventListener("kiosk_close", function() {
-        if (window.CommsBridge) {
-            window.CommsBridge.closeApp();
-        }
+        window.CBTKioskRequestExit();
     });
 
     function sendKioskWsEvent(action, eventType, detail) {

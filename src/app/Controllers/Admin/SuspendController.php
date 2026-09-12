@@ -205,8 +205,12 @@ class SuspendController extends BaseController
         // Get all attempt IDs
         $attempts = $db->table('test_attempts')
             ->where('user_id', $userId)
-            ->select('id')
+            ->select('id, test_id, user_id')
             ->get()->getResult();
+
+        // Query builder tidak memicu callback TestAttemptModel. Invalidasi
+        // pertama mencegah request baru memakai snapshot lama selama reset.
+        $this->attemptModel->clearCacheWhereIn('user_id', $userId);
 
         foreach ($attempts as $attempt) {
             // Delete log answers
@@ -242,6 +246,16 @@ class SuspendController extends BaseController
 
         $db->transComplete();
 
+        if ($db->transStatus() === false) {
+            return redirect()->to('/admin/suspend')->with('error', 'Gagal mereset sesi ujian siswa.');
+        }
+
+        // Invalidasi kedua menutup race ketika request paralel sempat mengisi
+        // cache di antara invalidasi awal dan commit delete.
+        foreach ($attempts as $attempt) {
+            $this->attemptModel->clearCacheForAttempt($attempt->id, $attempt->test_id, $attempt->user_id);
+        }
+
         return redirect()->to('/admin/suspend')->with('success', "Seluruh sesi ujian {$user->username} telah direset.");
     }
 
@@ -273,6 +287,7 @@ class SuspendController extends BaseController
         }
 
         $db->transStart();
+        $this->attemptModel->clearCacheWhereIn('id', $attemptId);
 
         // Delete log answers
         $logIds = $db->table('test_logs')
@@ -309,6 +324,8 @@ class SuspendController extends BaseController
         if ($db->transStatus() === false) {
             return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal menghapus progress ujian.']);
         }
+
+        $this->attemptModel->clearCacheForAttempt($attempt->id, $attempt->test_id, $attempt->user_id);
 
         return $this->response->setJSON(['status' => 'success', 'message' => 'Progress ujian berhasil dihapus.']);
     }

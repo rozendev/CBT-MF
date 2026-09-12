@@ -90,7 +90,35 @@ class UserModel extends Model
         $db->table('user_groups')->where('user_id', $userId)->delete();
         
         // 2. Delete test attempts (this cascades to test_logs and test_log_answers)
-        $db->table('test_attempts')->where('user_id', $userId)->delete();
+        // Query builder melewati callback model, jadi simpan identitas cache dan
+        // invalidasi di kedua sisi operasi delete.
+        $attempts = $db->table('test_attempts')
+            ->select('id, test_id, user_id')
+            ->where('user_id', $userId)
+            ->get()
+            ->getResult();
+        $attemptModel = new TestAttemptModel();
+        $attemptModel->clearCacheWhereIn('user_id', $userId);
+
+        if ($db->table('test_attempts')->where('user_id', $userId)->delete()) {
+            try {
+                $redis = \App\Libraries\RedisClient::getInstance();
+            } catch (\Throwable $e) {
+                $redis = null;
+                log_message('error', 'Gagal membuka Redis saat membersihkan user: ' . $e->getMessage());
+            }
+
+            foreach ($attempts as $attempt) {
+                $attemptModel->clearCacheForAttempt($attempt->id, $attempt->test_id, $attempt->user_id);
+                if ($redis) {
+                    try {
+                        $redis->del("exam_answers:{$attempt->id}");
+                    } catch (\Throwable $e) {
+                        log_message('error', 'Gagal menghapus jawaban realtime saat membersihkan user: ' . $e->getMessage());
+                    }
+                }
+            }
+        }
     }
 
     /**

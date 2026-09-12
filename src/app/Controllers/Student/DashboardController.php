@@ -35,24 +35,25 @@ class DashboardController extends BaseController
             $query = $db->query($sql, [$userId, $userId]);
             $availableTests = $query->getResult();
 
-            $settingModel = new \App\Models\SettingModel();
-            $globalShowScore = (bool)$settingModel->getValue('show_score_after_exam', false);
-            $globalAllowReview = (bool)$settingModel->getValue('allow_review', false);
+            $globals = \App\Libraries\ExamVisibility::globals();
 
             foreach ($availableTests as $t) {
-                if ($t->show_score_after_exam !== null) {
-                    $t->can_show_score = (bool)$t->show_score_after_exam;
-                } elseif (isset($t->results_visible)) {
-                    $t->can_show_score = (bool)$t->results_visible;
+                // results_visible tetap jadi lapis di antaranya: kolom itu
+                // keputusan guru untuk ujian ini, jadi ia menang atas setelan
+                // global meski show_score_after_exam belum diisi.
+                if ($t->show_score_after_exam === null && isset($t->results_visible)) {
+                    $t->can_show_score = (bool) $t->results_visible;
                 } else {
-                    $t->can_show_score = $globalShowScore;
+                    $t->can_show_score = \App\Libraries\ExamVisibility::resolve(
+                        $t->show_score_after_exam,
+                        $globals['show_score']
+                    );
                 }
 
-                if ($t->allow_review !== null) {
-                    $t->can_allow_review = (bool)$t->allow_review;
-                } else {
-                    $t->can_allow_review = $globalAllowReview;
-                }
+                $t->can_allow_review = \App\Libraries\ExamVisibility::resolve(
+                    $t->allow_review,
+                    $globals['allow_review']
+                );
             }
             
             // Simpan ke cache selama 60 detik

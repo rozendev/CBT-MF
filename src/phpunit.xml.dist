@@ -17,6 +17,9 @@
         <testsuite name="Resilience">
             <directory>tests/Resilience</directory>
         </testsuite>
+        <testsuite name="Exam">
+            <directory>tests/Exam</directory>
+        </testsuite>
         <testsuite name="Kiosk">
             <directory>tests/Kiosk</directory>
         </testsuite>

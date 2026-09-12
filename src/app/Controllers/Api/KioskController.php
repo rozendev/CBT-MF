@@ -72,6 +72,7 @@ class KioskController extends BaseController
                 'block_clipboard'          => (bool) $settingModel->getValue('kiosk_block_clipboard', true),
                 'root_detection_strictness' => $settingModel->getValue('kiosk_root_strictness', 'warning'),
                 'overlay_guard_enabled'     => (bool) $settingModel->getValue('kiosk_overlay_guard_enabled', true),
+                'enforce_dnd'               => (bool) $settingModel->getValue('kiosk_enforce_dnd', true),
             ],
             'ui_bundle'       => $bundleInfo,
         ];

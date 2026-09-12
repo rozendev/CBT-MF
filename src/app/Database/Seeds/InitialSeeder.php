@@ -52,7 +52,7 @@ class InitialSeeder extends Seeder
             ['key' => 'app_version',         'value' => '1.0.0',           'type' => 'string',  'group' => 'general',  'description' => 'Versi aplikasi'],
             ['key' => 'institution_name',    'value' => 'Sekolah',         'type' => 'string',  'group' => 'general',  'description' => 'Nama institusi'],
             ['key' => 'timezone',            'value' => 'Asia/Jakarta',    'type' => 'string',  'group' => 'general',  'description' => 'Zona waktu'],
-            ['key' => 'enable_multi_login',  'value' => '0',               'type' => 'boolean', 'group' => 'security', 'description' => 'Izinkan login dari beberapa perangkat'],
+            ['key' => 'prevent_multi_login', 'value' => '1',               'type' => 'boolean', 'group' => 'security', 'description' => 'Cegah satu akun siswa dipakai login di beberapa perangkat'],
             ['key' => 'max_login_attempts',  'value' => '5',               'type' => 'integer', 'group' => 'security', 'description' => 'Maksimal percobaan login sebelum dikunci'],
             ['key' => 'lockout_duration',    'value' => '15',              'type' => 'integer', 'group' => 'security', 'description' => 'Durasi penguncian akun (menit)'],
             ['key' => 'login_ip_max_attempts', 'value' => '50',            'type' => 'integer', 'group' => 'security', 'description' => 'Maksimal percobaan login gagal per IP dalam 15 menit sebelum diblokir sementara'],

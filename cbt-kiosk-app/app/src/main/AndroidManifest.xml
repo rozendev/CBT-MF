@@ -2,10 +2,25 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+        Dibutuhkan ConnectivityManager. Tanpa ini setiap onResume melempar
+        SecurityException, dan yang lebih buruk: HeartbeatManager menangkapnya
+        diam-diam lalu melaporkan network="none" untuk SETIAP perangkat,
+        selamanya — monitoring pengawas menampilkan seluruh armada seolah
+        tidak punya jaringan.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <!--
+        Mendeklarasikan izin ini TIDAK memberikannya: Notification Policy Access
+        adalah special access yang hanya bisa dinyalakan manusia lewat layar
+        Pengaturan. Tanpa baris ini, layar itu bahkan tidak mencantumkan aplikasi
+        kita, jadi izinnya mustahil diberikan betapapun pengawas mencoba.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <application
         android:allowBackup="false"
@@ -42,10 +57,14 @@
             -->
         </activity>
         
-        <service 
-            android:name=".kiosk.KioskGuardService" 
+        <service
+            android:name=".kiosk.KioskGuardService"
             android:exported="false"
-            android:foregroundServiceType="specialUse" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Maintains exam kiosk lock state and detects exits during an active assessment" />
+        </service>
             
     </application>
 </manifest>
