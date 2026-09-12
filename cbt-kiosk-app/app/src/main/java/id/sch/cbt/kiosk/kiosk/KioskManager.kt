@@ -145,7 +145,7 @@ class KioskManager(private val activity: Activity) {
                 } catch (e: Throwable) {
                     Log.e("KioskManager", "stopLockTask failed on UI thread", e)
                 }
-                (activity as? id.sch.cbt.kiosk.MainActivity)?.showSetupScreen()
+                (activity as? id.sch.cbt.kiosk.MainActivity)?.showSetupScreen(afterKioskExit = true)
             }
             heartbeatManager?.stop()
             

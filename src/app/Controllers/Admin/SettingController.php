@@ -74,6 +74,7 @@ class SettingController extends BaseController
         'kiosk_enforce_dnd'           => ['group' => 'kiosk',  'type' => 'boolean'],
         'kiosk_min_app_version'       => ['group' => 'kiosk',  'type' => 'string'],
         'kiosk_root_strictness'        => ['group' => 'kiosk',  'type' => 'string'],
+        'kiosk_offline_exit_enabled' => ['group' => 'kiosk',  'type' => 'boolean'],
         'websocket_url'               => ['group' => 'system', 'type' => 'string'],
     ];
 
@@ -286,6 +287,7 @@ class SettingController extends BaseController
             ['key' => 'kiosk_enforce_dnd',           'value' => '1',       'type' => 'boolean', 'group' => 'kiosk'],
             ['key' => 'kiosk_min_app_version',       'value' => '1.0.0',   'type' => 'string',  'group' => 'kiosk'],
             ['key' => 'kiosk_root_strictness',       'value' => 'warning', 'type' => 'string',  'group' => 'kiosk'],
+            ['key' => 'kiosk_offline_exit_enabled', 'value' => '0', 'type' => 'boolean', 'group' => 'kiosk'],
         ];
 
         $now = date('Y-m-d H:i:s');
