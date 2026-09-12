@@ -44,6 +44,7 @@ import id.sch.cbt.kiosk.kiosk.HeartbeatManager
 import id.sch.cbt.kiosk.kiosk.KioskGuardService
 import id.sch.cbt.kiosk.kiosk.KioskManager
 import id.sch.cbt.kiosk.kiosk.KioskOverlay
+import id.sch.cbt.kiosk.security.DndGuard
 import id.sch.cbt.kiosk.security.RootDetector
 import id.sch.cbt.kiosk.security.SecurityManager
 import id.sch.cbt.kiosk.security.SirenAlarmManager
@@ -85,6 +86,7 @@ class MainActivity : AppCompatActivity() {
     private var bundleDownloadActive = false
     private var serverPolicyResolved = false
     private var overlayWaivedForCurrentSession = false
+    private var dndWaivedForCurrentSession = false
     private var activeBlockDialog: AlertDialog? = null
 
     private val policySettingsLauncher = registerForActivityResult(
@@ -125,6 +127,16 @@ class MainActivity : AppCompatActivity() {
             setContentView(R.layout.activity_main)
 
             prefs = getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
+
+            // Aplikasi yang dibunuh di tengah ujian tidak pernah sampai ke
+            // disableSecurityFlags(), jadi perangkatnya tertinggal senyap TANPA
+            // ada lagi yang akan mengembalikannya. Filter aslinya sengaja
+            // disimpan ke prefs sebelum dipasang, dan di sinilah ia ditebus.
+            try {
+                DndGuard.restore(this, prefs)
+            } catch (e: Throwable) {
+                Log.e("MainActivity", "Gagal memulihkan filter DND yang tertinggal", e)
+            }
 
             uiBundleManager = UiBundleManager(
                 this,
@@ -280,6 +292,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun beginExam(finalUrl: String) {
         overlayWaivedForCurrentSession = false
+        dndWaivedForCurrentSession = false
         serverPolicyResolved = false
         prefs.edit().putString("server_url", finalUrl).apply()
         startExamAndLockKiosk(finalUrl)
@@ -328,6 +341,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Gerbang Do Not Disturb. Sama seperti gerbang overlay: TIDAK memblokir
+     * mutlak. Notification Policy Access tidak tersedia seragam di semua ROM,
+     * dan menahan siswa dari ujiannya karena itu adalah ongkos yang lebih mahal
+     * daripada notifikasi yang lolos. Yang dijamin: keputusannya sadar, dan
+     * perangkat yang dilewati ikut terlihat di monitoring lewat heartbeat.
+     */
+    private fun showDndPermissionDialog() {
+        try {
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.dnd_perm_title))
+                .setMessage(getString(R.string.dnd_perm_message))
+                .setCancelable(false)
+                .setPositiveButton(getString(R.string.dnd_perm_open)) { _, _ ->
+                    openDndSettings()
+                }
+                .setNegativeButton(getString(R.string.dnd_perm_skip)) { _, _ ->
+                    dndWaivedForCurrentSession = true
+                    Toast.makeText(this, getString(R.string.dnd_perm_skipped), Toast.LENGTH_LONG).show()
+                    continueExamAfterResolvedPolicies()
+                }
+                .show()
+        } catch (e: Throwable) {
+            Log.e("MainActivity", "Gagal menampilkan dialog izin DND", e)
+            showSetupScreen()
+        }
+    }
+
+    /**
+     * Layar special access ini paling bervariasi antar-ROM, jadi intent-nya
+     * dicoba berjenjang sampai ada yang mau terbuka.
+     */
+    private fun openDndSettings() {
+        for (action in DndGuard.settingsIntents()) {
+            try {
+                policySettingsLauncher.launch(Intent(action))
+                return
+            } catch (e: Throwable) {
+                Log.w("MainActivity", "Intent $action tidak tersedia di ROM ini", e)
+            }
+        }
+        Toast.makeText(this, getString(R.string.dnd_perm_no_settings), Toast.LENGTH_LONG).show()
+        dndWaivedForCurrentSession = true
+        continueExamAfterResolvedPolicies()
+    }
+
     /** Lanjut hanya setelah konfigurasi server dan seluruh policy wajib terpenuhi. */
     private fun continueExamAfterResolvedPolicies() {
         if (!examFlowRequested || !serverPolicyResolved) return
@@ -339,6 +398,16 @@ class MainActivity : AppCompatActivity() {
 
         if (prefs.getBoolean("kiosk_enforce_home_launcher", true) && !isDefaultHomeLauncher()) {
             showHomeLauncherDialog()
+            return
+        }
+
+        if (DndGuard.needsPermissionPrompt(
+                policyEnabled = prefs.getBoolean("kiosk_enforce_dnd", true),
+                waived = dndWaivedForCurrentSession,
+                granted = DndGuard.isGranted(this)
+            )
+        ) {
+            showDndPermissionDialog()
             return
         }
 
@@ -1128,6 +1197,11 @@ class MainActivity : AppCompatActivity() {
                             .putBoolean("kiosk_overlay_guard_enabled", it.optBoolean("overlay_guard_enabled", true))
                             .apply()
                     }
+                    if (it.has("enforce_dnd")) {
+                        prefs.edit()
+                            .putBoolean("kiosk_enforce_dnd", it.optBoolean("enforce_dnd", true))
+                            .apply()
+                    }
                 }
             }
 
@@ -1147,7 +1221,8 @@ class MainActivity : AppCompatActivity() {
                 "Applied kiosk config: sirenEnabled=${SirenAlarmManager.isSirenEnabled}, " +
                     "sirenMaxVolume=${SirenAlarmManager.isSirenMaxVolume}, " +
                     "homeLauncher=${prefs.getBoolean("kiosk_enforce_home_launcher", true)}, " +
-                    "overlayGuard=${prefs.getBoolean("kiosk_overlay_guard_enabled", true)}"
+                    "overlayGuard=${prefs.getBoolean("kiosk_overlay_guard_enabled", true)}, " +
+                    "enforceDnd=${prefs.getBoolean("kiosk_enforce_dnd", true)}"
             )
 
             // ---- Bundle UI ----
@@ -1204,6 +1279,7 @@ class MainActivity : AppCompatActivity() {
                 bundleFlowStarted = false
                 serverPolicyResolved = false
                 overlayWaivedForCurrentSession = false
+                dndWaivedForCurrentSession = false
                 pendingBundleBaseUrl = null
                 setupLayout.visibility = View.VISIBLE
                 examContainer.visibility = View.GONE
@@ -1439,6 +1515,16 @@ class MainActivity : AppCompatActivity() {
                     kioskManager.ensureLockTask()
                 } catch (e: Throwable) {
                     Log.e("MainActivity", "Gagal memasang ulang lock task", e)
+                }
+                // Alasan yang sama persis dengan pin di atas: siswa yang sempat
+                // menjangkau quick settings bisa mematikan DND di tengah ujian.
+                // Sekali dipasang saat start tidak cukup.
+                if (::securityManager.isInitialized && kioskManager.isSessionActive) {
+                    try {
+                        securityManager.reassertDnd()
+                    } catch (e: Throwable) {
+                        Log.e("MainActivity", "Gagal menegaskan ulang DND", e)
+                    }
                 }
             }
         }

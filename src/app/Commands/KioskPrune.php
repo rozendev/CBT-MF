@@ -49,7 +49,7 @@ class KioskPrune extends BaseCommand
 
                 $fields = $redis->hMGet(
                     $key,
-                    ['device_id', 'battery', 'network', 'overlay_guard', 'pinned']
+                    ['device_id', 'battery', 'network', 'overlay_guard', 'pinned', 'dnd']
                 );
 
                 $redis->del($key);
@@ -71,6 +71,7 @@ class KioskPrune extends BaseCommand
                             'network'       => (string) ($fields['network'] ?? ''),
                             'overlay_guard' => ($fields['overlay_guard'] ?? '0') === '1',
                             'pinned'        => (string) ($fields['pinned'] ?? 'unknown'),
+                            'dnd'           => (string) ($fields['dnd'] ?? 'unknown'),
                         ], JSON_UNESCAPED_UNICODE),
                         'created_at' => date('Y-m-d H:i:s'),
                     ]);

@@ -59,6 +59,14 @@
     <string name="overlay_perm_skipped">Ujian dimulai TANPA perlindungan overlay. Status ini dilaporkan ke pengawas.</string>
     <string name="overlay_perm_no_settings">Tidak dapat membuka halaman izin di perangkat ini.</string>
 
+    <!-- Do Not Disturb -->
+    <string name="dnd_perm_title">Izin "Akses Jangan Ganggu"</string>
+    <string name="dnd_perm_message">Tanpa izin ini, notifikasi WhatsApp, SMS, dan dering telepon tetap muncul di tengah ujian — Android tidak mengizinkan aplikasi membungkamnya sendiri.\n\nNyalakan izin ini di Pengaturan sebelum ujian dimulai. Bunyi alarm pengawas TIDAK ikut dibungkam.</string>
+    <string name="dnd_perm_open">Buka Pengaturan</string>
+    <string name="dnd_perm_skip">Lanjut Tanpa Senyap</string>
+    <string name="dnd_perm_skipped">Ujian dimulai TANPA mode senyap. Status ini dilaporkan ke pengawas.</string>
+    <string name="dnd_perm_no_settings">Tidak dapat membuka halaman izin Jangan Ganggu di perangkat ini.</string>
+
     <!-- Gerbang HOME launcher dari policy server -->
     <string name="home_launcher_title">Jadikan CBT-MF sebagai Aplikasi Beranda</string>
     <string name="home_launcher_message">Kebijakan sekolah mewajibkan CBT-MF menjadi aplikasi Beranda selama perangkat dipakai untuk ujian. Pilih CBT-MF Kiosk pada layar berikut, lalu kembali ke aplikasi.</string>

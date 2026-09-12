@@ -10,7 +10,7 @@
  *
  * Contract (POST, JSON body):
  *   {token, device_id, battery, charging, network, app_version,
- *    overlay_guard, pinned}
+ *    overlay_guard, pinned, dnd}
  *   200 {"status":"ok"} | 401 {"status":"invalid_token"} |
  *   403 {"status":"device_banned"} | 503 {"status":"maintenance","mode":"redis"}
  */
@@ -81,6 +81,13 @@ try {
         $pinned = 'unknown';
     }
 
+    // Tri-state dari perangkat: "on" = benar-benar senyap, "waived" = kebijakan
+    // menuntut senyap tapi perangkat ini tidak, "off" = kebijakan dimatikan.
+    // Nilai asing dari klien versi lain diperlakukan sebagai tidak diketahui,
+    // BUKAN sebagai "off" — "off" adalah pernyataan yang tidak boleh dikarang.
+    $dndRaw = $req['dnd'] ?? null;
+    $dnd = in_array($dndRaw, ['on', 'off', 'waived'], true) ? $dndRaw : 'unknown';
+
     $fields = [
         'battery'      => (string) $battery,
         'charging'     => !empty($req['charging']) ? '1' : '0',
@@ -89,6 +96,7 @@ try {
         'device_id'    => substr((string) ($req['device_id'] ?? ''), 0, 64),
         'overlay_guard'=> ($req['overlay_guard'] ?? null) === true ? '1' : '0',
         'pinned'       => $pinned,
+        'dnd'          => $dnd,
         'ts'           => (string) $now,
     ];
 
@@ -238,6 +246,7 @@ try {
                     'app_version'  => $fields['app_version'],
                     'overlay_guard'=> $fields['overlay_guard'] === '1',
                     'pinned'       => $fields['pinned'],
+                    'dnd'          => $fields['dnd'],
                 ], JSON_UNESCAPED_UNICODE),
                 date('Y-m-d H:i:s', $now),
             ]);

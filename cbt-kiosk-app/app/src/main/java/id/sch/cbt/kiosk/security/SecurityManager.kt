@@ -21,7 +21,33 @@ class SecurityManager(private val activity: MainActivity) {
         clipboardGuardEnabled = enabled
     }
 
+    private val dndPolicyEnabled: Boolean
+        get() = activity.getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
+            .getBoolean("kiosk_enforce_dnd", true)
+
+    private val dndPrefs
+        get() = activity.getSharedPreferences("cbt_kiosk_prefs", Context.MODE_PRIVATE)
+
+    /**
+     * Menegaskan ulang DND di tengah sesi, dipanggil dari `onResume` bersama
+     * `ensureLockTask()`. Siswa yang sempat menjangkau quick settings bisa
+     * mematikan DND; sekali dipasang saja tidak cukup.
+     */
+    fun reassertDnd() {
+        if (!dndPolicyEnabled) return
+        DndGuard.apply(activity, dndPrefs, policyEnabled = true)
+    }
+
+    /** Status DND perangkat saat ini, untuk dilaporkan ke pengawas. */
+    fun dndStatus(): String =
+        DndGuard.statusFor(dndPolicyEnabled, DndGuard.currentFilter(activity))
+
     fun enableSecurityFlags() {
+        // Sengaja DI LUAR runOnUiThread: DND tidak menyentuh window sama sekali,
+        // dan penyimpanan filter aslinya memakai commit() sinkron yang tidak
+        // pantas menahan main thread.
+        DndGuard.apply(activity, dndPrefs, dndPolicyEnabled)
+
         activity.runOnUiThread {
             try {
                 // 1. Block Screenshot & Screen Recording
@@ -90,6 +116,11 @@ class SecurityManager(private val activity: MainActivity) {
     }
 
     fun disableSecurityFlags() {
+        // Perangkat HARUS kembali ke filter aslinya, termasuk ketika sesi kiosk
+        // gagal dimulai (KioskManager memanggil ini di jalur FAILED). Siswa yang
+        // pulang membawa HP yang senyap selamanya adalah kegagalan kita.
+        DndGuard.restore(activity, dndPrefs)
+
         activity.runOnUiThread {
             try {
                 activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)

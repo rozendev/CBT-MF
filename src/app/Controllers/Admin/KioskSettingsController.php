@@ -17,6 +17,7 @@ class KioskSettingsController extends BaseController
         'kiosk_enforce_home_launcher',
         'kiosk_block_clipboard',
         'kiosk_overlay_guard_enabled',
+        'kiosk_enforce_dnd',
     ];
 
     private const KEY_META = [
@@ -26,6 +27,7 @@ class KioskSettingsController extends BaseController
         'kiosk_enforce_home_launcher' => ['group' => 'kiosk', 'type' => 'boolean'],
         'kiosk_block_clipboard'      => ['group' => 'kiosk', 'type' => 'boolean'],
         'kiosk_overlay_guard_enabled' => ['group' => 'kiosk', 'type' => 'boolean'],
+        'kiosk_enforce_dnd'          => ['group' => 'kiosk', 'type' => 'boolean'],
         'kiosk_min_app_version'       => ['group' => 'kiosk', 'type' => 'string'],
         'kiosk_root_strictness'        => ['group' => 'kiosk', 'type' => 'string'],
     ];
