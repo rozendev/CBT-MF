@@ -1,1 +1,1 @@
-Hi, I’m a student at SMK Negeri 1 Way Serdang. I’m in the 12th grade, majoring in Computer and Network Engineering (TKJ). I’m making this because I’m bored and annoyed.
+Hi, I’m a 12th-grade student at SMK Negeri 1 Way Serdang, majoring in Computer and Network Engineering (TKJ). I created this out of sheer boredom and frustration with my school’s sluggish systems. It’s not going to be anything big—it’s just a project I put together because I had nothing better to do.
