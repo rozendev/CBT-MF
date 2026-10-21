@@ -17,21 +17,27 @@ window.$ = window.jQuery = {
             _error: function (err) {
                 if (opts.error) opts.error(err);
                 if (p._fail) p._fail(err);
-                if (p._always) p._always(null);
+                if (p._always) p._always(err);
             }
         };
         fetch(opts.url, {
             method: opts.type || 'GET',
             credentials: 'include',
             headers: headers,
-            body: opts.data
+            body: opts.data,
+            signal: AbortSignal.timeout(opts.timeout || 15000)
         }).then(function (r) {
-            return r.json().then(function (j) {
-                return { ok: r.ok, status: r.status, json: j };
+            // Maintenance/rate limit dapat mengembalikan HTML; status dan header
+            // tetap diperlukan untuk menentukan jeda retry yang benar.
+            return r.json().catch(function () { return null; }).then(function (j) {
+                return { ok: r.ok, status: r.status, json: j, headers: r.headers };
             });
         }).then(function (res) {
             if (res.ok) { p._settle(res.json); }
-            else { p._error({ status: res.status, responseJSON: res.json }); }
+            else { p._error({
+                status: res.status, responseJSON: res.json,
+                getResponseHeader: function (name) { return res.headers.get(name); }
+            }); }
         }).catch(function () {
             p._error({ status: 0, responseJSON: null });
         });

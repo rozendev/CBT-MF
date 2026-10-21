@@ -34,29 +34,42 @@ class ApiRateLimitFilter implements FilterInterface
                 }
 
                 if ($currentCount > $limit) {
-                    $response = service('response');
-                    return $response->setStatusCode(429)->setJSON([
-                        'status'  => 'error',
-                        'message' => 'Terlalu banyak permintaan (Rate limit exceeded). Silakan tunggu beberapa detik.'
-                    ]);
+                    $ttl = (int) $redis->ttl($key);
+                    return $this->rateLimited($ttl > 0 ? $ttl : $window);
                 }
+                return null;
             }
         } catch (\Exception $e) {
             log_message('error', 'ApiRateLimitFilter Redis error: ' . $e->getMessage());
-            // Fallback for API
-            $ip = $request->getIPAddress();
-            $cacheKey = 'api_fallback_' . md5($ip);
-            $cache = service('cache');
-            $attempts = (int)$cache->get($cacheKey);
-            $cache->save($cacheKey, $attempts + 1, $window);
-            if ($attempts > $limit) {
-                $response = service('response');
-                return $response->setStatusCode(429)->setJSON([
-                    'status'  => 'error',
-                    'message' => 'Terlalu banyak permintaan (Rate limit exceeded). Silakan tunggu beberapa detik.'
-                ]);
-            }
         }
+
+        // Pertahankan identitas siswa dan window tetap saat Redis tidak tersedia.
+        // Memperpanjang TTL setiap request dapat mengunci siswa selama retry terus datang.
+        $cacheKey = 'api_fallback_' . md5($key);
+        $cache = service('cache');
+        $now = time();
+        $bucket = $cache->get($cacheKey);
+        if (!is_array($bucket) || ($bucket['reset_at'] ?? 0) <= $now) {
+            $bucket = ['count' => 0, 'reset_at' => $now + $window];
+        }
+        $remaining = max(1, $bucket['reset_at'] - $now);
+        if ($bucket['count'] >= $limit) {
+            return $this->rateLimited($remaining);
+        }
+        $bucket['count']++;
+        $cache->save($cacheKey, $bucket, $remaining);
+        return null;
+    }
+
+    private function rateLimited(int $seconds): ResponseInterface
+    {
+        return service('response')->setStatusCode(429)
+            ->setHeader('Retry-After', (string) $seconds)
+            ->setJSON([
+                'status' => 'error',
+                'message' => 'Terlalu banyak permintaan. Silakan tunggu beberapa detik.',
+                'retry_after' => $seconds,
+            ]);
     }
 
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)

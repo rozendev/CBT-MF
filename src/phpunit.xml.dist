@@ -5,6 +5,9 @@
          colors="true"
          cacheDirectory="writable/.phpunit.cache">
     <testsuites>
+        <testsuite name="Import">
+            <directory>tests/Import</directory>
+        </testsuite>
         <testsuite name="WordImport">
             <directory>tests/WordImport</directory>
         </testsuite>

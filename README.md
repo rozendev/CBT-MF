@@ -181,6 +181,16 @@ dalam daemon, termasuk koneksi PDO ke MariaDB.
 **Autosave ke Redis, flush ke MariaDB.** Aplikasi menulis jawaban peserta ke
 Redis selama ujian berlangsung, lalu memindahkannya ke MariaDB secara massal di
 akhir. Ujian karenanya tidak menghasilkan satu penulisan database per jawaban.
+Retry dibatasi tiga kali dengan jeda eksponensial dan variasi deterministik per
+attempt/operasi. Setelah gagal, pengiriman otomatis berhenti dan siswa dapat
+mencoba simpan ulang tanpa memuat ulang halaman. Detail kebijakan dan verifikasi
+ada di [perlindungan retry storm](docs/retry-storm.md).
+
+**Impor admin di latar belakang.** Impor siswa dan soal dikerjakan satu worker
+terpisah dengan batas CPU/RAM; browser hanya mengunggah file dan membaca progres.
+Antrean memakai berkas privat tanpa tabel baru. Jalankan service `import-worker`
+untuk memproses job. Panduan dan pengujiannya ada di
+[worker impor admin](docs/admin-import-worker.md).
 
 **Mode ujian statis.** Halaman soal dibekukan menjadi HTML, sehingga
 pembacaannya tidak memerlukan pekerjaan PHP maupun kueri database per

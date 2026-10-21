@@ -538,12 +538,12 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     <i class="bi bi-shield-check text-success fs-3 me-3"></i>
                     <div>
                         <strong class="text-success d-block">Jawaban Anda tidak hilang</strong>
-                        <span class="text-success small">Semua jawaban masih tersimpan di perangkat ini dan akan dikirim otomatis begitu server pulih.</span>
+                        <span class="text-success small">Jawaban tetap ada di perangkat ini. Pengiriman otomatis sudah berhenti; coba simpan lagi setelah server pulih.</span>
                     </div>
                 </div>
                 <div class="d-flex align-items-center justify-content-center text-secondary small">
-                    <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
-                    <span>Mencoba menyambung ulang otomatis…</span>
+                    <span x-show="storageRetrying">Mencoba menyimpan kembali…</span>
+                    <button type="button" class="btn btn-primary" :disabled="storageRetrying" @click="retryStorage()">Coba Simpan Lagi</button>
                 </div>
             </div>
         </div>
@@ -852,17 +852,45 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         /* Penyelesaian ujian menyiram Redis ke MariaDB lalu menilai seluruh
            attempt — pekerjaan nyata yang boleh lama. */
         const FINISH_TIMEOUT_MS = 60000;
-        /* Percobaan ulang saat penyimpanan server tak terjangkau. Tidak pernah
-           menyerah: menyerah berarti siswa lanjut mengisi ke ruang hampa. */
-        const STORAGE_RETRY_MIN_MS = 3000;
-        const STORAGE_RETRY_MAX_MS = 15000;
+        // Satu request awal + maksimal tiga retry. Tidak ada loop pemulihan kedua.
+        const MAX_RETRIES = 3;
+        let retryNotBefore = 0;
         const LOGIN_URL = '<?= base_url('/login') ?>';
 
         function redirectReplace(url) {
             window.location.replace(url);
         }
 
+        function isRetryableStatus(status) {
+            return status === 0 || status === 408 || status === 429 || status >= 500;
+        }
+
+        function retryDelay(key, retry, response = null) {
+            const base = Math.min(1000 * Math.pow(2, retry - 1), 30000);
+            const seed = String(ATTEMPT_ID) + ':' + key + ':' + retry;
+            let hash = 2166136261;
+            for (let i = 0; i < seed.length; i++) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
+            const jitter = (hash >>> 0) % (base + 1);
+            const header = response && (response.getResponseHeader ? response.getResponseHeader('Retry-After') : response.headers?.get('Retry-After'));
+            let wait = NaN;
+            if (header) {
+                wait = /^\d+$/.test(header) ? Number(header) * 1000 : Math.max(0, Date.parse(header) - Date.now());
+            }
+            if (!Number.isFinite(wait)) wait = response && response.status === 429 ? 10000 : 0;
+            if (response && response.status === 429) {
+                retryNotBefore = Math.max(retryNotBefore, Date.now() + wait + jitter);
+            }
+            return Math.max(base, wait) + jitter;
+        }
+
+        async function waitForRetryCooldown() {
+            while (retryNotBefore > Date.now()) {
+                await new Promise(resolve => setTimeout(resolve, retryNotBefore - Date.now()));
+            }
+        }
+
         async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+            await waitForRetryCooldown();
             return fetch(url, {
                 ...options,
                 credentials: 'same-origin',
@@ -871,17 +899,21 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         }
 
         async function fetchWithRetry(url, options = {}, maxRetries = 3, timeoutMs = FETCH_TIMEOUT_MS) {
+            maxRetries = Math.max(0, Math.min(maxRetries, MAX_RETRIES));
             let lastError;
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                let res;
                 try {
-                    const res = await fetchWithTimeout(url, options, timeoutMs);
+                    res = await fetchWithTimeout(url, options, timeoutMs);
                     if (res.ok) return res;
                     lastError = new Error('HTTP ' + res.status);
                 } catch (err) {
                     lastError = err;
                 }
+                if (res && !isRetryableStatus(res.status)) throw lastError;
+                const delay = retryDelay(url, attempt + 1, res);
                 if (attempt < maxRetries) {
-                    await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                    await new Promise(r => setTimeout(r, delay));
                 }
             }
             throw lastError;
@@ -974,8 +1006,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                    sempurna sementara Redis di server membeku. */
                 storageDown: false,
                 storageDownMsg: '',
-                storageRetryTimer: null,
-                storageRetryDelay: STORAGE_RETRY_MIN_MS,
+                storageRetrying: false,
+                saveState: 'idle',
                 storagePending: {},
 
                 activeQueue: Promise.resolve(),
@@ -1187,12 +1219,12 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     if (!this.wsErrorCount) this.wsErrorCount = 0;
                     this.wsErrorCount++;
                     
-                    if (this.wsErrorCount > 10) {
+                    if (this.wsErrorCount > MAX_RETRIES) {
                         console.warn('WebSocket reconnect limit reached, relying on fallback');
                         return;
                     }
                     
-                    const delay = Math.min((APP_CFG.ws_reconnect_base_ms || 1000) * Math.pow(2, this.wsErrorCount), APP_CFG.ws_reconnect_cap_ms || 30000);
+                    const delay = retryDelay('websocket', this.wsErrorCount);
                     console.log(`Reconnecting WebSocket in ${delay}ms...`);
                     
                     setTimeout(() => {
@@ -1276,7 +1308,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 /* Bekukan ujian di tempat. Sengaja TIDAK memindahkan halaman:
                    sesi tersimpan di Redis, jadi kalau Redis yang tumbang siswa
                    tidak akan bisa login kembali. Dengan bertahan di sini,
-                   jawaban di memori utuh dan langsung menyusul saat server pulih. */
+                   jawaban di memori utuh sampai siswa mencoba simpan ulang. */
                 enterStorageDown(logId, message) {
                     if (logId !== undefined && logId !== null) {
                         this.storagePending[logId] = true;
@@ -1285,27 +1317,14 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     this.isSaving = false;
                     this.showErrorToast = false;
 
-                    if (this.storageDown) return;   // sudah beku, loop sudah jalan
-
                     this.storageDown = true;
-                    this.storageRetryDelay = STORAGE_RETRY_MIN_MS;
-                    this.scheduleStorageRetry();
+                    this.saveState = 'failed';
+                    if (this.syncTimeout) clearTimeout(this.syncTimeout);
                 },
 
-                scheduleStorageRetry() {
-                    if (this.storageRetryTimer) clearTimeout(this.storageRetryTimer);
-                    this.storageRetryTimer = setTimeout(() => {
-                        this.storageRetryTimer = null;
-                        this.storageRetryDelay = Math.min(
-                            Math.round(this.storageRetryDelay * 1.6),
-                            STORAGE_RETRY_MAX_MS
-                        );
-                        this.retryStorage();
-                    }, this.storageRetryDelay);
-                },
-
-                retryStorage() {
-                    if (!this.storageDown) return;
+                async retryStorage() {
+                    if (!this.storageDown || this.storageRetrying) return;
+                    this.storageRetrying = true;
 
                     let pending = Object.keys(this.storagePending);
                     if (pending.length === 0) {
@@ -1317,12 +1336,14 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         if (current) pending = [current];
                     }
 
-                    // retries 0: pengulangan diurus loop ini, bukan retry berlapis.
-                    pending.forEach((id) => {
-                        this.enqueueRequest('autosave', { logId: isNaN(id) ? id : Number(id), retries: 0 });
-                    });
-
-                    this.scheduleStorageRetry();
+                    try {
+                        for (const id of pending) {
+                            await this.enqueueRequest('autosave', { logId: isNaN(id) ? id : Number(id), retries: MAX_RETRIES, storageRecovery: true });
+                            if (this.storagePending[id]) break;
+                        }
+                    } finally {
+                        this.storageRetrying = false;
+                    }
                 },
 
                 /* Satu penyimpanan yang benar-benar berhasil adalah satu-satunya
@@ -1331,20 +1352,19 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     if (logId !== undefined && logId !== null) {
                         delete this.storagePending[logId];
                     }
+                    if (Object.keys(this.storagePending).length > 0) return;
+                    this.saveState = 'saved';
                     if (!this.storageDown) return;
 
                     this.storageDown = false;
                     this.storageDownMsg = '';
                     this.storagePending = {};
-                    this.storageRetryDelay = STORAGE_RETRY_MIN_MS;
-                    if (this.storageRetryTimer) {
-                        clearTimeout(this.storageRetryTimer);
-                        this.storageRetryTimer = null;
-                    }
+                    this.scheduleAutoSync();
                 },
 
                 scheduleAutoSync() {
                     if (this.syncTimeout) clearTimeout(this.syncTimeout);
+                    if (this.storageDown) return;
                     
                     const timeSinceLastSync = Date.now() - this.lastSyncTime;
                     const MAX_WAIT = APP_CFG.auto_sync_max_wait_ms || 180000; // 3 menit
@@ -1366,20 +1386,29 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         // Telan error agar chain berikutnya tidak mati
                         return Promise.resolve();
                     });
+                    return this.activeQueue;
                 },
 
-                performNetworkRequest(action, params) {
+                async performNetworkRequest(action, params) {
+                    if (this.storageDown && !params.storageRecovery) {
+                        if (action === 'autosave') this.storagePending[params.logId] = true;
+                        return;
+                    }
+                    await waitForRetryCooldown();
                     return new Promise((resolve) => {
                         if (action === 'sync') {
                             if (!ATTEMPT_ID) return resolve();
                             $.ajax({ url: '<?= base_url('/student/exam/auto-sync') ?>', type: 'POST', data: { attempt_id: ATTEMPT_ID }, timeout: FETCH_TIMEOUT_MS })
-                             .always(() => {
+                             .always((res) => {
+                                 if (res && res.status === 429) retryDelay('sync', 1, res);
                                  this.lastSyncTime = Date.now();
                                  this.scheduleAutoSync();
                                  resolve();
                              });
                         } else if (action === 'autosave') {
-                            const { logId, retries } = params;
+                            const { logId } = params;
+                            const retries = Math.max(0, Math.min(params.retries ?? MAX_RETRIES, MAX_RETRIES));
+                            const retryAttempt = params.retryAttempt || 0;
                             const q = this.questions.find(x => x.log_id === logId);
                             if (!q) return resolve();
 
@@ -1400,6 +1429,21 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
 
                             this.isSaving = true;
                             this.showErrorToast = false;
+                            this.saveState = 'saving';
+
+                            const failed = (err) => {
+                                const delay = retryDelay('autosave:' + logId, retryAttempt + 1, err);
+                                if (isRetryableStatus(err.status) && retries > 0) {
+                                    setTimeout(() => {
+                                        this.performNetworkRequest('autosave', {
+                                            ...params, retries: retries - 1, retryAttempt: retryAttempt + 1
+                                        }).then(resolve);
+                                    }, delay);
+                                    return;
+                                }
+                                this.enterStorageDown(logId, this.readServerMessage(err));
+                                resolve();
+                            };
 
                             /* $.ajax, bukan $.post: hanya bentuk ini yang menerima
                                timeout. Tanpa batas waktu, jQuery menunggu selamanya —
@@ -1413,16 +1457,21 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                             })
                              .done((res) => {
                                  this.isSaving = false;
-                                 this.exitStorageDown(logId);
-                                 this.showSavedToast = true;
-                                 setTimeout(() => { this.showSavedToast = false; }, 2000);
-
-                                 if (res.status === 'kicked') {
+                                 if (res && res.status === 'kicked') {
                                      if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                                      Swal.fire('Informasi', res.message, 'info').then(() => {
                                          redirectReplace(LOGIN_URL);
                                      });
+                                     resolve();
+                                     return;
                                  }
+                                 if (!res || res.status !== 'success') {
+                                     failed({ status: 400, responseJSON: res });
+                                     return;
+                                 }
+                                 this.exitStorageDown(logId);
+                                 this.showSavedToast = true;
+                                 setTimeout(() => { this.showSavedToast = false; }, 2000);
                                  resolve();
                              })
                              .fail((err) => {
@@ -1433,27 +1482,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                                          redirectReplace(LOGIN_URL);
                                      });
                                      resolve();
-                                 } else if (err.status === 503) {
-                                     /* Server menyatakan lapis penyimpanannya tidak
-                                        terjangkau — atau nginx menyajikan halaman
-                                        maintenance. Percuma mencoba tiga kali lalu
-                                        membiarkan siswa lanjut: bekukan sekarang. */
-                                     this.enterStorageDown(logId, this.readServerMessage(err));
-                                     resolve();
                                  } else {
-                                     if (retries > 0) {
-                                         // Retry in 2.5s, menahan resolve() dari luar, sehingga meng-block antrean
-                                         setTimeout(() => {
-                                             this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
-                                         }, 2500);
-                                     } else {
-                                         /* Dulu berhenti di sini dengan toast 4 detik dan
-                                            siswa lanjut mengisi tanpa satu pun jawabannya
-                                            sampai ke server. */
-                                         console.error("Gagal menyimpan jawaban", err);
-                                         this.enterStorageDown(logId, 'Jawaban Anda tidak dapat dikirim ke server.');
-                                         resolve();
-                                     }
+                                     failed(err);
                                  }
                              });
                         } else {
@@ -1588,6 +1618,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     if (this.activeQueue) {
                         try { await this.activeQueue; } catch(e) {}
                     }
+
+                    if (this.storageDown || Object.keys(this.storagePending).length > 0) {
+                        window.isSubmitting = false;
+                        Swal.fire('Jawaban Belum Tersimpan', 'Coba simpan lagi dan panggil pengawas sebelum menyelesaikan ujian.', 'error');
+                        return;
+                    }
+                    await waitForRetryCooldown();
 
                     $.ajax({ url: FINISH_URL, type: 'POST', data: { attempt_id: ATTEMPT_ID }, timeout: FINISH_TIMEOUT_MS })
                      .done((res) => {

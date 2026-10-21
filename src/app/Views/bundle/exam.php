@@ -416,6 +416,15 @@
 
 <!-- EXAM CONTENT -->
 <div id="examContent" style="display:none;" x-data="examApp()" x-show="ready">
+    <div class="offline-overlay" x-show="storageDown" style="display:none;z-index:100000;" role="alert">
+        <div class="bg-white" style="border-radius:16px;padding:28px;max-width:450px;width:90%;text-align:center;">
+            <h3 class="fw-bold mb-3">Gagal Menyimpan Jawaban</h3>
+            <p x-text="storageDownMsg"></p>
+            <p>Pengiriman otomatis sudah berhenti. Jawaban tetap ada di perangkat ini. Jangan tutup atau muat ulang halaman; panggil pengawas.</p>
+            <button type="button" class="btn btn-primary" :disabled="storageRetrying" @click="retryStorage()"
+                x-text="storageRetrying ? 'Mencoba menyimpan…' : 'Coba Simpan Lagi'"></button>
+        </div>
+    </div>
     <!-- Offline Overlay -->
     <div class="offline-overlay" x-show="isOffline" style="display: none;">
         <div class="bg-white" style="border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,0.35);padding:28px;max-width:450px;width:90%;text-align:center;">
