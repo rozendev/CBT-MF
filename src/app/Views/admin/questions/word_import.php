@@ -70,6 +70,7 @@ Import Soal dari Word
                             </a>
                         </div>
                     </form>
+                    <p id="wordImportProgress" class="small text-muted mt-3" role="status"></p>
                 </div>
             </div>
         </div>
@@ -116,6 +117,7 @@ Tipe: Benar/Salah<br>
     </div>
 </div>
 
+<script src="<?= base_url('assets/admin-import.js?v=' . filemtime(FCPATH . 'assets/admin-import.js')) ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const moduleSelect = document.getElementById('moduleSelect');
@@ -207,8 +209,44 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    const jobKey = 'cbt-import:<?= (int) session('user_id') ?>:word';
+    const statusBase = '<?= base_url('admin/imports/status') ?>/';
+    let importBusy = false;
+    async function runWordImport(resume) {
+        if (importBusy) return;
+        importBusy = true;
+        const btn = document.getElementById('btnSubmit');
+        const progress = document.getElementById('wordImportProgress');
+        btn.disabled = true;
+        progress.textContent = resume ? 'Membaca progres impor...' : 'Mengunggah file...';
+        const update = job => {
+            const phase = job.progress && job.progress.phase;
+            progress.textContent = phase === 'parsing' ? 'Membaca dan memvalidasi dokumen di latar belakang...'
+                : phase === 'saving' ? 'Menyimpan soal dan jawaban...'
+                : job.message || 'Menunggu giliran impor.';
+        };
+        try {
+            const res = resume ? await AdminImport.resume(statusBase, jobKey, update)
+                : await AdminImport.submit(importForm.action, new FormData(importForm), statusBase, jobKey, update);
+            if (!res) return;
+            if (res.status === 'validation_error') {
+                Swal.fire({ icon: 'error', title: 'Validasi Format Gagal', text: (res.errors || []).join('\n'), customClass: { popup: 'rounded-4' } });
+            } else if (res.status === 'success') {
+                showImportSummary(res);
+            } else {
+                Swal.fire({ icon: 'error', title: 'Gagal Import', text: res.message || 'Dokumen tidak dapat diimpor.' });
+            }
+        } catch (error) {
+            progress.textContent = error.message + (AdminImport.pending(jobKey) ? ' Job tetap tersimpan. Tekan Lanjutkan Memantau untuk membaca progres kembali.' : '');
+        } finally {
+            importBusy = false;
+            btn.disabled = false;
+            btn.textContent = AdminImport.pending(jobKey) ? 'Lanjutkan Memantau' : 'Proses Import Soal';
+        }
+    }
     importForm.addEventListener('submit', function(e) {
         e.preventDefault();
+        if (AdminImport.pending(jobKey)) { runWordImport(true); return; }
 
         const moduleId = moduleSelect.value;
         const newModuleName = newModuleInput.value.trim();
@@ -268,61 +306,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const btn = document.getElementById('btnSubmit');
-        const originalBtnHtml = btn.innerHTML;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Memproses & Memvalidasi...';
-        btn.disabled = true;
-
-        const formData = new FormData(importForm);
-
-        fetch(importForm.action, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
-        })
-        .then(response => response.json())
-        .then(res => {
-            btn.innerHTML = originalBtnHtml;
-            btn.disabled = false;
-
-            if (res.status === 'validation_error') {
-                let errorHtml = '<div class="text-start small mt-2"><ul class="text-danger ps-3 mb-0" style="max-height: 250px; overflow-y: auto;">';
-                (res.errors || []).forEach(err => {
-                    errorHtml += `<li class="mb-1">${err}</li>`;
-                });
-                errorHtml += '</ul></div>';
-
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Validasi Format Gagal!',
-                    html: `<p class="mb-2 text-muted">Ditemukan ${res.errors.length} kesalahan pada dokumen Word Anda. Tidak ada data yang disimpan ke database:</p>` + errorHtml,
-                    confirmButtonText: 'Perbaiki Dokumen',
-                    customClass: { popup: 'rounded-4' }
-                });
-            } else if (res.status === 'error') {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Gagal Import',
-                    text: res.message || 'Terjadi kesalahan pada server.',
-                    customClass: { popup: 'rounded-4' }
-                });
-            } else if (res.status === 'success') {
-                showImportSummary(res);
-            }
-        })
-        .catch(err => {
-            btn.innerHTML = originalBtnHtml;
-            btn.disabled = false;
-            Swal.fire({
-                icon: 'error',
-                title: 'Kesalahan Sistem',
-                text: 'Gagal berkomunikasi dengan server. Silakan coba lagi.',
-                customClass: { popup: 'rounded-4' }
-            });
-        });
+        runWordImport(false);
     });
+    if (AdminImport.pending(jobKey)) runWordImport(true);
 });
 </script>
 <?= $this->endSection() ?>

@@ -269,7 +269,7 @@
                         </div>
                         
                         <div class="mb-3">
-                            <label class="form-label fw-bold">File Excel (.xlsx)</label>
+                            <label class="form-label fw-bold">File Excel (.xls/.xlsx, maksimal 10 MiB)</label>
                             <input type="file" name="excel_file" class="form-control" accept=".xlsx, .xls" required>
                         </div>
                     </div>
@@ -293,6 +293,7 @@
 <?= $this->endSection() ?>
 
 <?= $this->section('scripts') ?>
+<script src="<?= base_url('assets/admin-import.js?v=' . filemtime(FCPATH . 'assets/admin-import.js')) ?>"></script>
 <script>
     function confirmDelete(id, username) {
         document.getElementById('deleteUserName').textContent = username;
@@ -341,102 +342,63 @@
         new bootstrap.Modal(document.getElementById('bulkDeleteModal')).show();
     }
 
-    // Batch Import Logic
     const importForm = document.getElementById('importForm');
     if (importForm) {
-        importForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const btnSubmit = document.getElementById('btnImportSubmit');
-            const btnCancel = document.getElementById('btnImportCancel');
-            const inputsDiv = document.getElementById('importFormInputs');
-            const progressDiv = document.getElementById('importProgressContainer');
-            const progressBar = document.getElementById('importProgressBar');
-            const progressText = document.getElementById('importProgressText');
-            
+        const jobKey = 'cbt-import:<?= (int) session('user_id') ?>:students';
+        const statusBase = '<?= base_url('admin/imports/status') ?>/';
+        const btnSubmit = document.getElementById('btnImportSubmit');
+        const btnCancel = document.getElementById('btnImportCancel');
+        const inputsDiv = document.getElementById('importFormInputs');
+        const progressDiv = document.getElementById('importProgressContainer');
+        const progressBar = document.getElementById('importProgressBar');
+        const progressText = document.getElementById('importProgressText');
+        let importBusy = false;
+
+        function showProgress(job) {
+            const p = job.progress || {};
+            const percent = p.total ? Math.round((p.processed || 0) / p.total * 100) : 0;
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+            progressText.textContent = job.status === 'running' && p.total
+                ? `Memproses ${p.processed || 0} dari ${p.total} baris. Proses tetap berjalan jika halaman ditutup.`
+                : (job.message || 'Menunggu giliran impor.');
+        }
+
+        async function runImport(resume) {
+            if (importBusy) return;
+            importBusy = true;
             btnSubmit.disabled = true;
             btnCancel.disabled = true;
             inputsDiv.classList.add('d-none');
             progressDiv.classList.remove('d-none');
-            
+            progressText.textContent = resume ? 'Membaca progres impor...' : 'Mengunggah file...';
             try {
-                const formData = new FormData(this);
-                const initRes = await fetch(this.action, { method: 'POST', body: formData });
-                const initData = await initRes.json();
-                
-                if (initData.status !== 'success') {
-                    throw new Error(initData.message || 'Gagal memulai import.');
-                }
-                
-                const jobId = initData.job_id;
-                const total = initData.total;
-                let remaining = total;
-                let timeoutCount = 0;
-                let totalSuccess = 0;
-                let totalDuplicate = 0;
-                
-                while (remaining > 0) {
-                    try {
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
-                        
-                        let csrfHeader = '<?= csrf_header() ?>';
-                        let csrfValue = document.querySelector('input[name="<?= csrf_token() ?>"]').value;
-                        
-                        const batchRes = await fetch('<?= base_url('/admin/users/import-batch') ?>', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest',
-                                [csrfHeader]: csrfValue
-                            },
-                            body: JSON.stringify({ job_id: jobId }),
-                            signal: controller.signal
-                        });
-                        
-                        clearTimeout(timeoutId);
-                        
-                        if (!batchRes.ok) throw new Error('Server batch error');
-                        const batchData = await batchRes.json();
-                        
-                        if (batchData.status === 'error') {
-                            throw new Error(batchData.message || 'Error saat memproses batch');
-                        }
-                        
-                        timeoutCount = 0; // reset
-                        remaining = batchData.remaining;
-                        totalSuccess += batchData.success_count;
-                        totalDuplicate += batchData.duplicate_count;
-                        
-                        const processed = total - remaining;
-                        const percent = Math.round((processed / total) * 100);
-                        
-                        progressBar.style.width = percent + '%';
-                        progressBar.textContent = percent + '%';
-                        progressText.textContent = `Memproses ${processed} dari ${total} data...`;
-                        
-                        if (remaining <= 0) break;
-                        
-                    } catch (err) {
-                        timeoutCount++;
-                        if (timeoutCount >= 3) {
-                            alert('Gagal: Terjadi timeout 3 kali berturut-turut. Proses dihentikan.');
-                            window.location.reload();
-                            return;
-                        }
-                        // delay 2s before retry
-                        await new Promise(r => setTimeout(r, 2000));
-                    }
-                }
-                
-                alert(`Import selesai!\nBerhasil: ${totalSuccess}\nDilewati (Duplikat): ${totalDuplicate}`);
+                const result = resume
+                    ? await AdminImport.resume(statusBase, jobKey, showProgress)
+                    : await AdminImport.submit(importForm.action, new FormData(importForm), statusBase, jobKey, showProgress);
+                if (!result) return;
+                alert(`Import selesai!\nBerhasil: ${result.success || 0}\nDilewati (Duplikat): ${result.duplicates || 0}\nGagal: ${result.failed || 0}`);
                 window.location.reload();
-                
-            } catch (err) {
-                alert(err.message || 'Terjadi kesalahan sistem.');
-                window.location.reload();
+            } catch (error) {
+                progressText.textContent = error.message + (AdminImport.pending(jobKey) ? ' Job tetap tersimpan. Tekan Lanjutkan Memantau untuk membaca progres kembali.' : '');
+            } finally {
+                importBusy = false;
+                btnSubmit.disabled = false;
+                btnCancel.disabled = false;
+                const pending = AdminImport.pending(jobKey);
+                importForm.noValidate = pending;
+                inputsDiv.classList.toggle('d-none', pending);
+                btnSubmit.textContent = pending ? 'Lanjutkan Memantau' : 'Mulai Import';
             }
+        }
+        importForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+            runImport(AdminImport.pending(jobKey));
         });
+        if (AdminImport.pending(jobKey)) {
+            new bootstrap.Modal(document.getElementById('importModal')).show();
+            runImport(true);
+        }
     }
 </script>
 <?= $this->endSection() ?>

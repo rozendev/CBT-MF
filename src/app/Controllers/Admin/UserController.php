@@ -350,198 +350,26 @@ class UserController extends BaseController
 
     public function import()
     {
-        $file = $this->request->getFile('excel_file');
-        $groupId = $this->request->getPost('group_id');
-
-        if (!$file || !$file->isValid() || $file->hasMoved()) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'File tidak valid atau gagal diunggah.']);
-        }
-
-        $fileMime = $file->getMimeType();
-        $allowedMimes = [
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/wps-office.xls',
-            'application/wps-office.xlsx'
-        ];
-        
-        $ext = strtolower($file->getClientExtension());
-        if (!in_array($ext, ['xls', 'xlsx']) || !in_array($fileMime, $allowedMimes)) {
-            log_message('warning', "Import file validation failed. Extension: {$ext}, Mime: {$fileMime}");
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Format file harus .xls atau .xlsx']);
-        }
-
         try {
-            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getTempName());
-            $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray();
-
-            // Skip header (row 0)
-            array_shift($rows);
-
-            $jobId = uniqid('import_');
-            $redis = \App\Libraries\RedisClient::getInstance();
-            if (!$redis) {
-                return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal terhubung ke Redis.']);
+            $groupId = (int) $this->request->getPost('group_id');
+            if ($groupId && !$this->groupModel->find($groupId)) {
+                throw new \App\Libraries\Import\ImportFailure('Grup tujuan tidak ditemukan.');
             }
-            
-            $validRows = 0;
-            $redisKey = "import_job_{$jobId}";
-            
-            foreach ($rows as $row) {
-                $username  = trim((string)($row[0] ?? ''));
-                $password  = trim((string)($row[1] ?? ''));
-                $firstname = trim((string)($row[2] ?? ''));
-                $lastname  = trim((string)($row[3] ?? ''));
-                $email     = trim((string)($row[4] ?? ''));
-
-                if (empty($username) || empty($password) || empty($firstname)) {
-                    continue; // Skip invalid row
-                }
-
-                $userData = [
-                    'username'  => $username,
-                    'password'  => $password,
-                    'firstname' => $firstname,
-                    'lastname'  => $lastname,
-                    'email'     => empty($email) ? null : $email,
-                    'role'      => 'siswa',
-                    'is_active' => 1
-                ];
-
-                $redis->rPush($redisKey, json_encode($userData));
-                $validRows++;
-            }
-
-            if ($validRows === 0) {
-                return $this->response->setJSON(['status' => 'error', 'message' => 'File kosong atau format salah.']);
-            }
-
-            // Set TTL to 1 hour
-            $redis->expire($redisKey, 3600);
-            if (!empty($groupId)) {
-                $redis->setex("import_job_group_{$jobId}", 3600, $groupId);
-            }
-
-            return $this->response->setJSON([
-                'status' => 'success',
-                'job_id' => $jobId,
-                'total'  => $validRows
-            ]);
-
-        } catch (\Exception $e) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal memproses file Excel: ' . $e->getMessage()]);
-        }
+            $job = \App\Libraries\Import\ImportUpload::enqueue(
+                'students', (int) session('user_id'), $this->request->getFile('excel_file'),
+                ['group_id' => $groupId], (string) $this->request->getPost('import_request_id')
+            );
+            return $this->response->setStatusCode(202)->setHeader('Cache-Control', 'no-store')->setJSON($job);
+        } catch (\Throwable $error) { return ImportController::error($error); }
     }
 
+    /** Legacy URL is now read-only: no parsing, hashing, or database writes. */
     public function importBatch()
     {
-        $json = $this->request->getJSON();
-        $jobId = $json->job_id ?? '';
-        
-        if (empty($jobId)) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Job ID tidak ditemukan.']);
-        }
-
-        $redis = \App\Libraries\RedisClient::getInstance();
-        if (!$redis) {
-            return $this->response->setJSON(['status' => 'error', 'message' => 'Gagal terhubung ke Redis.']);
-        }
-
-        $redisKey = "import_job_{$jobId}";
-        $groupId = $redis->get("import_job_group_{$jobId}");
-        
-        $batchSize = 5;
-        $successCount = 0;
-        $duplicateCount = 0;
-        $failedCount = 0;
-        
-        $db = \Config\Database::connect();
-
-        for ($i = 0; $i < $batchSize; $i++) {
-            $item = $redis->lPop($redisKey);
-            if (!$item) break; // Queue empty
-            
-            $userData = json_decode($item, true);
-            if (!$userData) continue;
-
-            $db->transStart();
-
-            // Check duplicate username (including soft deleted)
-            $existingUser = $this->userModel->withDeleted()->where('username', $userData['username'])->first();
-            
-            if ($existingUser) {
-                if (empty($existingUser->deleted_at)) {
-                    // User is active: real duplicate
-                    $duplicateCount++;
-                    $db->transComplete();
-                    continue;
-                } else {
-                    // User is soft deleted: reuse/override this row!
-                    try {
-                        if ($this->userModel->reuseDeletedUser($existingUser->id, $userData)) {
-                            if (!empty($groupId)) {
-                                $db->table('user_groups')->where('user_id', $existingUser->id)->delete();
-                                $this->groupModel->addUserToGroup($existingUser->id, $groupId);
-                            }
-                            $db->transComplete();
-                            if ($db->transStatus() !== false) {
-                                $successCount++;
-                            }
-                        } else {
-                            $db->transRollback();
-                            $failedCount++;
-                            $errors = $this->userModel->errors();
-                            log_message('error', '[BATCH IMPORT] Reuse deleted user gagal (return false): ' . json_encode($errors) . ' | Data: ' . json_encode($userData));
-                        }
-                    } catch (\Exception $e) {
-                        $db->transRollback();
-                        $failedCount++;
-                        log_message('error', '[BATCH IMPORT] Gagal insert user: ' . $e->getMessage() . ' | Data: ' . json_encode($userData));
-                    }
-                    continue;
-                }
-            }
-
-            // If not exists at all, insert new user
-            try {
-                if ($this->userModel->skipValidation(true)->insert($userData)) {
-                    $userId = $this->userModel->getInsertID();
-                    if (!empty($groupId)) {
-                        $this->groupModel->addUserToGroup($userId, $groupId);
-                    }
-                    $db->transComplete();
-                    if ($db->transStatus() !== false) {
-                        $successCount++;
-                    }
-                } else {
-                    $db->transRollback();
-                    $failedCount++;
-                    $errors = $this->userModel->errors();
-                    log_message('error', '[BATCH IMPORT] Insert user gagal (return false): ' . json_encode($errors) . ' | Data: ' . json_encode($userData));
-                }
-            } catch (\Exception $e) {
-                $db->transRollback();
-                $failedCount++;
-                log_message('error', '[BATCH IMPORT] Gagal insert user: ' . $e->getMessage() . ' | Data: ' . json_encode($userData));
-            }
-        }
-
-        $remaining = (int) $redis->lLen($redisKey);
-        
-        if ($remaining === 0 && $successCount > 0) {
-            $this->activityLog->log('import', session('user_id'), 'user', 0, "Menyelesaikan import batch siswa.");
-        }
-
-        return $this->response->setJSON([
-            'status' => 'success',
-            'message' => 'Batch diproses.',
-            'success' => $successCount,
-            'failed' => $failedCount,
-            'duplicates' => $duplicateCount,
-            'remaining' => $remaining
-        ]);
+        $json = $this->request->getJSON(true);
+        return (new ImportController())->status((string) ($json['job_id'] ?? ''));
     }
+
     public function printCardsIndex()
     {
         $data = [

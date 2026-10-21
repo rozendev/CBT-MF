@@ -298,12 +298,12 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     <i class="bi bi-shield-check text-success fs-3 me-3"></i>
                     <div>
                         <strong class="text-success d-block">Jawaban Anda tidak hilang</strong>
-                        <span class="text-success small">Semua jawaban masih tersimpan di perangkat ini dan akan dikirim otomatis begitu server pulih.</span>
+                        <span class="text-success small">Jawaban tetap ada di perangkat ini. Pengiriman otomatis sudah berhenti; coba simpan lagi setelah server pulih.</span>
                     </div>
                 </div>
                 <div class="d-flex align-items-center justify-content-center text-secondary small">
-                    <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
-                    <span>Mencoba menyambung ulang otomatis…</span>
+                    <span x-show="storageRetrying">Mencoba menyimpan kembali…</span>
+                    <button type="button" class="btn btn-primary" :disabled="storageRetrying" @click="retryStorage()">Coba Simpan Lagi</button>
                 </div>
             </div>
         </div>
@@ -638,6 +638,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         var saveTimer = null;
         var savePending = false;
         var saveFailed = false;
+        var saveQueue = Promise.resolve();
+        var pendingSaves = {};
+        var pendingSaveCount = 0;
+        var saveNotBefore = 0;
         var flagged = {};
         var warningShown = false;
         var finishing = false;
@@ -670,6 +674,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
 
         async function postJson(url, fields) {
+            while (saveNotBefore > Date.now()) {
+                await new Promise(function (resolve) { setTimeout(resolve, saveNotBefore - Date.now()); });
+            }
             var res = await fetch(API_BASE + url, {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -685,7 +692,29 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                 window.location.href = API_BASE + '/login';
                 throw new Error('session-expired');
             }
+            if (!res.ok || data.status === 'error') {
+                var error = new Error(data.message || 'HTTP ' + res.status);
+                error.status = res.ok ? 400 : res.status;
+                error.retryAfter = res.headers.get('Retry-After');
+                if (error.status === 429) fallbackRetryDelay(fields.question_id || url, 1, error);
+                throw error;
+            }
             return data;
+        }
+
+        function fallbackRetryDelay(key, retry, error) {
+            var base = 1000 * Math.pow(2, retry - 1);
+            var seed = String(state.attemptId) + ':' + key + ':' + retry;
+            var hash = 2166136261;
+            for (var i = 0; i < seed.length; i++) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
+            var jitter = (hash >>> 0) % (base + 1);
+            var header = error && error.retryAfter;
+            var wait = header ? (/^\d+$/.test(header) ? Number(header) * 1000 : Math.max(0, Date.parse(header) - Date.now())) : NaN;
+            if (!Number.isFinite(wait)) wait = error && error.status === 429 ? 10000 : 0;
+            if (error && error.status === 429) {
+                saveNotBefore = Math.max(saveNotBefore, Date.now() + wait + jitter);
+            }
+            return Math.max(base, wait) + jitter;
         }
 
         function engage(data) {
@@ -813,6 +842,12 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             root.id = 'fallbackRoot';
             root.style.cssText = 'position:fixed;inset:0;z-index:20000;background:#f1f4f9;overflow:auto;font-family:system-ui,-apple-system,sans-serif;';
             root.innerHTML =
+                '<div id="fbStorageDown" role="alert" style="display:none;position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.97);align-items:center;justify-content:center;padding:24px;">' +
+                    '<div style="max-width:450px;padding:24px;background:#fff;border-radius:14px;text-align:center;">' +
+                        '<h3>Gagal Menyimpan Jawaban</h3><p>Pengiriman otomatis sudah berhenti. Jawaban tetap ada di halaman ini. Jangan tutup atau muat ulang halaman; panggil pengawas.</p>' +
+                        '<button id="fbRetry" type="button">Coba Simpan Lagi</button>' +
+                    '</div>' +
+                '</div>' +
                 '<div class="fb-header" style="position:sticky;top:0;background:#fff;border-bottom:1px solid #dee2e6;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">' +
                     '<strong id="fbTestName" style="font-size:15px;color:#1f2937;"></strong>' +
                     '<span id="fbTimer" style="font-size:15px;font-weight:700;color:#dc3545;font-variant-numeric:tabular-nums;"></span>' +
@@ -838,6 +873,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             root.querySelector('#fbPrev').addEventListener('click', function () { goTo(state.idx - 1); });
             root.querySelector('#fbNext').addEventListener('click', onNext);
             root.querySelector('#fbFlag').addEventListener('click', toggleFlag);
+            root.querySelector('#fbRetry').addEventListener('click', retryFailedSaves);
             root.addEventListener('change', onRootChange);
             root.addEventListener('input', onRootInput);
             saveStatusEl = root.querySelector('#fbSaveStatus');
@@ -1020,15 +1056,18 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         function scheduleSave() {
             if (!engaged || finishing) return;
             if (saveTimer) clearTimeout(saveTimer);
-            saveTimer = setTimeout(doSave, 800);
+            var question = currentQ();
+            saveTimer = setTimeout(function () { doSave(question); }, 800);
             setSaveStatus('Menyimpan…', '');
         }
 
-        function doSave() {
+        function doSave(question) {
             saveTimer = null;
             if (!engaged || finishing) return;
-            var q = currentQ();
+            var q = question || currentQ();
             if (!q) return;
+            pendingSaves[q.question_id] = q;
+            if (saveFailed) return saveQueue;
 
             var payload = { attempt_id: state.attemptId, question_id: q.question_id, question_type: q.question_type, generated_at: GENERATED_AT };
             if (q.question_type == 3) {
@@ -1043,31 +1082,68 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     .map(function (a) { return a.answer_id; });
             }
 
+            pendingSaveCount++;
             savePending = true;
-            return postJson('/api/exam/autosave', payload)
-                .then(function (res) {
-                    if (res.status === 'kicked') {
-                        window.location.href = API_BASE + '/login';
+            saveQueue = saveQueue.then(async function () {
+                if (saveFailed) {
+                    pendingSaves[q.question_id] = q;
+                    return;
+                }
+                for (var retry = 0; retry <= 3; retry++) {
+                    try {
+                        var res = await postJson('/api/exam/autosave', payload);
+                        if (res.status === 'kicked') {
+                            window.location.href = API_BASE + '/login';
+                            return;
+                        }
+                        if (res.status !== 'success') throw Object.assign(new Error('Respons penyimpanan tidak valid'), { status: 400 });
+                        delete pendingSaves[q.question_id];
+                        lastSaveAt = Date.now();
+                        setSaveStatus('Tersimpan ' + new Date().toLocaleTimeString(), 'ok');
                         return;
+                    } catch (err) {
+                        if (String(err && err.message).indexOf('session-expired') !== -1) return;
+                        var status = err.status || 0;
+                        var delay = fallbackRetryDelay(q.question_id, retry + 1, err);
+                        if (retry === 3 || !(status === 0 || status === 408 || status === 429 || status >= 500)) {
+                            pendingSaves[q.question_id] = q;
+                            saveFailed = true;
+                            setSaveStatus('Gagal menyimpan. Jangan tutup halaman; panggil pengawas.', 'err');
+                            if (root) root.querySelector('#fbStorageDown').style.display = 'flex';
+                            return;
+                        }
+                        setSaveStatus('Gagal menyimpan — mencoba ulang…', 'err');
+                        await new Promise(function (resolve) { setTimeout(resolve, delay); });
                     }
-                    lastSaveAt = Date.now();
-                    saveFailed = false;
-                    setSaveStatus('Tersimpan ' + new Date().toLocaleTimeString(), 'ok');
-                })
-                .catch(function (err) {
-                    if (String(err && err.message).indexOf('session-expired') !== -1) return;
-                    saveFailed = true;
-                    setSaveStatus('Gagal menyimpan — mencoba ulang…', 'err');
-                    setTimeout(function () {
-                        if (engaged && !finishing && saveFailed) doSave();
-                    }, 2500);
-                })
-                .finally(function () { savePending = false; });
+                }
+            }).finally(function () {
+                pendingSaveCount--;
+                savePending = pendingSaveCount > 0;
+            });
+            return saveQueue;
+        }
+
+        async function retryFailedSaves() {
+            if (!saveFailed || savePending) return;
+            var button = root.querySelector('#fbRetry');
+            if (button.disabled) return;
+            button.disabled = true;
+            saveFailed = false;
+            try {
+                var pending = Object.values(pendingSaves);
+                for (var i = 0; i < pending.length; i++) {
+                    await doSave(pending[i]);
+                    if (saveFailed) break;
+                }
+                if (!saveFailed) root.querySelector('#fbStorageDown').style.display = 'none';
+            } finally {
+                button.disabled = false;
+            }
         }
 
         function startHeartbeat() {
             setInterval(function () {
-                if (!engaged || !state.attemptId) return;
+                if (!engaged || !state.attemptId || saveFailed) return;
                 postJson('/api/exam/auto-sync', { attempt_id: state.attemptId })
                     .then(function (res) {
                         if (res.exam_mode !== undefined) {
@@ -1110,6 +1186,10 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
 
         function finishExam(auto) {
             if (finishing) return;
+            if (saveFailed || savePending) {
+                alert('Jawaban belum tersimpan. Tunggu penyimpanan atau panggil pengawas.');
+                return;
+            }
             finishing = true;
 
             if (!auto) {

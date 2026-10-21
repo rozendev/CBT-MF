@@ -57,6 +57,8 @@ $routes->options('(:any)', static function () {
 $routes->group('admin', ['filter' => 'role:admin,guru'], static function ($routes) {
     $routes->get('/', 'Admin\DashboardController::index');
     $routes->get('dashboard', 'Admin\DashboardController::index');
+    $routes->get('imports/status/(:segment)', 'Admin\ImportController::status/$1');
+    $routes->get('imports/request/(:segment)', 'Admin\ImportController::lookup/$1');
 
     // ── Admin-Only Routes ───────────────────────────────
     $routes->group('', ['filter' => 'role:admin'], static function ($routes) {

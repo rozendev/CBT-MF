@@ -49,6 +49,34 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
 
+  # Admin import work is isolated from PHP-FPM/exam requests. No schema changes.
+  import-worker:
+    build:
+      context: ./docker/php-fpm
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    entrypoint: []
+    command: ["sh", "-c", "while true; do php -d memory_limit=224M spark imports:work --once --no-header; sleep 2; done"]
+    user: "33:33"
+    cpus: "${IMPORT_WORKER_CPUS:-0.5}"
+    mem_limit: ${IMPORT_WORKER_MEMORY:-256m}
+    memswap_limit: ${IMPORT_WORKER_MEMORY:-256m}
+    pids_limit: 32
+    volumes:
+      - ./src:/var/www/html
+      - ./docker/php-fpm/security.ini:/usr/local/etc/php/conf.d/security.ini:ro
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    networks:
+      - ujian_network
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+
   # ─── WebSocket Daemon ───────────────────────────────────────
   websocket:
     build:

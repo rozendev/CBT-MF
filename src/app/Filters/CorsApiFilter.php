@@ -57,6 +57,7 @@ class CorsApiFilter implements FilterInterface
             ->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
             ->setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With, X-CSRF-TOKEN, Authorization')
             ->setHeader('Access-Control-Allow-Credentials', 'true')
+            ->setHeader('Access-Control-Expose-Headers', 'Retry-After, X-CSRF-TOKEN')
             ->setHeader('Vary', 'Origin');
     }
 

@@ -58,11 +58,9 @@
        per tap yang menumpuk di antrean. */
     const AUTOSAVE_DEBOUNCE_MS = 700;
 
-    /* Percobaan ulang saat penyimpanan server tidak terjangkau. Berbeda dari
-       retry biasa yang menyerah setelah tiga kali: yang ini TIDAK pernah
-       menyerah, karena menyerah berarti siswa lanjut mengisi ke ruang hampa. */
-    const STORAGE_RETRY_MIN_MS = 3000;
-    const STORAGE_RETRY_MAX_MS = 15000;
+    // Satu request awal + maksimal tiga retry. Tidak ada loop pemulihan kedua.
+    const MAX_RETRIES = 3;
+    let retryNotBefore = 0;
     const RATE_WINDOW_MS = 3000;
     const RATE_MAX_ACTIONS = 8;
     const RATE_TOAST_COOLDOWN_MS = 4000;
@@ -71,7 +69,38 @@
         window.location.replace(url);
     }
 
+    function isRetryableStatus(status) {
+        return status === 0 || status === 408 || status === 429 || status >= 500;
+    }
+
+    function retryDelay(key, retry, response = null) {
+        const base = Math.min(1000 * Math.pow(2, retry - 1), 30000);
+        // Stabil untuk attempt/operasi yang sama, berbeda antar-siswa dan retry.
+        const seed = String(ATTEMPT_ID) + ':' + key + ':' + retry;
+        let hash = 2166136261;
+        for (let i = 0; i < seed.length; i++) hash = Math.imul(hash ^ seed.charCodeAt(i), 16777619);
+        const jitter = (hash >>> 0) % (base + 1);
+        const header = response && (response.getResponseHeader ? response.getResponseHeader('Retry-After') : response.headers?.get('Retry-After'));
+        let wait = NaN;
+        if (header) {
+            wait = /^\d+$/.test(header) ? Number(header) * 1000 : Math.max(0, Date.parse(header) - Date.now());
+        }
+        if (!Number.isFinite(wait)) wait = response && response.status === 429 ? 10000 : 0;
+        // Filter API memakai window 10 detik; aman juga untuk respons lama tanpa header.
+        if (response && response.status === 429) {
+            retryNotBefore = Math.max(retryNotBefore, Date.now() + wait + jitter);
+        }
+        return Math.max(base, wait) + jitter;
+    }
+
+    async function waitForRetryCooldown() {
+        while (retryNotBefore > Date.now()) {
+            await new Promise(resolve => setTimeout(resolve, retryNotBefore - Date.now()));
+        }
+    }
+
     async function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+        await waitForRetryCooldown();
         return fetch(url, {
             ...options,
             credentials: 'include',
@@ -80,17 +109,21 @@
     }
 
     async function fetchWithRetry(url, options = {}, maxRetries = FETCH_MAX_RETRIES, timeoutMs = FETCH_TIMEOUT_MS) {
+        maxRetries = Math.max(0, Math.min(maxRetries, MAX_RETRIES));
         let lastError;
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            let res;
             try {
-                const res = await fetchWithTimeout(url, options, timeoutMs);
+                res = await fetchWithTimeout(url, options, timeoutMs);
                 if (res.ok) return res;
                 lastError = new Error('HTTP ' + res.status);
             } catch (err) {
                 lastError = err;
             }
+            if (res && !isRetryableStatus(res.status)) throw lastError;
+            const delay = retryDelay(url, attempt + 1, res);
             if (attempt < maxRetries) {
-                await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                await new Promise(r => setTimeout(r, delay));
             }
         }
         throw lastError;
@@ -319,8 +352,6 @@
             storageDown: false,
             storageDownMsg: '',
             storageRetrying: false,
-            storageRetryTimer: null,
-            storageRetryDelay: STORAGE_RETRY_MIN_MS,
             ready: false,
             
             activeQueue: Promise.resolve(),
@@ -683,12 +714,12 @@
                 if (!this.wsErrorCount) this.wsErrorCount = 0;
                 this.wsErrorCount++;
                 
-                if (this.wsErrorCount > 10) {
+                if (this.wsErrorCount > MAX_RETRIES) {
                     console.warn('WebSocket reconnect limit reached');
                     return;
                 }
                 
-                const delay = Math.min((APP_CFG.ws_reconnect_base_ms || 1000) * Math.pow(2, this.wsErrorCount), APP_CFG.ws_reconnect_cap_ms || 30000);
+                const delay = retryDelay('websocket', this.wsErrorCount);
                 console.log(`Reconnecting WebSocket in ${delay}ms...`);
                 
                 setTimeout(() => {
@@ -790,6 +821,7 @@
 
             scheduleAutoSync() {
                 if (this.syncTimeout) clearTimeout(this.syncTimeout);
+                if (this.storageDown) return;
                 
                 const timeSinceLastSync = Date.now() - this.lastSyncTime;
                 const MAX_WAIT = APP_CFG.auto_sync_max_wait_ms || 180000; // 3 menit
@@ -811,9 +843,15 @@
                     console.warn("Recovered from queue error:", err);
                     return Promise.resolve();
                 });
+                return this.activeQueue;
             },
 
-            performNetworkRequest(action, params) {
+            async performNetworkRequest(action, params) {
+                if (this.storageDown && !params.storageRecovery) {
+                    if (action === 'autosave') this.markUnsaved(params.logId, this.storageDownMsg);
+                    return;
+                }
+                await waitForRetryCooldown();
                 return new Promise((resolve) => {
                     if (action === 'sync') {
                         if (!ATTEMPT_ID) return resolve();
@@ -827,6 +865,7 @@
                             dataType: 'json',
                             timeout: FETCH_TIMEOUT_MS,
                         }).always((res) => {
+                            if (res && res.status === 429) retryDelay('sync', 1, res);
                             if (res && res.csrf_hash) updateCsrf(res);
                             if (res && res.exam_mode !== undefined) {
                                 const driftTarget = this.modeDriftTarget(res.exam_mode, res.static_page_path);
@@ -840,7 +879,9 @@
                             resolve();
                         });
                     } else if (action === 'autosave') {
-                        const { logId, retries } = params;
+                        const { logId } = params;
+                        const retries = Math.max(0, Math.min(params.retries ?? MAX_RETRIES, MAX_RETRIES));
+                        const retryAttempt = params.retryAttempt || 0;
                         const q = this.questions.find(x => String(this.qKey(x)) === String(logId));
                         if (!q) return resolve();
 
@@ -872,6 +913,21 @@
                         this.saveState = 'saving';
                         const fd = buildFormData(passedData);
 
+                        const failed = (err) => {
+                            const delay = retryDelay('autosave:' + logId, retryAttempt + 1, err);
+                            if (isRetryableStatus(err.status) && retries > 0) {
+                                setTimeout(() => {
+                                    this.performNetworkRequest('autosave', {
+                                        ...params, retries: retries - 1, retryAttempt: retryAttempt + 1
+                                    }).then(resolve);
+                                }, delay);
+                                return;
+                            }
+                            this.markUnsaved(logId, this.readServerMessage(err));
+                            this.enterStorageDown(this.readServerMessage(err));
+                            resolve();
+                        };
+
                         $.ajax({
                             url: API + '/api/exam/autosave',
                             type: 'POST',
@@ -886,18 +942,17 @@
                                 // HTTP 200 TIDAK berarti tersimpan: server bisa menolak
                                 // dengan {status:'error'}. Menampilkan toast "tersimpan"
                                 // di sini membuat jawaban hilang tanpa disadari siswa.
-                                if (res && res.status === 'error') {
-                                    if (retries > 0) {
-                                        setTimeout(() => {
-                                            this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
-                                        }, 2500);
-                                    } else {
-                                        this.isSaving = false;
-                                        this.showErrorToast = true;
-                                        setTimeout(() => { this.showErrorToast = false; }, 4000);
-                                        this.markUnsaved(logId, res.message || 'Server menolak menyimpan jawaban ini.');
-                                        resolve();
-                                    }
+                                if (res && res.status === 'kicked') {
+                                    this.isSaving = false;
+                                    if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
+                                    Swal.fire('Informasi', res.message, 'info').then(() => {
+                                        window.location.href = API + '/login';
+                                    });
+                                    resolve();
+                                    return;
+                                }
+                                if (!res || res.status !== 'success') {
+                                    failed({ status: 400, responseJSON: res });
                                     return;
                                 }
 
@@ -905,13 +960,6 @@
                                 this.markSaved(logId);
                                 this.showSavedToast = true;
                                 setTimeout(() => { this.showSavedToast = false; }, 2000);
-
-                                if (res.status === 'kicked') {
-                                    if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                                    Swal.fire('Informasi', res.message, 'info').then(() => {
-                                        window.location.href = API + '/login';
-                                    });
-                                }
                                 resolve();
                             },
                             error: (err) => {
@@ -922,28 +970,8 @@
                                         window.location.href = API + '/login';
                                     });
                                     resolve();
-                                } else if (err.status === 503) {
-                                    /* Server menyatakan lapis penyimpanannya tidak
-                                       dapat dijangkau — atau nginx menyajikan halaman
-                                       maintenance. Tidak ada gunanya mencoba tiga kali
-                                       lalu membiarkan siswa lanjut: bekukan sekarang. */
-                                    this.markUnsaved(logId, 'Penyimpanan server tidak dapat dijangkau.');
-                                    this.enterStorageDown(this.readServerMessage(err));
-                                    resolve();
                                 } else {
-                                    if (retries > 0) {
-                                        setTimeout(() => {
-                                            this.performNetworkRequest('autosave', { logId, retries: retries - 1 }).then(resolve);
-                                        }, 2500);
-                                    } else {
-                                        /* Dulu berhenti di sini dengan toast 4 detik, dan
-                                           siswa lanjut mengisi tanpa satu pun jawabannya
-                                           sampai ke server. Sekarang dibekukan sampai ada
-                                           satu penyimpanan yang benar-benar berhasil. */
-                                        this.markUnsaved(logId, 'Koneksi ke server gagal.');
-                                        this.enterStorageDown('Jawaban Anda tidak dapat dikirim ke server.');
-                                        resolve();
-                                    }
+                                    failed(err);
                                 }
                             }
                         });
@@ -971,33 +999,19 @@
             /* Bekukan ujian di tempat. Sengaja TIDAK memindahkan halaman:
                sesi tersimpan di Redis, jadi kalau Redis yang tumbang siswa
                tidak akan bisa login kembali. Dengan tetap di halaman ini,
-               jawaban di memori utuh dan langsung menyusul begitu server pulih. */
+               jawaban di memori utuh sampai siswa mencoba simpan ulang. */
             enterStorageDown(message) {
                 this.storageDownMsg = message || 'Penyimpanan jawaban di server sedang tidak dapat dijangkau.';
                 this.isSaving = false;
                 this.showErrorToast = false;
 
-                if (this.storageDown) return;   // sudah beku, loop sudah jalan
-
                 this.storageDown = true;
-                this.storageRetryDelay = STORAGE_RETRY_MIN_MS;
-                this.scheduleStorageRetry();
+                this.saveState = 'failed';
+                if (this.syncTimeout) clearTimeout(this.syncTimeout);
             },
 
-            scheduleStorageRetry() {
-                if (this.storageRetryTimer) clearTimeout(this.storageRetryTimer);
-                this.storageRetryTimer = setTimeout(() => {
-                    this.storageRetryTimer = null;
-                    this.storageRetryDelay = Math.min(
-                        Math.round(this.storageRetryDelay * 1.6),
-                        STORAGE_RETRY_MAX_MS
-                    );
-                    this.retryStorage();
-                }, this.storageRetryDelay);
-            },
-
-            retryStorage() {
-                if (!this.storageDown) return;
+            async retryStorage() {
+                if (!this.storageDown || this.storageRetrying) return;
 
                 this.storageRetrying = true;
                 let pending = Object.keys(this.unsavedIds);
@@ -1012,12 +1026,14 @@
                     if (current) pending = [current];
                 }
 
-                // retries 0: pengulangan diurus loop ini, bukan retry berlapis.
-                pending.forEach((id) => {
-                    this.enqueueRequest('autosave', { logId: isNaN(id) ? id : Number(id), retries: 0 });
-                });
-
-                this.scheduleStorageRetry();
+                try {
+                    for (const id of pending) {
+                        await this.enqueueRequest('autosave', { logId: isNaN(id) ? id : Number(id), retries: MAX_RETRIES, storageRecovery: true });
+                        if (this.unsavedIds[id]) break;
+                    }
+                } finally {
+                    this.storageRetrying = false;
+                }
             },
 
             exitStorageDown() {
@@ -1025,12 +1041,7 @@
 
                 this.storageDown = false;
                 this.storageDownMsg = '';
-                this.storageRetrying = false;
-                this.storageRetryDelay = STORAGE_RETRY_MIN_MS;
-                if (this.storageRetryTimer) {
-                    clearTimeout(this.storageRetryTimer);
-                    this.storageRetryTimer = null;
-                }
+                this.scheduleAutoSync();
             },
 
             markUnsaved(logId, message) {
@@ -1041,12 +1052,10 @@
             },
 
             markSaved(logId) {
-                // Satu penyimpanan yang benar-benar berhasil adalah satu-satunya
-                // bukti yang sah bahwa penyimpanan server sudah pulih.
-                this.exitStorageDown();
                 if (this.unsavedIds[logId]) delete this.unsavedIds[logId];
                 this.unsavedCount = Object.keys(this.unsavedIds).length;
                 if (this.unsavedCount === 0) {
+                    this.exitStorageDown();
                     this.saveErrorMsg = '';
                     this.saveState = 'saved';
                 } else {
@@ -1326,6 +1335,13 @@
                 if (this.activeQueue) {
                     try { await this.activeQueue; } catch(e) {}
                 }
+
+                if (this.storageDown || this.unsavedCount > 0) {
+                    window.isSubmitting = false;
+                    Swal.fire('Jawaban Belum Tersimpan', 'Coba simpan lagi dan panggil pengawas sebelum menyelesaikan ujian.', 'error');
+                    return;
+                }
+                await waitForRetryCooldown();
 
                 const fd = buildFormData({ test_id: EXAM_CONFIG.testId, attempt_id: ATTEMPT_ID });
 
