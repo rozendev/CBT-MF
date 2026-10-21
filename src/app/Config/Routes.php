@@ -28,6 +28,7 @@ $routes->group('api', ['filter' => 'auth'], static function ($routes) {
     $routes->post('exam/start', 'Api\ExamApiController::start');
     $routes->post('exam/autosave', 'Api\ExamApiController::autosave');
     $routes->post('exam/auto-sync', 'Api\ExamApiController::autoSync');
+    $routes->get('exam/status/(:num)', 'Api\ExamStatusController::show/$1');
     $routes->post('exam/finish', 'Api\ExamApiController::finish');
     $routes->post('exam/check-score', 'Api\ExamApiController::checkScore');
     $routes->post('exam/report-cheat', 'Api\ExamApiController::reportCheat');

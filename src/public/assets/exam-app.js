@@ -338,6 +338,7 @@
             rateToastMsg: '',
             timeLeft: 0,
             timerInterval: null,
+            serverTimeOffsetMs: 0,
             warningShown: false,
             testName: '',
             studentName: '',
@@ -356,6 +357,15 @@
             
             activeQueue: Promise.resolve(),
             syncTimeout: null,
+            statusPolling: false,
+            statusPollTimer: null,
+            statusPollInFlight: false,
+            statusPollFailures: 0,
+            statusPollGeneration: 0,
+            realtimeStopped: false,
+            wsReconnectTimeout: null,
+            wsLivenessTimeout: null,
+            wsAuthenticated: false,
             lastSyncTime: Date.now(),
 
             /* Kunci soal untuk mencari opsi jawaban dan sebagai identitas
@@ -485,11 +495,12 @@
             },
 
             startTimer(beginTimeMs, timeOffset) {
+                this.serverTimeOffsetMs = timeOffset;
                 if (this.durationMinutes <= 0) return;
                 this.endTimeMs = beginTimeMs + (this.durationMinutes * 60 * 1000);
 
                 this.timerInterval = setInterval(() => {
-                    const now = Date.now() + timeOffset;
+                    const now = Date.now() + this.serverTimeOffsetMs;
                     const distance = this.endTimeMs - now;
 
                     if (distance <= 0) {
@@ -609,6 +620,7 @@
                 const wsToken = window.__examData ? window.__examData.wsToken : null;
                 if (!wsToken) {
                     console.error('No WebSocket token available');
+                    this.startStatusPolling();
                     return;
                 }
                 
@@ -618,6 +630,7 @@
                 const wsBase = EXAM_CONFIG.wsUrl || APP_CFG.websocket_url || window.KIOSK_WS_URL || '';
                 if (!wsBase) {
                     console.error('URL WebSocket tidak tersedia dari server');
+                    this.startStatusPolling();
                     return;
                 }
                 const wsUrl = wsBase.replace(/\/+$/, '') + `/?ws_token=${wsToken}`;
@@ -626,7 +639,14 @@
             },
 
             connectWebSocket(wsUrl) {
-                this.ws = new WebSocket(wsUrl);
+                if (this.realtimeStopped || window.isSubmitting) return;
+                if (this.ws && this.ws.readyState < 2) return;
+                let socket;
+                try { socket = new WebSocket(wsUrl); }
+                catch (error) { this.startStatusPolling(); this.reconnectWebSocket(wsUrl); return; }
+                this.ws = socket;
+                this.wsAuthenticated = false;
+                this.armWebSocketTimeout(socket, FETCH_TIMEOUT_MS);
                 // kiosk-integration.js mengirim telemetri lewat
                 // window.examWebSocket. Tanpa baris ini global itu tidak pernah
                 // terisi dan sendKioskWsEvent() jadi no-op permanen: exit_attempt,
@@ -634,17 +654,30 @@
                 window.examWebSocket = this.ws;
 
                 this.ws.onopen = () => {
-                    this.wsErrorCount = 0;
-                    console.log('WebSocket connected');
+                    if (this.ws !== socket || this.realtimeStopped) return;
+                    // The server validates Redis tokens AFTER the transport opens.
+                    // Keep polling and retry budgets until its connected acknowledgement.
+                    this.armWebSocketTimeout(socket, FETCH_TIMEOUT_MS);
                 };
 
                 this.ws.onmessage = (e) => {
+                    if (this.ws !== socket || this.realtimeStopped) return;
                     const payload = JSON.parse(e.data);
                     const eventName = payload.event;
                     const d = payload.data || {};
+                    if (eventName === 'connected' && String(d.attempt_id) === String(ATTEMPT_ID)) {
+                        this.wsAuthenticated = true;
+                        clearTimeout(this.wsReconnectTimeout);
+                        this.wsReconnectTimeout = null;
+                        this.wsErrorCount = 0;
+                        this.statusPollFailures = 0;
+                        this.stopStatusPolling();
+                    }
+                    if (!this.wsAuthenticated) return;
+                    this.armWebSocketTimeout(socket, 45000);
 
                     if (eventName === 'ban') {
-                        this.ws.close();
+                        this.stopRealtime();
                         Swal.fire({ title:'Akun Di-Ban', text:d.message, icon:'error', allowOutsideClick:false, allowEscapeKey:false, confirmButtonText:'OK' })
                             .then(() => logoutAndRedirect(API + '/login'));
                     }
@@ -654,15 +687,16 @@
                         // halaman login online -- justru merusak penguncian.
                         // 'ejected' hanya menghentikan ujian; lock task Android
                         // dibiarkan aktif, jadi keluar tetap butuh password pengawas.
+                        this.stopRealtime();
                         this.showEjected(d.message || 'Ujian Anda dihentikan oleh pengawas.');
                     }
                     else if (eventName === 'kick') {
-                        this.ws.close();
+                        this.stopRealtime();
                         Swal.fire('Sesi Dihentikan', d.message, 'error')
                             .then(() => logoutAndRedirect(API + '/login'));
                     }
                     else if (eventName === 'finished') {
-                        this.ws.close();
+                        this.stopRealtime();
                         Swal.fire('Ujian Selesai', d.message, 'info')
                             .then(() => { window.location.href = API + '/student/dashboard'; });
                     }
@@ -699,18 +733,24 @@
                 };
 
                 this.ws.onclose = (e) => {
+                    if (this.ws !== socket || this.realtimeStopped) return;
+                    clearTimeout(this.wsLivenessTimeout);
                     console.warn('WebSocket closed', e);
-                    if (window.examWebSocket === this.ws) window.examWebSocket = null;
+                    if (window.examWebSocket === socket) window.examWebSocket = null;
+                    this.startStatusPolling();
                     this.reconnectWebSocket(wsUrl);
                 };
 
                 this.ws.onerror = (err) => {
-                    console.error('WebSocket error', err);
-                    this.ws.close();
+                    if (this.ws !== socket || this.realtimeStopped) return;
+                    console.warn('WebSocket unavailable; polling exam status', err);
+                    this.startStatusPolling();
+                    socket.close();
                 };
             },
 
             reconnectWebSocket(wsUrl) {
+                if (this.realtimeStopped || window.isSubmitting || this.wsReconnectTimeout) return;
                 if (!this.wsErrorCount) this.wsErrorCount = 0;
                 this.wsErrorCount++;
                 
@@ -722,9 +762,99 @@
                 const delay = retryDelay('websocket', this.wsErrorCount);
                 console.log(`Reconnecting WebSocket in ${delay}ms...`);
                 
-                setTimeout(() => {
+                this.wsReconnectTimeout = setTimeout(() => {
+                    this.wsReconnectTimeout = null;
                     this.connectWebSocket(wsUrl);
                 }, delay);
+            },
+
+            armWebSocketTimeout(socket, delay) {
+                clearTimeout(this.wsLivenessTimeout);
+                this.wsLivenessTimeout = setTimeout(() => {
+                    if (this.ws !== socket || this.realtimeStopped || window.isSubmitting) return;
+                    this.startStatusPolling();
+                    socket.close();
+                }, delay);
+            },
+
+            startStatusPolling() {
+                if (!ATTEMPT_ID || this.statusPolling || this.realtimeStopped || window.isSubmitting || this.statusPollFailures > MAX_RETRIES) return;
+                this.statusPolling = true;
+                // Stagger failover too: a stopped daemon must not cause one HTTP burst.
+                this.statusPollTimer = setTimeout(() => this.pollExamStatus(), retryDelay('ws-status-start', 1) - 1000);
+            },
+
+            stopStatusPolling() {
+                this.statusPollGeneration = (this.statusPollGeneration || 0) + 1;
+                this.statusPolling = false;
+                clearTimeout(this.statusPollTimer);
+                this.statusPollTimer = null;
+            },
+
+            async pollExamStatus() {
+                if (!this.statusPolling || this.statusPollInFlight || this.realtimeStopped || window.isSubmitting) return;
+                this.statusPollInFlight = true;
+                const generation = this.statusPollGeneration;
+                let delay = 10000 + (retryDelay('ws-status-interval', 3) - 4000);
+                try {
+                    const response = await fetchWithTimeout(API + '/api/exam/status/' + ATTEMPT_ID, {
+                        method: 'GET', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store',
+                    });
+                    if (!response.ok) throw Object.assign(new Error('HTTP ' + response.status), { status: response.status, headers: response.headers });
+                    const status = await response.json();
+                    if (!status || !['success', 'ban', 'ejected', 'finished'].includes(status.status)) {
+                        throw Object.assign(new Error('Invalid exam status response'), { status: 400 });
+                    }
+                    if (generation !== this.statusPollGeneration || !this.statusPolling || this.realtimeStopped || window.isSubmitting) return;
+                    this.statusPollFailures = 0;
+                    this.applyExamStatus(status);
+                } catch (error) {
+                    if (generation !== this.statusPollGeneration || !this.statusPolling || this.realtimeStopped) return;
+                    this.statusPollFailures = (this.statusPollFailures || 0) + 1;
+                    if (error.status === 401 || error.status === 403) {
+                        this.stopRealtime();
+                        logoutAndRedirect(API + '/login');
+                    } else if (this.statusPollFailures > MAX_RETRIES || !isRetryableStatus(error.status || 0)) {
+                        this.stopStatusPolling();
+                        console.warn('Exam status polling stopped after HTTP failure', error);
+                    } else {
+                        delay = retryDelay('ws-status', this.statusPollFailures, error);
+                    }
+                } finally {
+                    this.statusPollInFlight = false;
+                    if (this.statusPolling && !this.realtimeStopped && !window.isSubmitting) {
+                        clearTimeout(this.statusPollTimer);
+                        this.statusPollTimer = setTimeout(() => this.pollExamStatus(), delay);
+                    }
+                }
+            },
+
+            applyExamStatus(status) {
+                if (['ban', 'ejected', 'finished'].includes(status.status)) {
+                    this.stopRealtime();
+                    if (status.status === 'ejected') this.showEjected(status.message);
+                    else if (status.status === 'finished') Swal.fire('Ujian Selesai', status.message, 'info').then(() => { window.location.href = API + '/student/dashboard'; });
+                    else Swal.fire('Akun Di-Ban', status.message, 'error').then(() => logoutAndRedirect(API + '/login'));
+                    return;
+                }
+                if (status.status !== 'success') return;
+                if (Number.isFinite(status.end_time_ms) && Number.isFinite(status.server_time_ms) && status.end_time_ms > 0) {
+                    this.serverTimeOffsetMs = status.server_time_ms - Date.now();
+                    this.endTimeMs = status.end_time_ms;
+                }
+                if (status.duration_minutes > this.durationMinutes) this.warningShown = false;
+                this.durationMinutes = status.duration_minutes;
+                const target = this.modeDriftTarget(status.exam_mode, status.static_page_path);
+                if (target) { this.stopRealtime(); window.isSubmitting = true; window.location.href = target; }
+            },
+
+            stopRealtime() {
+                this.realtimeStopped = true;
+                this.stopStatusPolling();
+                clearTimeout(this.wsReconnectTimeout);
+                clearTimeout(this.wsLivenessTimeout);
+                if (window.examWebSocket === this.ws) window.examWebSocket = null;
+                if (this.ws) this.ws.close();
             },
 
             get currentQuestion() { return this.questions[this.currentIndex] || {}; },

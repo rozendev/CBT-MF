@@ -138,10 +138,10 @@ for (const file of files) {
         assert.ok(f.calls[1] >= 10000, 'Retry was sent before the rate limit window expired');
     });
 
-    test(file + ': WebSocket reconnects stop at three', () => {
+    test(file + ': repeated close callbacks schedule only one WebSocket reconnect', () => {
         const f = fixture(file, [{ status: 200 }]);
         for (let i = 0; i < 4; i++) f.app.reconnectWebSocket('ws://example.test');
-        assert.equal(f.delays.length, 3);
+        assert.equal(f.delays.length, 1);
     });
 
     test(file + ': manual recovery saves all pending answers once even on double click', async () => {
