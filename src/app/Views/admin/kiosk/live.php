@@ -27,7 +27,7 @@
             <p class="text-muted mb-0">Status perangkat EXAMBRO siswa per ujian. Data diperbarui otomatis tiap 10 detik.</p>
         </div>
         <div class="col-md-4 text-end">
-            <select x-model="selectedTest" @change="loadData()" class="form-select d-inline-block w-auto">
+            <select x-model="selectedTest" @change="timer.trigger()" class="form-select d-inline-block w-auto">
                 <option value="">— Pilih Ujian —</option>
                 <template x-for="t in tests" :key="t.id">
                     <option :value="t.id" x-text="t.name + ' (' + t.attempt_count + ' peserta)'"></option>
@@ -163,27 +163,32 @@ function kioskLive() {
         actionMessage: '',
         actionOk: true,
         timer: null,
+        outagePoll: null,
+        loading: false,
         init() {
             if (this.tests.length === 1) {
                 this.selectedTest = String(this.tests[0].id);
-                this.loadData();
+                this.timer?.trigger();
             }
-            this.checkOutage();
-            this.timer = setInterval(() => {
-                if (this.selectedTest) this.loadData();
-                this.checkOutage();
-            }, 10000);
+            this.timer = CbtPolling.create({ key: 'kiosk-live', task: 'live', interval: 10000, immediate: true,
+                when: () => !!this.selectedTest, run: signal => this.loadData(signal) }).start();
+            this.outagePoll = CbtPolling.create({ key: 'dependency-status', task: 'presence', interval: 60000,
+                immediate: true, run: signal => this.checkOutage(signal) }).start();
         },
-        loadData() {
-            if (!this.selectedTest) return;
-            const headers = {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
-            };
-            fetch('<?= base_url('/admin/kiosk/live-data') ?>?test_id=' + encodeURIComponent(this.selectedTest), { headers })
-                .then(r => r.ok ? r.json() : Promise.reject(r.status))
-                .then(d => { this.students = d.students || []; })
-                .catch(e => console.error('kiosk live-data failed:', e));
+        destroy() { this.timer?.stop(); this.outagePoll?.stop(); },
+        async loadData(signal) {
+            if (!this.selectedTest || this.loading) return;
+            const selectedTest = this.selectedTest;
+            this.loading = true;
+            try {
+                const headers = {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
+                };
+                return await CbtPolling.request('<?= base_url('/admin/kiosk/live-data') ?>?test_id=' + encodeURIComponent(selectedTest), { signal, headers })
+                    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                    .then(d => { if (this.selectedTest === selectedTest) this.students = d.students || []; });
+            } finally { this.loading = false; }
         },
         /* Nama siswa masuk ke opsi html: milik Swal, jadi harus di-escape.
            Nama berasal dari basis data dan bisa memuat karakter apa pun. */
@@ -263,7 +268,7 @@ function kioskLive() {
                 .then(d => {
                     this.actionOk = d.status === 'success';
                     this.actionMessage = d.message || (this.actionOk ? 'Aksi berhasil.' : 'Aksi gagal.');
-                    this.loadData();
+                    this.timer?.trigger();
                 })
                 .catch(e => {
                     console.error('kiosk action failed:', e);
@@ -272,8 +277,8 @@ function kioskLive() {
                 })
                 .finally(() => { this.busyUser = null; });
         },
-        checkOutage() {
-            fetch('<?= base_url('/maintenance-check.php') ?>', { cache: 'no-store' })
+        checkOutage(signal) {
+            return CbtPolling.request('<?= base_url('/maintenance-check.php') ?>', { signal, cache: 'no-store' })
                 .then(r => r.json())
                 .then(d => {
                     if (d.mode === 'deps') {
@@ -284,8 +289,7 @@ function kioskLive() {
                     } else {
                         this.outageMessage = '';
                     }
-                })
-                .catch(() => {});
+                });
         }
     }
 }

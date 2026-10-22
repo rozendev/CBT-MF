@@ -29,14 +29,43 @@ cadangan tanpa Alpine/jQuery. WebSocket mencoba reconnect maksimal tiga kali
 berturut-turut dengan jitter. Shim kiosk menerapkan timeout dan mempertahankan
 status HTTP/header bahkan bila server mengembalikan HTML.
 
+## Fallback WebSocket
+
+Halaman dinamis dan engine statis/kiosk otomatis beralih ke polling status
+ketika koneksi WebSocket error/tertutup, konfigurasi tidak tersedia, handshake
+melewati 15 detik (timeout request), atau heartbeat tidak diterima selama
+45 detik. Pada halaman aktif, poll pertama diberi variasi deterministik 0–1 detik;
+setelah itu berjeda 10–11 detik setelah respons selesai, tanpa request paralel.
+Halaman terlihat yang idle selama dua menit melambat menjadi 30–31 detik,
+tab tersembunyi 180–210 detik, dan halaman ditutup berhenti polling.
+Autosave tetap dipicu perubahan jawaban; sync database hanya dilakukan setelah
+perubahan tersimpan. Lihat [jadwal per tugas dan lifecycle](activity-polling.md).
+
+GET `/api/exam/status/{attempt_id}` hanya membaca satu snapshot milik siswa:
+status akun/attempt, deadline, dan mode ujian. Endpoint tidak memuat soal,
+tidak menyimpan jawaban, dan tidak memicu flush Redis ke database. Status
+dikeluarkan tetap mempertahankan layar terkunci pada kiosk. Tambahan waktu
+memakai deadline server sehingga tidak menambahkan durasi penuh dari waktu
+polling. Respons bersifat privat dan tidak boleh dicache.
+
+WebSocket tetap mencoba reconnect maksimal tiga kali. Setelah server mengirim
+acknowledgement `connected` untuk attempt yang benar, polling berhenti otomatis.
+Transport yang terbuka lalu ditolak saat validasi token tidak mereset anggaran
+retry. Error HTTP sementara pada polling mendapat maksimal
+tiga retry dengan jeda deterministik dan `Retry-After`; setelah habis polling
+berhenti agar tidak menambah beban. Pemulihan WebSocket yang berhasil membuka
+anggaran baru; kegagalan HTTP tidak diulang tanpa batas.
+
 ## Verifikasi
 
 ```bash
 node src/tests/Resilience/exam-retry.test.cjs
 node src/tests/Resilience/fallback-retry.test.cjs
 node src/tests/Resilience/kiosk-ajax.test.cjs
+node src/tests/Resilience/websocket-polling.test.cjs
 docker compose exec -T php vendor/bin/phpunit
 docker compose exec -T php vendor/bin/phpunit -c phpunit.throttling.xml.dist
+docker compose exec -T php vendor/bin/phpunit -c phpunit.realtime.xml.dist
 ```
 
 Setelah deploy, bangun ulang bundle kiosk dengan

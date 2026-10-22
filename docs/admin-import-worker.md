@@ -2,7 +2,9 @@
 
 Impor siswa dan soal sekarang memakai satu antrean server. Request upload hanya
 memvalidasi batas file dan menyimpan job; parsing, hashing, serta penulisan data
-dijalankan PHP CLI terpisah. Browser membaca progres dengan GET setiap 2–6 detik.
+dijalankan PHP CLI terpisah. Browser membaca progres dengan GET sekitar 3 detik
+saat berjalan, 10 detik saat antre/retry, dan 3–3,5 menit saat tab tersembunyi.
+Polling berhenti ketika halaman ditutup. Lihat [kebijakan polling](activity-polling.md).
 Endpoint `users/import-batch` lama hanya membaca status, tidak mengeksekusi batch.
 
 Tidak ada migrasi, tabel baru, atau perubahan model inti, algoritma hash,

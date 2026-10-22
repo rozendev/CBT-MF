@@ -166,19 +166,18 @@ $siteAuthor = $settingModel->getValue('site_author', 'Sistem Ujian Online');
     <!-- Bootstrap 5 JS Bundle with Popper -->
     <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js?v=1.1') ?>"></script>
     
+    <script src="<?= base_url('assets/activity-polling.js?v=' . filemtime(FCPATH . 'assets/activity-polling.js')) ?>" data-client="<?= (int) session('user_id') ?>" data-csrf-name="<?= esc(csrf_token()) ?>"></script>
     <!-- Keep-Alive & Online Sync -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const APP_CFG = window.APP_CONFIG || {};
-            setInterval(function() {
-                fetch('<?= base_url('/api/keep-alive') ?>', {
-                    method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
-                    }
-                }).catch(e => console.error('Keep-alive failed:', e));
-            }, APP_CFG.keep_alive_ms || 30000); // every 30 seconds
+            const dashboardPath = /(?:^|\/)(?:student|admin)(?:\/dashboard)?\/?$/.test(window.location.pathname);
+            CbtPolling.create({
+                key: 'presence', task: dashboardPath ? 'dashboard' : 'presence', interval: dashboardPath ? 10000 : 60000,
+                run: signal => CbtPolling.request('<?= base_url('/api/keep-alive') ?>', {
+                    method: 'POST', signal, headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': '<?= csrf_hash() ?>' }
+                })
+            }).start();
         });
     </script>
     

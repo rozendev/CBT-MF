@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit bootstrap="tests/bootstrap_ci.php" colors="true" cacheDirectory="writable/.phpunit.cache">
+    <testsuites><testsuite name="RealtimeIntegration"><directory>tests/RealtimeIntegration</directory></testsuite></testsuites>
+</phpunit>

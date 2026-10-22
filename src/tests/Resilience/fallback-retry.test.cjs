@@ -13,7 +13,7 @@ function fixture(status, retryAfter = null) {
     let calls = 0, now = 0;
     const delays = [], times = [];
     const context = {
-        window: {}, FormData, AbortSignal,
+        window: {}, FormData, AbortSignal, setInterval() {},
         Date: class extends Date { static now() { return now; } },
         currentQ: () => ({ question_id: 41, question_type: 3, answer_text: 'jawaban' }),
         setSaveStatus() {},
@@ -30,10 +30,11 @@ function fixture(status, retryAfter = null) {
             return { ok: code < 400, status: code, headers: new Headers(retryAfter ? { 'Retry-After': retryAfter } : {}), json: async () => ({ status: code < 400 ? 'success' : 'error' }) };
         },
     };
-    const app = vm.runInNewContext(source.slice(start, end) + source.slice(saveStart, saveEnd) + `
+    const heartbeatEnd = source.indexOf('        function tick()', saveEnd);
+    const app = vm.runInNewContext(source.slice(start, end) + source.slice(saveStart, heartbeatEnd) + `
         engaged = true; state = { attemptId: 21, csrfHash: '', answers: {} };
-        ({ doSave, failed: () => saveFailed, pending: () => Object.keys(pendingSaves) });`, context);
-    return { app, delays, times, calls: () => calls };
+        ({ doSave, startHeartbeat, failed: () => saveFailed, pending: () => Object.keys(pendingSaves) });`, context);
+    return { app, context, delays, times, calls: () => calls };
 }
 
 test('fallback stops after three retries and does not restart for queued autosaves', async () => {
@@ -59,4 +60,16 @@ test('fallback retains a failed newer save after an earlier queued save succeede
     await Promise.all([f.app.doSave(), f.app.doSave()]);
     assert.equal(f.calls(), 5);
     assert.equal(f.app.pending().length, 1, 'Manual recovery must still have the failed question');
+});
+
+test('fallback sync is a separate task and stays idle until an answer changes',async()=>{
+    const f=fixture(200), jobs=[];
+    f.context.window.CbtPolling={pace:async()=>{},signal:()=>AbortSignal.timeout(20000),create(options){jobs.push(options);return{start(){return this;},stop(){}};}};
+    f.app.startHeartbeat();
+    const sync=jobs.find(job=>job.key==='fallback-sync');
+    assert.ok(sync,'Fallback must register a separate change-driven sync task');
+    assert.equal(sync.when(),false);
+    await f.app.doSave();assert.equal(sync.when(),true);
+    await sync.run();assert.equal(sync.when(),false);
+    assert.equal(f.calls(),2);
 });

@@ -48,7 +48,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                     var csrfRes = await fetch(API + '/health', {
                         credentials: 'same-origin',
                         cache: 'no-store',
-                        signal: AbortSignal.timeout(20000)
+                        signal: window.CbtPolling ? window.CbtPolling.signal(20000) : AbortSignal.timeout(20000)
                     });
                     csrfToken = csrfRes.headers.get('X-CSRF-TOKEN') || '';
 
@@ -161,6 +161,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             });
         })();
     </script>
+    <script defer src="<?= base_url('assets/activity-polling.js?v=' . filemtime(FCPATH . 'assets/activity-polling.js')) ?>" data-client="<?= (int) session('user_id') ?>" data-csrf-name="<?= esc(csrf_token()) ?>"></script>
     <script defer src="<?= base_url('assets/exam-app.js?v=' . $assetVersion['app']) ?>" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()"></script>
     <script defer src="<?= base_url('vendor/alpinejs/alpine.min.js?v=3.14.8') ?>" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()"></script>
     <script defer src="<?= base_url('vendor/sweetalert2/sweetalert2.min.js') ?>" onerror="window.__assetsFailed=true;window.__checkFallback&&window.__checkFallback()"></script>
@@ -646,6 +647,9 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         var warningShown = false;
         var finishing = false;
         var lastSaveAt = 0;
+        var fallbackSyncRevision = 0;
+        var fallbackSyncedRevision = 0;
+        var fallbackSyncJob = null;
 
         var EXAM_CFG = window.EXAM_CONFIG || {};
         var API_BASE = EXAM_CFG.apiBaseUrl || '';
@@ -677,6 +681,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             while (saveNotBefore > Date.now()) {
                 await new Promise(function (resolve) { setTimeout(resolve, saveNotBefore - Date.now()); });
             }
+            if (window.CbtPolling) await window.CbtPolling.pace();
             var res = await fetch(API_BASE + url, {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -1099,6 +1104,8 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
                         if (res.status !== 'success') throw Object.assign(new Error('Respons penyimpanan tidak valid'), { status: 400 });
                         delete pendingSaves[q.question_id];
                         lastSaveAt = Date.now();
+                        fallbackSyncRevision++;
+                        if (fallbackSyncJob) fallbackSyncJob.start();
                         setSaveStatus('Tersimpan ' + new Date().toLocaleTimeString(), 'ok');
                         return;
                     } catch (err) {
@@ -1142,18 +1149,46 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
 
         function startHeartbeat() {
-            setInterval(function () {
-                if (!engaged || !state.attemptId || saveFailed) return;
-                postJson('/api/exam/auto-sync', { attempt_id: state.attemptId })
-                    .then(function (res) {
-                        if (res.exam_mode !== undefined) {
-                            if (res.exam_mode !== 'static' || !res.static_page_path) {
-                                window.location.href = API_BASE + '/student/exam/take/' + TEST_ID;
-                            }
-                        }
-                    })
-                    .catch(function () {});
-            }, 60000);
+            async function sync() {
+                var revision = fallbackSyncRevision;
+                var res = await postJson('/api/exam/auto-sync', { attempt_id: state.attemptId });
+                if (res.status !== 'success') throw Object.assign(new Error('Sync rejected'), { status: 400 });
+                fallbackSyncedRevision = revision;
+            }
+            async function status(signal) {
+                var options = { signal: signal, credentials: 'same-origin', cache: 'no-store' };
+                var response = await (window.CbtPolling ? window.CbtPolling.request : fetch)(API_BASE + '/api/exam/status/' + state.attemptId, options);
+                if (!response.ok) throw Object.assign(new Error('Status unavailable'), { status: response.status, headers: response.headers });
+                var res = await response.json();
+                if (['ban', 'ejected', 'finished'].indexOf(res.status) !== -1) {
+                    finishing = true;
+                    window.location.href = API_BASE + (res.status === 'finished' ? '/student/dashboard' : '/login');
+                } else if (res.exam_mode !== undefined && (res.exam_mode !== 'static' || !res.static_page_path)) {
+                    window.location.href = API_BASE + '/student/exam/take/' + TEST_ID;
+                }
+            }
+            var active = function () { return engaged && !!state.attemptId && !saveFailed && !finishing; };
+            var dirty = function () { return active() && fallbackSyncRevision > fallbackSyncedRevision; };
+            if (window.CbtPolling) {
+                window.CbtPolling.create({ key: 'fallback-status', task: 'exam-status', interval: 10000, when: active, run: status }).start();
+                fallbackSyncJob = window.CbtPolling.create({ key: 'fallback-sync', task: 'exam-sync', interval: 60000, when: dirty, run: sync }).start();
+            } else {
+                // Even if the small scheduler asset fails, never flush an idle exam.
+                var running = false, failures = 0, lastSync = 0, lastRead = 0, closed = false;
+                var timer = setInterval(async function () {
+                    if (!active() || running || closed || navigator.onLine === false) return;
+                    var interval = document.visibilityState === 'hidden' ? 180000 : 10000;
+                    if (Date.now() - lastRead < interval) return;
+                    running = true; lastRead = Date.now();
+                    try {
+                        await status(AbortSignal.timeout(15000));
+                        if (dirty() && Date.now() - lastSync >= 60000) { await sync(); lastSync = Date.now(); }
+                        failures = 0;
+                    } catch (_) { if (++failures > 3) clearInterval(timer); }
+                    finally { running = false; }
+                }, 10000);
+                window.addEventListener('pagehide', function () { closed = true; clearInterval(timer); });
+            }
         }
 
         function tick() {
