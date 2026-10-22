@@ -823,6 +823,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         </div>
     </div><!-- /examContent -->
 
+    <script src="<?= base_url('assets/activity-polling.js?v=' . filemtime(FCPATH . 'assets/activity-polling.js')) ?>" data-client="<?= (int) session('user_id') ?>" data-csrf-name="<?= esc(csrf_token()) ?>"></script>
     <script src="<?= base_url('vendor/jquery/jquery-3.6.0.min.js') ?>"></script>
     <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js') ?>"></script>
     <script>
@@ -879,6 +880,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
             if (!Number.isFinite(wait)) wait = response && response.status === 429 ? 10000 : 0;
             if (response && response.status === 429) {
                 retryNotBefore = Math.max(retryNotBefore, Date.now() + wait + jitter);
+                window.CbtPolling?.defer(String(Math.ceil((wait + jitter) / 1000)));
             }
             return Math.max(base, wait) + jitter;
         }
@@ -1022,6 +1024,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 wsLivenessTimeout: null,
                 wsAuthenticated: false,
                 lastSyncTime: Date.now(),
+                syncRevision: 0,
+                syncedRevision: 0,
+                syncQueued: false,
+                syncRetryStopped: false,
+                realtimeLifecycleBound: false,
+                realtimePaused: false,
+                pausedSaves: {},
 
                 init() {
                     window.addEventListener('offline', () => this.isOffline = true);
@@ -1086,7 +1095,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                             e.preventDefault();
                             e.returnValue = ''; // Memicu konfirmasi penutupan pada browser modern
                         }
-                        if (ATTEMPT_ID) {
+                        if (ATTEMPT_ID && this.syncRevision > this.syncedRevision) {
                             // Kirim satu last-gasp sync request menggunakan sendBeacon agar tidak terpotong
                             const fd = new FormData();
                             fd.append('attempt_id', ATTEMPT_ID);
@@ -1136,7 +1145,37 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                  * Initialize WebSocket connection for real-time ban/kick detection.
                  * Automatically reconnects on connection loss.
                  */
+                initRealtimeLifecycle() {
+                    if (this.realtimeLifecycleBound || !window.addEventListener || !document.addEventListener) return;
+                    this.realtimeLifecycleBound = true;
+                    const refresh = () => {
+                        if (this.realtimeStopped) return;
+                        clearTimeout(this.statusPollTimer);
+                        if (window.CbtPolling?.suspended()) return;
+                        if (!this.wsAuthenticated && this.statusPolling && !this.statusPollInFlight) {
+                            const delay = window.CbtPolling?.delay('exam-status', ATTEMPT_ID, 0, true) ?? 1000;
+                            this.statusPollTimer = setTimeout(() => this.pollExamStatus(), delay);
+                        }
+                        this.scheduleAutoSync();
+                    };
+                    document.addEventListener('visibilitychange', refresh);
+                    window.addEventListener('offline', refresh);
+                    window.addEventListener('online', () => { if (!this.wsAuthenticated) this.startStatusPolling(); refresh(); });
+                    window.addEventListener('pagehide', () => {
+                        this.realtimePaused = !this.realtimeStopped;
+                        clearTimeout(this.syncTimeout);
+                        this.stopRealtime();
+                    });
+                    window.addEventListener('pageshow', () => {
+                        if (!this.realtimePaused) return;
+                        this.realtimePaused = false; this.realtimeStopped = false; this.ws = null;
+                        this.initWebSocket(); this.scheduleAutoSync();
+                        for (const id of Object.keys(this.pausedSaves || {})) this.enqueueRequest('autosave', { logId: isNaN(id) ? id : Number(id), retries: MAX_RETRIES });
+                    });
+                },
+
                 initWebSocket() {
+                    this.initRealtimeLifecycle?.();
                     // URL ditentukan server (App\Libraries\WebSocketUrl).
                     const wsBase = '<?= esc($wsUrl ?? '') ?>' || APP_CFG.websocket_url || '';
                     if (!wsBase) {
@@ -1280,10 +1319,10 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
 
                 startStatusPolling() {
-                    if (!ATTEMPT_ID || this.statusPolling || this.realtimeStopped || window.isSubmitting || this.statusPollFailures > MAX_RETRIES) return;
+                    if (window.CbtPolling?.suspended() || !ATTEMPT_ID || this.statusPolling || this.realtimeStopped || window.isSubmitting || this.statusPollFailures > MAX_RETRIES) return;
                     this.statusPolling = true;
                     // Stagger failover too: a stopped daemon must not cause one HTTP burst.
-                    this.statusPollTimer = setTimeout(() => this.pollExamStatus(), retryDelay('ws-status-start', 1) - 1000);
+                    this.statusPollTimer = setTimeout(() => this.pollExamStatus(), window.CbtPolling?.delay('exam-status', ATTEMPT_ID, 0, true) ?? retryDelay('ws-status-start', 1) - 1000);
                 },
 
                 stopStatusPolling() {
@@ -1294,13 +1333,13 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
 
                 async pollExamStatus() {
-                    if (!this.statusPolling || this.statusPollInFlight || this.realtimeStopped || window.isSubmitting) return;
+                    if (window.CbtPolling?.suspended() || !this.statusPolling || this.statusPollInFlight || this.realtimeStopped || window.isSubmitting) return;
                     this.statusPollInFlight = true;
                     const generation = this.statusPollGeneration;
-                    let delay = 10000 + (retryDelay('ws-status-interval', 3) - 4000);
+                    let delay = window.CbtPolling?.delay('exam-status', ATTEMPT_ID, 10000) ?? 10000 + (retryDelay('ws-status-interval', 3) - 4000);
                     try {
-                        const response = await fetchWithTimeout('<?= base_url('/api/exam/status') ?>/' + ATTEMPT_ID, {
-                            method: 'GET', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store',
+                        const response = await (window.CbtPolling?.request || fetchWithTimeout)('<?= base_url('/api/exam/status') ?>/' + ATTEMPT_ID, {
+                            method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store',
                         });
                         if (!response.ok) throw Object.assign(new Error('HTTP ' + response.status), { status: response.status, headers: response.headers });
                         const status = await response.json();
@@ -1324,8 +1363,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         }
                     } finally {
                         this.statusPollInFlight = false;
-                        if (this.statusPolling && !this.realtimeStopped && !window.isSubmitting) {
+                        if (this.statusPolling && !this.realtimeStopped && !window.isSubmitting && !window.CbtPolling?.suspended()) {
                             clearTimeout(this.statusPollTimer);
+                            delay = Math.max(delay, window.CbtPolling?.delay('exam-status', ATTEMPT_ID, 0) || 0);
                             this.statusPollTimer = setTimeout(() => this.pollExamStatus(), delay);
                         }
                     }
@@ -1487,22 +1527,19 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
 
                 scheduleAutoSync() {
-                    if (this.syncTimeout) clearTimeout(this.syncTimeout);
-                    if (this.storageDown) return;
-                    
-                    const timeSinceLastSync = Date.now() - this.lastSyncTime;
-                    const MAX_WAIT = APP_CFG.auto_sync_max_wait_ms || 180000; // 3 menit
-                    
-                    if (timeSinceLastSync > MAX_WAIT) {
-                        this.enqueueRequest('sync');
-                    } else {
-                        this.syncTimeout = setTimeout(() => {
-                            this.enqueueRequest('sync');
-                        }, APP_CFG.auto_sync_debounce_ms || 60000); // 60 detik debounce
-                    }
+                    clearTimeout(this.syncTimeout);
+                    if (this.storageDown || this.syncQueued || this.syncRetryStopped || this.realtimeStopped || window.CbtPolling?.suspended()) return;
+                    if (!(this.syncRevision > this.syncedRevision)) return;
+                    const base = Math.max(0, (APP_CFG.auto_sync_debounce_ms || 60000) - (Date.now() - this.lastSyncTime));
+                    const delay = window.CbtPolling?.delay('exam-sync', ATTEMPT_ID, base) ?? base;
+                    this.syncTimeout = setTimeout(() => {
+                        this.syncQueued = true;
+                        this.enqueueRequest('sync').finally(() => { this.syncQueued = false; this.scheduleAutoSync(); });
+                    }, delay);
                 },
 
                 enqueueRequest(action, params = {}) {
+                    if (action === 'autosave') this.saveLocalBackup();
                     this.activeQueue = this.activeQueue.then(() => {
                         return this.performNetworkRequest(action, params);
                     }).catch((err) => {
@@ -1519,12 +1556,34 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                         return;
                     }
                     await waitForRetryCooldown();
+                    if (window.CbtPolling) {
+                        try { await window.CbtPolling.pace(); }
+                        catch (error) {
+                            if (error.name !== 'AbortError') throw error;
+                            if (action === 'autosave') {
+                                this.pausedSaves = this.pausedSaves || {};
+                                this.pausedSaves[params.logId] = true;
+                                this.storagePending[params.logId] = true; this.saveState = 'failed';
+                            }
+                            return;
+                        }
+                    }
                     return new Promise((resolve) => {
                         if (action === 'sync') {
-                            if (!ATTEMPT_ID) return resolve();
+                            if (!ATTEMPT_ID || !(this.syncRevision > this.syncedRevision)) return resolve();
+                            const revision = this.syncRevision;
                             $.ajax({ url: '<?= base_url('/student/exam/auto-sync') ?>', type: 'POST', data: { attempt_id: ATTEMPT_ID }, timeout: FETCH_TIMEOUT_MS })
                              .always((res) => {
-                                 if (res && res.status === 429) retryDelay('sync', 1, res);
+                                 if (!res || res.status !== 'success') {
+                                     const status = typeof res?.status === 'number' ? res.status : 400;
+                                     const retry = params.retryAttempt || 0;
+                                     if (isRetryableStatus(status) && retry < MAX_RETRIES) {
+                                         const delay = retryDelay('sync', retry + 1, res);
+                                         setTimeout(() => this.performNetworkRequest('sync', { retryAttempt: retry + 1 }).then(resolve), delay);
+                                     } else { this.syncRetryStopped = true; resolve(); }
+                                     return;
+                                 }
+                                 this.syncedRevision = Math.max(this.syncedRevision, revision);
                                  this.lastSyncTime = Date.now();
                                  this.scheduleAutoSync();
                                  resolve();
@@ -1535,9 +1594,6 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                             const retryAttempt = params.retryAttempt || 0;
                             const q = this.questions.find(x => x.log_id === logId);
                             if (!q) return resolve();
-
-                            // Update local storage backup
-                            this.saveLocalBackup();
 
                             let passedData = { log_id: logId, question_type: q.question_type };
                             if (q.question_type == 3) {
@@ -1593,6 +1649,10 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                                      failed({ status: 400, responseJSON: res });
                                      return;
                                  }
+                                 if (this.pausedSaves) delete this.pausedSaves[logId];
+                                 this.syncRevision = (this.syncRevision || 0) + 1;
+                                 this.syncRetryStopped = false;
+                                 this.scheduleAutoSync();
                                  this.exitStorageDown(logId);
                                  this.showSavedToast = true;
                                  setTimeout(() => { this.showSavedToast = false; }, 2000);

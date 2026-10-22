@@ -34,8 +34,12 @@ status HTTP/header bahkan bila server mengembalikan HTML.
 Halaman dinamis dan engine statis/kiosk otomatis beralih ke polling status
 ketika koneksi WebSocket error/tertutup, konfigurasi tidak tersedia, handshake
 melewati 15 detik (timeout request), atau heartbeat tidak diterima selama
-45 detik. Poll pertama diberi variasi deterministik 0–1 detik; setelah itu
-berjeda 10–15 detik setelah respons selesai, tanpa request paralel.
+45 detik. Pada halaman aktif, poll pertama diberi variasi deterministik 0–1 detik;
+setelah itu berjeda 10–11 detik setelah respons selesai, tanpa request paralel.
+Halaman terlihat yang idle selama dua menit melambat menjadi 30–31 detik,
+tab tersembunyi 180–210 detik, dan halaman ditutup berhenti polling.
+Autosave tetap dipicu perubahan jawaban; sync database hanya dilakukan setelah
+perubahan tersimpan. Lihat [jadwal per tugas dan lifecycle](activity-polling.md).
 
 GET `/api/exam/status/{attempt_id}` hanya membaca satu snapshot milik siswa:
 status akun/attempt, deadline, dan mode ujian. Endpoint tidak memuat soal,

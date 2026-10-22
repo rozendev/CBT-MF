@@ -42,6 +42,7 @@ class UiBundleBuilder
         ];
         // 2) copy assets: exam-app.js, exam-app.css, alpine.min.js, sweetalert2.min.js,
         //    kiosk-integration.js + jquery shim (di-render dari view)
+        copy($assetsSrc . '/activity-polling.js', "$assetsDir/activity-polling.js");
         copy($assetsSrc . '/exam-app.js', "$assetsDir/exam-app.js");
         copy($assetsSrc . '/exam-app.css', "$assetsDir/exam-app.css");
         copy($vendorSrc . '/alpine.min.js', "$assetsDir/alpine.min.js");

@@ -89,6 +89,7 @@
         // Filter API memakai window 10 detik; aman juga untuk respons lama tanpa header.
         if (response && response.status === 429) {
             retryNotBefore = Math.max(retryNotBefore, Date.now() + wait + jitter);
+        window.CbtPolling?.defer(String(Math.ceil((wait + jitter) / 1000)));
         }
         return Math.max(base, wait) + jitter;
     }
@@ -367,6 +368,13 @@
             wsLivenessTimeout: null,
             wsAuthenticated: false,
             lastSyncTime: Date.now(),
+            syncRevision: 0,
+            syncedRevision: 0,
+            syncQueued: false,
+            syncRetryStopped: false,
+            realtimeLifecycleBound: false,
+            realtimePaused: false,
+            pausedSaves: {},
 
             /* Kunci soal untuk mencari opsi jawaban dan sebagai identitas
                autosave. Halaman static memanggang question_id ke dalam HTML-nya,
@@ -487,7 +495,7 @@
                         e.preventDefault();
                         e.returnValue = ''; // Memicu konfirmasi penutupan pada browser modern
                     }
-                    if (ATTEMPT_ID) {
+                    if (ATTEMPT_ID && this.syncRevision > this.syncedRevision) {
                         const fd = buildFormData({ attempt_id: ATTEMPT_ID });
                         navigator.sendBeacon(API + '/api/exam/auto-sync', fd);
                     }
@@ -613,7 +621,37 @@
                 }).then(() => logoutAndRedirect(API + '/login'));
             },
 
+            initRealtimeLifecycle() {
+                if (this.realtimeLifecycleBound || !window.addEventListener || !document.addEventListener) return;
+                this.realtimeLifecycleBound = true;
+                const refresh = () => {
+                    if (this.realtimeStopped) return;
+                    clearTimeout(this.statusPollTimer);
+                    if (window.CbtPolling?.suspended()) return;
+                    if (!this.wsAuthenticated && this.statusPolling && !this.statusPollInFlight) {
+                        const delay = window.CbtPolling?.delay('exam-status', ATTEMPT_ID, 0, true) ?? 1000;
+                        this.statusPollTimer = setTimeout(() => this.pollExamStatus(), delay);
+                    }
+                    this.scheduleAutoSync();
+                };
+                document.addEventListener('visibilitychange', refresh);
+                window.addEventListener('offline', refresh);
+                window.addEventListener('online', () => { if (!this.wsAuthenticated) this.startStatusPolling(); refresh(); });
+                window.addEventListener('pagehide', () => {
+                    this.realtimePaused = !this.realtimeStopped;
+                    clearTimeout(this.syncTimeout);
+                    this.stopRealtime();
+                });
+                window.addEventListener('pageshow', () => {
+                    if (!this.realtimePaused) return;
+                    this.realtimePaused = false; this.realtimeStopped = false; this.ws = null;
+                    this.initWebSocket(); this.scheduleAutoSync();
+                    for (const id of Object.keys(this.pausedSaves || {})) this.enqueueRequest('autosave', { logId: isNaN(id) ? id : Number(id), retries: MAX_RETRIES });
+                });
+            },
+
             initWebSocket() {
+                this.initRealtimeLifecycle?.();
                 if (!ATTEMPT_ID) {
                     return;
                 }
@@ -778,10 +816,10 @@
             },
 
             startStatusPolling() {
-                if (!ATTEMPT_ID || this.statusPolling || this.realtimeStopped || window.isSubmitting || this.statusPollFailures > MAX_RETRIES) return;
+                if (window.CbtPolling?.suspended() || !ATTEMPT_ID || this.statusPolling || this.realtimeStopped || window.isSubmitting || this.statusPollFailures > MAX_RETRIES) return;
                 this.statusPolling = true;
                 // Stagger failover too: a stopped daemon must not cause one HTTP burst.
-                this.statusPollTimer = setTimeout(() => this.pollExamStatus(), retryDelay('ws-status-start', 1) - 1000);
+                this.statusPollTimer = setTimeout(() => this.pollExamStatus(), window.CbtPolling?.delay('exam-status', ATTEMPT_ID, 0, true) ?? retryDelay('ws-status-start', 1) - 1000);
             },
 
             stopStatusPolling() {
@@ -792,13 +830,13 @@
             },
 
             async pollExamStatus() {
-                if (!this.statusPolling || this.statusPollInFlight || this.realtimeStopped || window.isSubmitting) return;
+                if (window.CbtPolling?.suspended() || !this.statusPolling || this.statusPollInFlight || this.realtimeStopped || window.isSubmitting) return;
                 this.statusPollInFlight = true;
                 const generation = this.statusPollGeneration;
-                let delay = 10000 + (retryDelay('ws-status-interval', 3) - 4000);
+                let delay = window.CbtPolling?.delay('exam-status', ATTEMPT_ID, 10000) ?? 10000 + (retryDelay('ws-status-interval', 3) - 4000);
                 try {
-                    const response = await fetchWithTimeout(API + '/api/exam/status/' + ATTEMPT_ID, {
-                        method: 'GET', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store',
+                    const response = await (window.CbtPolling?.request || fetchWithTimeout)(API + '/api/exam/status/' + ATTEMPT_ID, {
+                        method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store',
                     });
                     if (!response.ok) throw Object.assign(new Error('HTTP ' + response.status), { status: response.status, headers: response.headers });
                     const status = await response.json();
@@ -822,8 +860,9 @@
                     }
                 } finally {
                     this.statusPollInFlight = false;
-                    if (this.statusPolling && !this.realtimeStopped && !window.isSubmitting) {
+                    if (this.statusPolling && !this.realtimeStopped && !window.isSubmitting && !window.CbtPolling?.suspended()) {
                         clearTimeout(this.statusPollTimer);
+                        delay = Math.max(delay, window.CbtPolling?.delay('exam-status', ATTEMPT_ID, 0) || 0);
                         this.statusPollTimer = setTimeout(() => this.pollExamStatus(), delay);
                     }
                 }
@@ -893,33 +932,7 @@
             },
 
             checkExamMode() {
-                if (!ATTEMPT_ID) return;
-                // Throttle: navigasi antar-soal tidak boleh memicu request.
-                // Mode-switch terdeteksi maks 20 detik kemudian (atau via
-                // scheduleAutoSync 60s yang tetap berjalan).
-                const now = Date.now();
-                if (now - lastModeCheck < 20000) return;
-                lastModeCheck = now;
-                const fd = buildFormData({ attempt_id: ATTEMPT_ID });
-                $.ajax({
-                    url: API + '/api/exam/auto-sync',
-                    type: 'POST',
-                    data: fd,
-                    processData: false,
-                    contentType: false,
-                    dataType: 'json',
-                    timeout: FETCH_TIMEOUT_MS,
-                    success: (res) => { 
-                        updateCsrf(res); 
-                        if (res.exam_mode !== undefined) {
-                            const driftTarget = this.modeDriftTarget(res.exam_mode, res.static_page_path);
-                            if (driftTarget) {
-                                window.isSubmitting = true;
-                                window.location.href = driftTarget;
-                            }
-                        }
-                    }
-                });
+                if (ATTEMPT_ID && !this.wsAuthenticated) this.startStatusPolling();
             },
 
             selectRadio(answerId) {
@@ -950,22 +963,19 @@
             },
 
             scheduleAutoSync() {
-                if (this.syncTimeout) clearTimeout(this.syncTimeout);
-                if (this.storageDown) return;
-                
-                const timeSinceLastSync = Date.now() - this.lastSyncTime;
-                const MAX_WAIT = APP_CFG.auto_sync_max_wait_ms || 180000; // 3 menit
-                
-                if (timeSinceLastSync > MAX_WAIT) {
-                    this.enqueueRequest('sync');
-                } else {
-                    this.syncTimeout = setTimeout(() => {
-                        this.enqueueRequest('sync');
-                    }, APP_CFG.auto_sync_debounce_ms || 60000); // 60 detik debounce
-                }
+                clearTimeout(this.syncTimeout);
+                if (this.storageDown || this.syncQueued || this.syncRetryStopped || this.realtimeStopped || window.CbtPolling?.suspended()) return;
+                if (!(this.syncRevision > this.syncedRevision)) return;
+                const base = Math.max(0, (APP_CFG.auto_sync_debounce_ms || 60000) - (Date.now() - this.lastSyncTime));
+                const delay = window.CbtPolling?.delay('exam-sync', ATTEMPT_ID, base) ?? base;
+                this.syncTimeout = setTimeout(() => {
+                    this.syncQueued = true;
+                    this.enqueueRequest('sync').finally(() => { this.syncQueued = false; this.scheduleAutoSync(); });
+                }, delay);
             },
 
             enqueueRequest(action, params = {}) {
+                if (action === 'autosave') this.saveLocalBackup();
                 if (!this.activeQueue) this.activeQueue = Promise.resolve();
                 this.activeQueue = this.activeQueue.then(() => {
                     return this.performNetworkRequest(action, params);
@@ -982,9 +992,22 @@
                     return;
                 }
                 await waitForRetryCooldown();
+                if (window.CbtPolling) {
+                    try { await window.CbtPolling.pace(); }
+                    catch (error) {
+                        if (error.name !== 'AbortError') throw error;
+                        if (action === 'autosave') {
+                            this.pausedSaves = this.pausedSaves || {};
+                            this.pausedSaves[params.logId] = true;
+                            this.markUnsaved(params.logId, 'Menunggu penyimpanan setelah halaman dibuka kembali.');
+                        }
+                        return;
+                    }
+                }
                 return new Promise((resolve) => {
                     if (action === 'sync') {
-                        if (!ATTEMPT_ID) return resolve();
+                        if (!ATTEMPT_ID || !(this.syncRevision > this.syncedRevision)) return resolve();
+                        const revision = this.syncRevision;
                         const fd = buildFormData({ attempt_id: ATTEMPT_ID });
                         $.ajax({
                             url: API + '/api/exam/auto-sync',
@@ -995,7 +1018,16 @@
                             dataType: 'json',
                             timeout: FETCH_TIMEOUT_MS,
                         }).always((res) => {
-                            if (res && res.status === 429) retryDelay('sync', 1, res);
+                            if (!res || res.status !== 'success') {
+                                const status = typeof res?.status === 'number' ? res.status : 400;
+                                const retry = params.retryAttempt || 0;
+                                if (isRetryableStatus(status) && retry < MAX_RETRIES) {
+                                    const delay = retryDelay('sync', retry + 1, res);
+                                    setTimeout(() => this.performNetworkRequest('sync', { retryAttempt: retry + 1 }).then(resolve), delay);
+                                } else { this.syncRetryStopped = true; resolve(); }
+                                return;
+                            }
+                            this.syncedRevision = Math.max(this.syncedRevision, revision);
                             if (res && res.csrf_hash) updateCsrf(res);
                             if (res && res.exam_mode !== undefined) {
                                 const driftTarget = this.modeDriftTarget(res.exam_mode, res.static_page_path);
@@ -1015,7 +1047,6 @@
                         const q = this.questions.find(x => String(this.qKey(x)) === String(logId));
                         if (!q) return resolve();
 
-                        this.saveLocalBackup();
 
                         // Server menerima log_id ATAU (question_id + attempt_id).
                         // Mengirim log_id lewat field question_id akan mencocokkan
@@ -1087,6 +1118,10 @@
                                 }
 
                                 this.isSaving = false;
+                                if (this.pausedSaves) delete this.pausedSaves[logId];
+                                this.syncRevision = (this.syncRevision || 0) + 1;
+                                this.syncRetryStopped = false;
+                                this.scheduleAutoSync();
                                 this.markSaved(logId);
                                 this.showSavedToast = true;
                                 setTimeout(() => { this.showSavedToast = false; }, 2000);

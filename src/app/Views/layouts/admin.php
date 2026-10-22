@@ -1025,6 +1025,7 @@ $faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? 
     </main>
 
     <script src="<?= base_url('vendor/bootstrap/js/bootstrap.bundle.min.js?v=1.1') ?>"></script>
+    <script src="<?= base_url('assets/activity-polling.js?v=' . filemtime(FCPATH . 'assets/activity-polling.js')) ?>" data-client="<?= (int) session('user_id') ?>" data-csrf-name="<?= esc(csrf_token()) ?>"></script>
     <script>
         // Sidebar toggle logic (Desktop collapse & Mobile offcanvas)
         const sidebar = document.getElementById('sidebar');
@@ -1153,15 +1154,13 @@ $faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? 
 
         // Keep-Alive Ping
         const APP_CFG = window.APP_CONFIG || {};
-        setInterval(function() {
-            fetch('<?= base_url('/api/keep-alive') ?>', {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-TOKEN': '<?= csrf_hash() ?>'
-                }
-            }).catch(e => console.error('Keep-alive failed:', e));
-        }, APP_CFG.keep_alive_ms || 30000);
+        const dashboardPath = /(?:^|\/)(?:student|admin)(?:\/dashboard)?\/?$/.test(window.location.pathname);
+        CbtPolling.create({
+            key: 'presence', task: dashboardPath ? 'dashboard' : 'presence', interval: dashboardPath ? 10000 : 60000,
+            run: signal => CbtPolling.request('<?= base_url('/api/keep-alive') ?>', {
+                method: 'POST', signal, headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': '<?= csrf_hash() ?>' }
+            })
+        }).start();
 
         // ── Proctor Report Polling ─────────────────────────
         (function() {
@@ -1173,11 +1172,11 @@ $faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? 
                 seenReportIds = new Set();
             }
 
-            function checkProctorReports() {
+            function checkProctorReports(signal) {
                 const url = '<?= base_url('admin/notifications/proctor-reports') ?>' +
                             (lastCheckTime ? '?since=' + encodeURIComponent(lastCheckTime) : '');
 
-                fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                return CbtPolling.request(url, { signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(r => r.json())
                 .then(res => {
                     if (res.status === 'success' && res.reports && res.reports.length > 0) {
@@ -1224,12 +1223,10 @@ $faviconUrl = !empty($appFavicon) ? base_url($appFavicon) : (!empty($appLogo) ? 
                         lastCheckTime = res.server_time;
                         sessionStorage.setItem('lastCheckTime', lastCheckTime);
                     }
-                })
-                .catch(() => {});
+                });
             }
 
-            checkProctorReports();
-            setInterval(checkProctorReports, APP_CFG.proctor_poll_ms || 10000);
+            CbtPolling.create({ key: 'reports', task: 'reports', interval: dashboardPath ? 10000 : 30000, immediate: true, run: checkProctorReports }).start();
         })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

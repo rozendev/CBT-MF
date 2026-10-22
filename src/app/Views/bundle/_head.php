@@ -20,6 +20,7 @@ $school = ($school ?? []) + ['name' => 'CBT', 'tagline' => '', 'logo' => ''];
         window.KIOSK_BASE_URL = <?= json_encode($baseUrl) ?>;
         window.KIOSK_WS_URL = <?= json_encode($wsUrl ?? '') ?>;
     </script>
+    <script src="assets/activity-polling.js?v=<?= esc($assetVersion) ?>"></script>
     <style>
         /* Design system kiosk — kontras tinggi, target sentuh besar.
            Sasaran: HP kelas bawah (mis. Redmi 10A 720x1600) dengan layar redup,

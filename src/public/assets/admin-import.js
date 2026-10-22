@@ -50,19 +50,23 @@
         for (let retry = 0; retry <= 3; retry++) {
             let response, data, error;
             try {
+                if (window.CbtPolling) await window.CbtPolling.pace();
                 response = await fetch(url, {
                     ...options, credentials: 'same-origin', cache: 'no-store',
                     headers: { 'X-Requested-With': 'XMLHttpRequest', ...options.headers },
-                    signal: AbortSignal.timeout(30000),
+                    signal: window.CbtPolling ? window.CbtPolling.signal(30000) : AbortSignal.timeout(30000),
                 });
                 data = await response.json().catch(() => ({}));
                 if (response.ok) return data;
                 error = new Error(data.message || 'Server impor tidak dapat dihubungi.');
                 error.status = response.status;
             } catch (failure) { error = failure; }
+            if (window.CbtPolling?.suspended()) throw error;
+            if (response?.status === 429) window.CbtPolling?.defer(response.headers.get('Retry-After'));
             const transient = !response || response.status === 408 || response.status === 429 || response.status >= 500;
             if (!transient || retry === 3) throw error;
-            await sleep(delay(seed, retry, response));
+            if (window.CbtPolling) await window.CbtPolling.wait('import', seed, delay(seed, retry, response));
+            else await sleep(delay(seed, retry, response));
         }
     }
 
@@ -70,13 +74,15 @@
         let job = first;
         const jobId = state.job_id; // Never reread a shared, mutable browser key while polling.
         try {
+            if (!job && typeof document !== 'undefined' && document.visibilityState === 'hidden' && window.CbtPolling) await window.CbtPolling.wait('import', jobId, 0);
             while (true) {
                 if (!job) job = await request(statusBase + encodeURIComponent(jobId), {}, jobId);
                 update(job);
                 if (job.status === 'completed') { storage.clear(key, state); return job.result; }
                 if (job.status === 'failed') { storage.clear(key, state); throw new Error(job.message || 'Impor gagal.'); }
                 if (!['queued', 'running', 'retrying'].includes(job.status)) throw new Error(job.message || 'Respons progres impor tidak valid.');
-                await sleep((job.status === 'queued' ? 5000 : 2000) + delay(jobId, 0, null) % 1000);
+                if (window.CbtPolling) await window.CbtPolling.wait('import', jobId, job.status === 'running' ? 3000 : 10000);
+                else await sleep((job.status === 'queued' ? 10000 : 3000) + delay(jobId, 0, null) % 1000);
                 job = null;
             }
         } catch (error) {
