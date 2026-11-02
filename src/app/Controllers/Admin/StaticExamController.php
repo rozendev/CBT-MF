@@ -207,6 +207,7 @@ class StaticExamController extends BaseController
             if ($redis) {
                 $redis->publish('exam_events', json_encode([
                     'event' => 'sync_mode',
+                    'test_id' => (int) $test->id,
                     'exam_mode' => 'static',
                     'static_page_path' => $relativePath
                 ]));
@@ -268,6 +269,7 @@ class StaticExamController extends BaseController
             if ($redis) {
                 $redis->publish('exam_events', json_encode([
                     'event' => 'sync_mode',
+                    'test_id' => (int) $test->id,
                     'exam_mode' => 'normal',
                     'static_page_path' => null
                 ]));

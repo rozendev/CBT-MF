@@ -231,6 +231,7 @@ class SuspendController extends BaseController
                 $redis = \App\Libraries\RedisClient::getInstance();
                 if ($redis) {
                     $redis->del("exam_answers:{$attempt->id}");
+                    \App\Libraries\WebSocketToken::revokeAttemptToken((int) $attempt->id, $redis, false);
                     $redis->publish('exam_events', json_encode([
                         'event' => 'kick',
                         'attempt_id' => $attempt->id,
@@ -307,6 +308,7 @@ class SuspendController extends BaseController
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
                 $redis->del("exam_answers:{$attemptId}");
+                \App\Libraries\WebSocketToken::revokeAttemptToken((int) $attemptId, $redis, false);
                 $redis->publish('exam_events', json_encode([
                     'event' => 'kick',
                     'attempt_id' => $attemptId,

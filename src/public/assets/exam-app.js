@@ -338,6 +338,8 @@
             showRateToast: false,
             rateToastMsg: '',
             timeLeft: 0,
+            beginTimeMs: 0,
+            endTimeMs: 0,
             timerInterval: null,
             serverTimeOffsetMs: 0,
             warningShown: false,
@@ -503,6 +505,7 @@
             },
 
             startTimer(beginTimeMs, timeOffset) {
+                this.beginTimeMs = beginTimeMs;
                 this.serverTimeOffsetMs = timeOffset;
                 if (this.durationMinutes <= 0) return;
                 this.endTimeMs = beginTimeMs + (this.durationMinutes * 60 * 1000);
@@ -743,8 +746,11 @@
                     }
                     else if (eventName === 'extend_time') {
                         if (d.test_id == EXAM_CONFIG.testId) {
-                            this.durationMinutes = d.duration_minutes;
-                            this.endTimeMs = Date.now() + (this.durationMinutes * 60 * 1000);
+                            this.durationMinutes = Number(d.duration_minutes) || 0;
+                            const baseBeginMs = (Number.isFinite(this.beginTimeMs) && this.beginTimeMs > 0)
+                                ? this.beginTimeMs
+                                : (Number(window.__examData?.beginTimeMs) || (Date.now() + (this.serverTimeOffsetMs || 0)));
+                            this.endTimeMs = baseBeginMs + (this.durationMinutes * 60 * 1000);
                             this.warningShown = false;
                             
                             Swal.fire({
@@ -760,10 +766,12 @@
                         }
                     }
                     else if (eventName === 'sync_mode') {
-                        const driftTarget = this.modeDriftTarget(d.exam_mode, d.static_page_path);
-                        if (driftTarget) {
-                            window.isSubmitting = true;
-                            window.location.href = driftTarget;
+                        if (d.test_id !== null && d.test_id !== undefined && Number(d.test_id) > 0 && Number(d.test_id) === Number(EXAM_CONFIG.testId)) {
+                            const driftTarget = this.modeDriftTarget(d.exam_mode, d.static_page_path);
+                            if (driftTarget) {
+                                window.isSubmitting = true;
+                                window.location.href = driftTarget;
+                            }
                         }
                     }
                     else if (eventName === 'heartbeat') {

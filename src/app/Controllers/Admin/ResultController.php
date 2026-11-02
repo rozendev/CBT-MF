@@ -229,6 +229,7 @@ class ResultController extends BaseController
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
                 $redis->del("exam_answers:{$attemptId}");
+                \App\Libraries\WebSocketToken::revokeAttemptToken((int) $attemptId, $redis, false);
             }
         } catch (\Exception $e) {
             log_message('error', 'Redis error on delete attempt: ' . $e->getMessage());

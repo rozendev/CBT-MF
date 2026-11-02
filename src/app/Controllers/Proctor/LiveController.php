@@ -58,13 +58,13 @@ class LiveController extends BaseController
         }
 
         // Generate Secure WebSocket Token for Proctor
-        $proctorToken = bin2hex(random_bytes(16));
-        if ($redis) {
-            $redis->setex("ws_proctor_token:{$proctorToken}", 14400, json_encode([
-                'user_id' => $session->get('user_id'),
-                'test_id' => (int) $testId
-            ]));
-        }
+        $proctorToken = \App\Libraries\WebSocketToken::issueProctorToken(
+            (int) $session->get('user_id'),
+            (int) $testId,
+            \App\Libraries\SessionInvalidation::normalizeVersion($session->get('auth_version') ?? 1),
+            $redis,
+            false
+        );
 
         $wsUrl = \App\Libraries\WebSocketUrl::resolve($this->settingModel);
 
@@ -113,9 +113,10 @@ class LiveController extends BaseController
             if ($redis) {
                 $redis->publish('exam_events', json_encode([
                     'event' => 'proctor_report_alert',
+                    'test_id' => (int) $testId,
                     'data' => [
-                        'student_id' => $userId,
-                        'test_id' => $testId,
+                        'student_id' => (int) $userId,
+                        'test_id' => (int) $testId,
                         'student_username' => $this->request->getPost('student_username'),
                         'proctor_name' => session('username'),
                         'suggested_action' => $action,

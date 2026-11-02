@@ -1000,6 +1000,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                    ditangkap `with (scope)` milik Alpine dan malah jadi variabel global. */
                 _typingQid: null,
                 timeLeft: 0,
+                endTimeMs: 0,
                 timerInterval: null,
                 warningShown: false,
                 isOffline: !navigator.onLine,
@@ -1264,7 +1265,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                             }
                         }
                         else if (eventName === 'sync_mode') {
-                            if (data.exam_mode === 'static' && data.static_page_path) {
+                            if (data.test_id !== null && data.test_id !== undefined && Number(data.test_id) > 0 && Number(data.test_id) === <?= (int) $test->id ?> && data.exam_mode === 'static' && data.static_page_path) {
                                 window.isSubmitting = true;
                                 window.location.href = '<?= base_url() ?>' + data.static_page_path;
                             }

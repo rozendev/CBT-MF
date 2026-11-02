@@ -252,19 +252,12 @@ class ExamController extends BaseController
         $settingModel = new \App\Models\SettingModel();
         $isAntiCheatEnabled = (bool)$settingModel->getValue('anti_cheat_enabled', false) || !empty($test->auto_submit_on_cheat);
 
-        $wsToken = bin2hex(random_bytes(16));
-        try {
-            $redis = \App\Libraries\RedisClient::getInstance();
-            if ($redis) {
-                $redis->setex("ws_student_token:{$wsToken}", 14400, json_encode([
-                    'user_id' => (int)$userId,
-                    'attempt_id' => (int)$attempt->id,
-                    'test_id' => (int)$id
-                ]));
-            }
-        } catch (\Exception $e) {
-            log_message('error', 'Redis error generating ws_student_token: ' . $e->getMessage());
-        }
+        $wsToken = \App\Libraries\WebSocketToken::issueStudentToken(
+            (int) $userId,
+            (int) $attempt->id,
+            (int) $id,
+            \App\Libraries\SessionInvalidation::normalizeVersion(session('auth_version') ?? 1)
+        );
 
         return view('student/exam/take', [
             'test' => $test,

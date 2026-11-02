@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
+use App\Libraries\KioskEventQueue;
 use App\Libraries\RedisClient;
 
 /**
@@ -29,6 +30,18 @@ class KioskPrune extends BaseCommand
             CLI::write('kiosk:prune — Redis unavailable, skipping.', 'yellow');
 
             return EXIT_SUCCESS;
+        }
+
+        $drainedTotal = 0;
+        for ($batch = 0; $batch < 10; $batch++) {
+            $drained = KioskEventQueue::drainToDatabase($redis, KioskEventQueue::DRAIN_BATCH_SIZE, null, false);
+            $drainedTotal += $drained;
+            if ($drained < KioskEventQueue::DRAIN_BATCH_SIZE) {
+                break;
+            }
+        }
+        if ($drainedTotal > 0) {
+            CLI::write('kiosk:prune — flushed ' . $drainedTotal . ' queued kiosk event(s).', 'green');
         }
 
         $cutoff   = time() - self::STALE_SECONDS;
