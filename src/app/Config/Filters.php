@@ -40,6 +40,7 @@ class Filters extends BaseFilters
         'performance'   => PerformanceMetrics::class,
         'auth'          => AuthFilter::class,
         'role'          => RoleFilter::class,
+        'sessionguard'  => \App\Filters\SessionGuardFilter::class,
         'multilogin'    => MultiLoginFilter::class,
         'corsapi'       => CorsApiFilter::class,
         'csrfheader'    => \App\Filters\CsrfHeaderFilter::class,
@@ -104,6 +105,14 @@ class Filters extends BaseFilters
                 // di CorsApiFilter); origin lain tetap diverifikasi di sana.
                 'api/exam/*',
                 'api/student/*',
+            ]],
+            'sessionguard' => ['except' => [
+                'login',
+                'logout',
+                'maintenance',
+                'health',
+                'api/kiosk/*',
+                'api/intruder/report',
             ]],
             'multilogin' => ['except' => ['login', 'logout', 'maintenance', 'health', 'student/exam/stream/*', 'api/exam/stream/*']],
         ],

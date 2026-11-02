@@ -441,9 +441,15 @@ LUA;
             $scorer = new \App\Libraries\ScoringEngine();
             $scorer->calculateAndSaveScore($attemptId);
 
-            // Deactivate user account
-            $userModel = new \App\Models\UserModel();
-            $userModel->update($userId, ['is_active' => 0]);
+            // Deactivate user account & bump auth_version so SessionGuardFilter revokes immediately
+            \Config\Database::connect()->table('users')
+                ->set('auth_version', 'auth_version + 1', false)
+                ->set('is_active', 0)
+                ->set('cred_grace_until', null)
+                ->set('updated_at', date('Y-m-d H:i:s'))
+                ->where('id', $userId)
+                ->update();
+            \App\Libraries\UserAuthState::invalidateCache((int) $userId);
 
             // Lock the attempt
             $this->attemptModel->update($attemptId, [
@@ -648,13 +654,21 @@ LUA;
 
         $db->transStart();
 
-        $userModel->update($userId, ['is_active' => 0]);
+        $db->table('users')
+            ->set('auth_version', 'auth_version + 1', false)
+            ->set('is_active', 0)
+            ->set('cred_grace_until', null)
+            ->set('updated_at', date('Y-m-d H:i:s'))
+            ->where('id', $userId)
+            ->update();
         $this->attemptModel->update($attemptId, [
             'cheat_strikes' => $serverStrikes,
             'status' => 2
         ]);
 
         $db->transComplete();
+
+        \App\Libraries\UserAuthState::invalidateCache((int) $userId);
 
         try {
             $redis = \App\Libraries\RedisClient::getInstance();

@@ -137,7 +137,7 @@
         } catch (e) {
             console.warn('Logout request failed, redirecting anyway:', e);
         }
-        redirectReplace(loginUrl);
+        redirectReplace(window.__KIOSK_BUNDLE__ ? 'login.html' : loginUrl);
     }
 
     // ═══ INIT FLOW ═══
@@ -717,7 +717,7 @@
                     if (eventName === 'ban') {
                         this.stopRealtime();
                         Swal.fire({ title:'Akun Di-Ban', text:d.message, icon:'error', allowOutsideClick:false, allowEscapeKey:false, confirmButtonText:'OK' })
-                            .then(() => logoutAndRedirect(API + '/login'));
+                            .then(() => logoutAndRedirect(window.__KIOSK_BUNDLE__ ? 'login.html' : (API + '/login')));
                     }
                     else if (eventName === 'ejected') {
                         // BEDA dari 'kick': 'kick' memanggil logoutAndRedirect(),
@@ -731,7 +731,10 @@
                     else if (eventName === 'kick') {
                         this.stopRealtime();
                         Swal.fire('Sesi Dihentikan', d.message, 'error')
-                            .then(() => logoutAndRedirect(API + '/login'));
+                            .then(() => logoutAndRedirect(window.__KIOSK_BUNDLE__ ? 'login.html' : (API + '/login')));
+                    }
+                    else if (eventName === 'cred_updated') {
+                        this.handleCredentialGrace?.(Number(d.grace_until_ms), Number(d.server_time_ms), d.message);
                     }
                     else if (eventName === 'finished') {
                         this.stopRealtime();
@@ -851,7 +854,7 @@
                     this.statusPollFailures = (this.statusPollFailures || 0) + 1;
                     if (error.status === 401 || error.status === 403) {
                         this.stopRealtime();
-                        logoutAndRedirect(API + '/login');
+                        logoutAndRedirect(window.__KIOSK_BUNDLE__ ? 'login.html' : (API + '/login'));
                     } else if (this.statusPollFailures > MAX_RETRIES || !isRetryableStatus(error.status || 0)) {
                         this.stopStatusPolling();
                         console.warn('Exam status polling stopped after HTTP failure', error);
@@ -873,7 +876,7 @@
                     this.stopRealtime();
                     if (status.status === 'ejected') this.showEjected(status.message);
                     else if (status.status === 'finished') Swal.fire('Ujian Selesai', status.message, 'info').then(() => { window.location.href = API + '/student/dashboard'; });
-                    else Swal.fire('Akun Di-Ban', status.message, 'error').then(() => logoutAndRedirect(API + '/login'));
+                    else Swal.fire('Akun Di-Ban', status.message, 'error').then(() => logoutAndRedirect(window.__KIOSK_BUNDLE__ ? 'login.html' : (API + '/login')));
                     return;
                 }
                 if (status.status !== 'success') return;
@@ -881,10 +884,58 @@
                     this.serverTimeOffsetMs = status.server_time_ms - Date.now();
                     this.endTimeMs = status.end_time_ms;
                 }
+                if (Number.isFinite(status.cred_grace_until_ms) && status.cred_grace_until_ms > 0) {
+                    this.handleCredentialGrace?.(status.cred_grace_until_ms, status.server_time_ms);
+                }
                 if (status.duration_minutes > this.durationMinutes) this.warningShown = false;
                 this.durationMinutes = status.duration_minutes;
                 const target = this.modeDriftTarget(status.exam_mode, status.static_page_path);
                 if (target) { this.stopRealtime(); window.isSubmitting = true; window.location.href = target; }
+            },
+
+            handleCredentialGrace(graceUntilMs, serverTimeMs, message) {
+                if (!Number.isFinite(graceUntilMs) || graceUntilMs <= 0 || this.realtimeStopped) return;
+                if (this.credGraceNotifiedFor === graceUntilMs) return;
+                this.credGraceNotifiedFor = graceUntilMs;
+
+                const refNowMs = Number.isFinite(serverTimeMs) ? serverTimeMs : (Date.now() + (this.serverTimeOffsetMs || 0));
+                const remainingMs = Math.max(0, graceUntilMs - refNowMs);
+                const mins = Math.max(1, Math.ceil(remainingMs / 60000));
+
+                Swal.fire({
+                    title: 'Informasi Akun Diperbarui',
+                    text: message || ('Username atau password akun Anda telah diperbarui. Sesi ini akan berakhir dalam ' + mins + ' menit.'),
+                    icon: 'warning',
+                    toast: true,
+                    position: 'top-end',
+                    showConfirmButton: false,
+                    timer: 10000,
+                    timerProgressBar: true
+                });
+
+                clearTimeout(this.credGraceFlushTimer);
+                clearTimeout(this.credGraceLogoutTimer);
+
+                const flushDelay = Math.max(0, remainingMs - 5000);
+                this.credGraceFlushTimer = setTimeout(() => {
+                    if (this.realtimeStopped || window.isSubmitting) return;
+                    if (typeof this.flushPendingSaves === 'function') this.flushPendingSaves();
+                    clearTimeout(this.syncTimeout);
+                    if ((this.syncRevision || 0) > (this.syncedRevision || 0) && typeof this.enqueueRequest === 'function') {
+                        this.enqueueRequest('sync');
+                    }
+                }, flushDelay);
+
+                const loginTarget = window.__KIOSK_BUNDLE__ ? 'login.html' : (API + '/login');
+                this.credGraceLogoutTimer = setTimeout(async () => {
+                    if (this.realtimeStopped || window.isSubmitting) return;
+                    if (typeof this.flushPendingSaves === 'function') this.flushPendingSaves();
+                    if (this.activeQueue) {
+                        try { await this.activeQueue; } catch (e) {}
+                    }
+                    this.stopRealtime();
+                    logoutAndRedirect(loginTarget);
+                }, remainingMs);
             },
 
             stopRealtime() {
@@ -892,6 +943,8 @@
                 this.stopStatusPolling();
                 clearTimeout(this.wsReconnectTimeout);
                 clearTimeout(this.wsLivenessTimeout);
+                clearTimeout(this.credGraceFlushTimer);
+                clearTimeout(this.credGraceLogoutTimer);
                 if (window.examWebSocket === this.ws) window.examWebSocket = null;
                 if (this.ws) this.ws.close();
             },
