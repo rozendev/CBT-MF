@@ -15,6 +15,7 @@ $count = 0;
 foreach ($admins as $admin) {
     if ($admin->is_active == 0) {
         $userModel->update($admin->id, ['is_active' => 1]);
+        \App\Libraries\UserAuthState::invalidateCache((int) $admin->id);
         
         // Delete ban signal from Redis if connected
         try {

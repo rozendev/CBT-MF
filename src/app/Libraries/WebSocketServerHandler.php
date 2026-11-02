@@ -243,7 +243,7 @@ class WebSocketServerHandler implements MessageComponentInterface
         }
 
         // Always broadcast exam events to proctors too!
-        if (!in_array($event, ['connected', 'heartbeat', 'student_connected', 'student_disconnected'])) {
+        if (!in_array($event, ['connected', 'heartbeat', 'student_connected', 'student_disconnected', 'cred_updated'], true)) {
             $tId = $eventData['test_id'] ?? null;
             $this->broadcastToProctors($eventData, $tId);
         }

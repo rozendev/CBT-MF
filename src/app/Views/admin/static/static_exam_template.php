@@ -1149,6 +1149,7 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
         }
 
         function startHeartbeat() {
+            var credGraceNotified = 0;
             async function sync() {
                 var revision = fallbackSyncRevision;
                 var res = await postJson('/api/exam/auto-sync', { attempt_id: state.attemptId });
@@ -1158,13 +1159,33 @@ $appName = $settingModel->getValue('app_name', 'Sistem Ujian');
             async function status(signal) {
                 var options = { signal: signal, credentials: 'same-origin', cache: 'no-store' };
                 var response = await (window.CbtPolling ? window.CbtPolling.request : fetch)(API_BASE + '/api/exam/status/' + state.attemptId, options);
-                if (!response.ok) throw Object.assign(new Error('Status unavailable'), { status: response.status, headers: response.headers });
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        finishing = true;
+                        window.location.href = API_BASE + '/login';
+                        return;
+                    }
+                    throw Object.assign(new Error('Status unavailable'), { status: response.status, headers: response.headers });
+                }
                 var res = await response.json();
                 if (['ban', 'ejected', 'finished'].indexOf(res.status) !== -1) {
                     finishing = true;
                     window.location.href = API_BASE + (res.status === 'finished' ? '/student/dashboard' : '/login');
                 } else if (res.exam_mode !== undefined && (res.exam_mode !== 'static' || !res.static_page_path)) {
                     window.location.href = API_BASE + '/student/exam/take/' + TEST_ID;
+                } else if (res.cred_grace_until_ms && res.cred_grace_until_ms !== credGraceNotified) {
+                    credGraceNotified = res.cred_grace_until_ms;
+                    var rem = Math.max(0, res.cred_grace_until_ms - (res.server_time_ms || Date.now()));
+                    setSaveStatus('Informasi akun diperbarui — sesi berakhir dalam ' + Math.max(1, Math.ceil(rem / 60000)) + ' menit', 'err');
+                    setTimeout(function () {
+                        if (finishing) return;
+                        if (fallbackSyncRevision > fallbackSyncedRevision) sync().catch(function () {});
+                    }, Math.max(0, rem - 5000));
+                    setTimeout(function () {
+                        if (finishing) return;
+                        finishing = true;
+                        window.location.href = API_BASE + '/login';
+                    }, rem);
                 }
             }
             var active = function () { return engaged && !!state.attemptId && !saveFailed && !finishing; };

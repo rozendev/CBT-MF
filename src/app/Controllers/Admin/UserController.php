@@ -3,6 +3,8 @@
 namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
+use App\Libraries\SessionInvalidation;
+use App\Libraries\UserAuthState;
 use App\Models\UserModel;
 use App\Models\GroupModel;
 use App\Models\ActivityLogModel;
@@ -90,6 +92,7 @@ class UserController extends BaseController
         }
 
         $data = $this->request->getPost();
+        unset($data['auth_version'], $data['cred_version'], $data['cred_grace_until']);
         $data['is_active'] = $this->request->getPost('is_active') ? 1 : 0;
         
         // Convert empty strings to null for unique nullable fields
@@ -180,6 +183,7 @@ class UserController extends BaseController
         }
 
         $data = $this->request->getPost();
+        unset($data['auth_version'], $data['cred_version'], $data['cred_grace_until']);
         $data['is_active'] = $this->request->getPost('is_active') ? 1 : 0;
 
         // Convert empty strings to null for unique nullable fields
@@ -192,6 +196,24 @@ class UserController extends BaseController
 
         if (empty($data['password'])) {
             unset($data['password']);
+        }
+
+        // Larang perubahan role siswa ke role mana pun selagi masih "Sedang Mengerjakan"
+        // (test_attempts.status IN (1, 2) — kriteria pie chart DashboardController).
+        $incomingRole = (string) ($data['role'] ?? $user->role);
+        if ($user->role === 'siswa' && $incomingRole !== 'siswa' && UserAuthState::isStudentTakingExam((int) $id)) {
+            return redirect()->back()->withInput()->with('error', 'Tidak dapat mengubah role siswa yang sedang mengerjakan ujian.');
+        }
+
+        $nowTs      = time();
+        $changeType = SessionInvalidation::classifyUserUpdate($user, $data);
+
+        if ($changeType === SessionInvalidation::CHANGE_IMMEDIATE_REVOKE) {
+            $data['auth_version']     = SessionInvalidation::normalizeVersion($user->auth_version ?? 1) + 1;
+            $data['cred_grace_until'] = null;
+        } elseif ($changeType === SessionInvalidation::CHANGE_STUDENT_GRACE) {
+            $data['cred_version']     = SessionInvalidation::normalizeVersion($user->cred_version ?? 1) + 1;
+            $data['cred_grace_until'] = date('Y-m-d H:i:s', $nowTs + SessionInvalidation::STUDENT_GRACE_SECONDS);
         }
 
         if ($this->userModel->skipValidation(true)->update($id, $data)) {
@@ -212,6 +234,31 @@ class UserController extends BaseController
             }
 
             $this->activityLog->log('update', session('user_id'), 'user', $id, "Mengupdate pengguna: {$user->username}");
+
+            $updatedUser = $this->userModel->find($id);
+            if ($updatedUser) {
+                $newState = UserAuthState::fromUserRow($updatedUser);
+
+                if ($changeType === SessionInvalidation::CHANGE_IMMEDIATE_REVOKE) {
+                    UserAuthState::revokeImmediatelyInRedis(
+                        (int) $id,
+                        $newState,
+                        false,
+                        'Informasi akun atau hak akses Anda telah diperbarui. Silakan login kembali.'
+                    );
+
+                    // Bila admin mengubah kredensial/akses miliknya sendiri, putus juga sesi tab ini seketika.
+                    if ((int) $id === (int) session('user_id')) {
+                        session()->destroy();
+                        return redirect()->to('/login')->with('success', 'Informasi akun Anda telah diperbarui. Silakan login kembali.');
+                    }
+                } elseif ($changeType === SessionInvalidation::CHANGE_STUDENT_GRACE) {
+                    UserAuthState::notifyStudentGraceInRedis((int) $id, $newState, $nowTs);
+                } elseif ($changeType === SessionInvalidation::CHANGE_REFRESH_ONLY) {
+                    UserAuthState::writeCache((int) $id, $newState);
+                }
+            }
+
             return redirect()->to('/admin/users')->with('success', 'Pengguna berhasil diperbarui.');
         }
 
@@ -234,6 +281,18 @@ class UserController extends BaseController
         $this->userModel->cleanPointers($id);
 
         if ($this->userModel->delete($id)) {
+            UserAuthState::revokeImmediatelyInRedis(
+                (int) $id,
+                [
+                    'auth_version'        => PHP_INT_MAX,
+                    'cred_version'        => PHP_INT_MAX,
+                    'cred_grace_until_ts' => null,
+                    'is_active'           => 0,
+                    'role'                => '',
+                ],
+                false,
+                'Akun Anda telah dihapus oleh Administrator.'
+            );
             $this->activityLog->log('delete', session('user_id'), 'user', $id, "Menghapus pengguna: {$user->username}");
             return redirect()->to('/admin/users')->with('success', 'Pengguna berhasil dihapus.');
         }
@@ -268,6 +327,18 @@ class UserController extends BaseController
             $this->userModel->cleanPointers($id);
 
             if ($this->userModel->delete($id)) {
+                UserAuthState::revokeImmediatelyInRedis(
+                    (int) $id,
+                    [
+                        'auth_version'        => PHP_INT_MAX,
+                        'cred_version'        => PHP_INT_MAX,
+                        'cred_grace_until_ts' => null,
+                        'is_active'           => 0,
+                        'role'                => '',
+                    ],
+                    false,
+                    'Akun Anda telah dihapus oleh Administrator.'
+                );
                 $this->activityLog->log('delete', session('user_id'), 'user', $id, "Menghapus pengguna (bulk): {$user->username}");
                 $successCount++;
             }

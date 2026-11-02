@@ -144,7 +144,13 @@ final class ProctorAction
         $db = \Config\Database::connect();
         $db->transStart();
 
-        (new UserModel())->update($userId, ['is_active' => 0]);
+        $db->table('users')
+            ->set('auth_version', 'auth_version + 1', false)
+            ->set('is_active', 0)
+            ->set('cred_grace_until', null)
+            ->set('updated_at', date('Y-m-d H:i:s'))
+            ->where('id', $userId)
+            ->update();
 
         $db->table('test_attempts')
             ->where('user_id', $userId)
@@ -152,6 +158,8 @@ final class ProctorAction
             ->update(['status' => 2]);
 
         $db->transComplete();
+
+        UserAuthState::invalidateCache($userId);
 
         try {
             (new ActivityLogModel())->log('proctor_lock', $actorId, 'user', $userId, "Mengunci akun user #{$userId}");

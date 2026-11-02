@@ -5,7 +5,9 @@ namespace App\Controllers\Auth;
 use App\Controllers\BaseController;
 use App\Libraries\DeviceBan;
 use App\Libraries\MultiLoginPolicy;
+use App\Libraries\SessionInvalidation;
 use App\Libraries\SessionTakeover;
+use App\Libraries\UserAuthState;
 use App\Models\UserModel;
 use App\Models\ActivityLogModel;
 
@@ -250,17 +252,22 @@ class AuthController extends BaseController
             // getIPAddress()), jadi penghapusannya tepat sasaran.
             \App\Libraries\LoginThrottle::clearForIp($this->request->getIPAddress());
 
+            $authState = UserAuthState::fromUserRow($user);
+            UserAuthState::writeCache((int) $user->id, $authState);
+
             session()->set([
-                'user_id'     => $user->id,
-                'username'    => $user->username,
-                'role'        => $user->role,
-                'firstname'   => $user->firstname ?? $user->username,
-                'lastname'    => $user->lastname ?? '',
-                'email'       => $user->email,
-                'is_active'   => $user->is_active,
-                'logged_in'   => !$isQueued,
-                'is_queued'   => $isQueued,
-                'login_token' => $loginToken,
+                'user_id'      => $user->id,
+                'username'     => $user->username,
+                'role'         => $user->role,
+                'firstname'    => $user->firstname ?? $user->username,
+                'lastname'     => $user->lastname ?? '',
+                'email'        => $user->email,
+                'is_active'    => $user->is_active,
+                'auth_version' => SessionInvalidation::normalizeVersion($authState['auth_version']),
+                'cred_version' => SessionInvalidation::normalizeVersion($authState['cred_version']),
+                'logged_in'    => !$isQueued,
+                'is_queued'    => $isQueued,
+                'login_token'  => $loginToken,
             ]);
         } catch (\Exception $e) {
             log_message('error', 'Login database/session record failed: ' . $e->getMessage());

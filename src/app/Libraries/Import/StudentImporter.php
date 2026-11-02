@@ -77,7 +77,10 @@ final class StudentImporter
         try {
             if ($existing) {
                 $id = (int) $existing->id;
-                $saved = $users->builder()->where('id', $id)->update($data + ['deleted_at' => null, 'updated_at' => date('Y-m-d H:i:s')]);
+                $saved = $users->builder()
+                    ->set('auth_version', 'auth_version + 1', false)
+                    ->where('id', $id)
+                    ->update($data + ['deleted_at' => null, 'cred_grace_until' => null, 'updated_at' => date('Y-m-d H:i:s')]);
                 if ($groupId) $db->table('user_groups')->where('user_id', $id)->delete();
             } else {
                 $saved = $users->skipValidation(true)->insert($data);
@@ -87,6 +90,7 @@ final class StudentImporter
                 throw new ImportFailure('Data siswa tidak dapat disimpan.');
             }
             if (!$db->transCommit()) throw new ImportFailure('Transaksi impor gagal disimpan.', true);
+            if ($existing) \App\Libraries\UserAuthState::invalidateCache($id);
             return 'success';
         } catch (\Throwable $error) {
             $db->transRollback();

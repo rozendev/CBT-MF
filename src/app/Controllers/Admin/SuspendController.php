@@ -105,6 +105,7 @@ class SuspendController extends BaseController
     private function _doRelease($userId)
     {
         $this->userModel->update($userId, ['is_active' => 1, 'unbanned_at' => date('Y-m-d H:i:s')]);
+        \App\Libraries\UserAuthState::invalidateCache((int) $userId);
 
         $db = \Config\Database::connect();
         $db->table('test_attempts')

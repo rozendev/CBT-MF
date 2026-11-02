@@ -20,6 +20,7 @@ class UserModel extends Model
         'username', 'email', 'password', 'role',
         'firstname', 'lastname', 'birthdate', 'birthplace',
         'registration_number', 'ssn', 'is_active', 'unbanned_at',
+        'auth_version', 'cred_version', 'cred_grace_until',
         'last_login_at', 'last_login_ip',
         'login_attempts', 'locked_until',
     ];
@@ -73,10 +74,20 @@ class UserModel extends Model
         if (isset($data['password'])) {
             $data['password'] = $this->hashPasswordManually($data['password']);
         }
-        $data['deleted_at'] = null;
-        $data['updated_at'] = date('Y-m-d H:i:s');
-        
-        return $this->builder()->where('id', $id)->update($data);
+        $data['deleted_at']       = null;
+        $data['cred_grace_until'] = null;
+        $data['updated_at']       = date('Y-m-d H:i:s');
+
+        $updated = $this->builder()
+            ->set('auth_version', 'auth_version + 1', false)
+            ->where('id', $id)
+            ->update($data);
+
+        if ($updated) {
+            \App\Libraries\UserAuthState::invalidateCache($id);
+        }
+
+        return $updated;
     }
 
     /**

@@ -1236,6 +1236,9 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                             this.stopRealtime();
                             Swal.fire('Sesi Dihentikan', data.message, 'error').then(() => logoutAndRedirect(LOGIN_URL));
                         }
+                        else if (eventName === 'cred_updated') {
+                            this.handleCredentialGrace?.(Number(data.grace_until_ms), Number(data.server_time_ms), data.message);
+                        }
                         else if (eventName === 'finished') {
                             this.stopRealtime();
                             Swal.fire('Ujian Selesai', data.message, 'info').then(() => {
@@ -1382,9 +1385,56 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     if (Number.isFinite(status.end_time_ms) && Number.isFinite(status.server_time_ms) && status.end_time_ms > 0) {
                         this.endTimeMs = Date.now() + status.end_time_ms - status.server_time_ms;
                     }
+                    if (Number.isFinite(status.cred_grace_until_ms) && status.cred_grace_until_ms > 0) {
+                        this.handleCredentialGrace?.(status.cred_grace_until_ms, status.server_time_ms);
+                    }
                     if (status.duration_minutes > durationMin) this.warningShown = false;
                     durationMin = status.duration_minutes;
                     if (status.exam_mode === 'static' && status.static_page_path) { this.stopRealtime(); window.isSubmitting = true; window.location.href = '<?= base_url() ?>' + status.static_page_path; }
+                },
+
+                handleCredentialGrace(graceUntilMs, serverTimeMs, message) {
+                    if (!Number.isFinite(graceUntilMs) || graceUntilMs <= 0 || this.realtimeStopped) return;
+                    if (this.credGraceNotifiedFor === graceUntilMs) return;
+                    this.credGraceNotifiedFor = graceUntilMs;
+
+                    const refNowMs = Number.isFinite(serverTimeMs) ? serverTimeMs : Date.now();
+                    const remainingMs = Math.max(0, graceUntilMs - refNowMs);
+                    const mins = Math.max(1, Math.ceil(remainingMs / 60000));
+
+                    Swal.fire({
+                        title: 'Informasi Akun Diperbarui',
+                        text: message || ('Username atau password akun Anda telah diperbarui. Sesi ini akan berakhir dalam ' + mins + ' menit.'),
+                        icon: 'warning',
+                        toast: true,
+                        position: 'top-end',
+                        showConfirmButton: false,
+                        timer: 10000,
+                        timerProgressBar: true
+                    });
+
+                    clearTimeout(this.credGraceFlushTimer);
+                    clearTimeout(this.credGraceLogoutTimer);
+
+                    const flushDelay = Math.max(0, remainingMs - 5000);
+                    this.credGraceFlushTimer = setTimeout(() => {
+                        if (this.realtimeStopped || window.isSubmitting) return;
+                        if (typeof this.flushPendingSaves === 'function') this.flushPendingSaves();
+                        clearTimeout(this.syncTimeout);
+                        if ((this.syncRevision || 0) > (this.syncedRevision || 0) && typeof this.enqueueRequest === 'function') {
+                            this.enqueueRequest('sync');
+                        }
+                    }, flushDelay);
+
+                    this.credGraceLogoutTimer = setTimeout(async () => {
+                        if (this.realtimeStopped || window.isSubmitting) return;
+                        if (typeof this.flushPendingSaves === 'function') this.flushPendingSaves();
+                        if (this.activeQueue) {
+                            try { await this.activeQueue; } catch (e) {}
+                        }
+                        this.stopRealtime();
+                        logoutAndRedirect(LOGIN_URL);
+                    }, remainingMs);
                 },
 
                 stopRealtime() {
@@ -1392,6 +1442,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     this.stopStatusPolling();
                     clearTimeout(this.wsReconnectTimeout);
                     clearTimeout(this.wsLivenessTimeout);
+                    clearTimeout(this.credGraceFlushTimer);
+                    clearTimeout(this.credGraceLogoutTimer);
                     if (window.examWebSocket === this.ws) window.examWebSocket = null;
                     if (this.ws) this.ws.close();
                 },
