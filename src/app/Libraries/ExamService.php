@@ -461,6 +461,7 @@ LUA;
             try {
                 $redis = \App\Libraries\RedisClient::getInstance();
                 if ($redis) {
+                    \App\Libraries\WebSocketToken::revokeAttemptToken((int) $attemptId, $redis, false);
                     $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
                     $redis->setex("ban_signal:{$userId}", 120, '1');
 
@@ -471,8 +472,9 @@ LUA;
                     ]));
 
                     $redis->publish('exam_events', json_encode([
-                        'event' => 'proctor_alert',
-                        'data' => [
+                        'event'   => 'proctor_alert',
+                        'test_id' => (int)$attempt->test_id,
+                        'data'    => [
                             'user_id' => $userId,
                             'test_id' => (int)$attempt->test_id,
                             'event'   => 'modified_browser',
@@ -558,8 +560,9 @@ LUA;
                 $redis = \App\Libraries\RedisClient::getInstance();
                 if ($redis) {
                     $redis->publish('exam_events', json_encode([
-                        'event' => 'proctor_alert',
-                        'data' => [
+                        'event'   => 'proctor_alert',
+                        'test_id' => (int)$test->id,
+                        'data'    => [
                             'user_id' => $userId,
                             'test_id' => (int)$test->id,
                             'event'   => 'auto_submit',
@@ -673,6 +676,7 @@ LUA;
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
+                \App\Libraries\WebSocketToken::revokeAttemptToken((int) $attemptId, $redis, false);
                 $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
                 $redis->setex("ban_signal:{$userId}", 120, '1');
 
@@ -688,8 +692,9 @@ LUA;
 
                 // Real-time Proctor WebSocket Alert for System Auto-Ban
                 $redis->publish('exam_events', json_encode([
-                    'event' => 'proctor_alert',
-                    'data' => [
+                    'event'   => 'proctor_alert',
+                    'test_id' => $testId,
+                    'data'    => [
                         'user_id' => $userId,
                         'test_id' => $testId,
                         'event'   => 'ban'

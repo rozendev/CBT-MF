@@ -170,6 +170,9 @@ function proctorLiveDashboard() {
         },
         ws: null,
         isConnected: false,
+        wsAuthenticated: false,
+        wsStopped: false,
+        consecutiveUnauthCloses: 0,
         reconnectTimer: null,
         students: [],
         audioEnabled: false,
@@ -215,17 +218,40 @@ function proctorLiveDashboard() {
             this.connectWebSocket();
         },
 
+        escapeHtml(val) {
+            return String(val ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        },
+
         connectWebSocket() {
+            if (this.wsStopped) return;
             try {
                 this.ws = new WebSocket(this.wsUrl);
+                this.wsAuthenticated = false;
 
                 this.ws.onopen = () => {
-                    this.isConnected = true;
-                    if(this.reconnectTimer) clearInterval(this.reconnectTimer);
+                    if (this.reconnectTimer) {
+                        clearTimeout(this.reconnectTimer);
+                        this.reconnectTimer = null;
+                    }
                 };
 
                 this.ws.onmessage = (e) => {
                     const res = JSON.parse(e.data);
+                    if (res.event === 'connected') {
+                        this.wsAuthenticated = true;
+                        this.isConnected = true;
+                        this.consecutiveUnauthCloses = 0;
+                        if (this.reconnectTimer) {
+                            clearTimeout(this.reconnectTimer);
+                            this.reconnectTimer = null;
+                        }
+                        return;
+                    }
                     if (res.event === 'heartbeat') {
                         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                             this.ws.send(JSON.stringify({event: 'pong'}));
@@ -237,6 +263,15 @@ function proctorLiveDashboard() {
 
                 this.ws.onclose = () => {
                     this.isConnected = false;
+                    if (this.wsStopped) return;
+                    if (!this.wsAuthenticated) {
+                        this.consecutiveUnauthCloses = (this.consecutiveUnauthCloses || 0) + 1;
+                        if (this.consecutiveUnauthCloses > 5) {
+                            this.wsStopped = true;
+                            window.location.href = '<?= base_url('login') ?>';
+                            return;
+                        }
+                    }
                     this.reconnectTimer = setTimeout(() => this.connectWebSocket(), APP_CFG.proctor_reconnect_ms || 3000);
                 };
 
@@ -252,25 +287,36 @@ function proctorLiveDashboard() {
             const event = res.event;
             const data = res.data || {};
             
-            if (event === 'student_connected') {
-                this.updateStudentStatus(data.user_id, true);
-            } else if (event === 'student_disconnected') {
-                this.updateStudentStatus(data.user_id, false);
-            } else if (event === 'proctor_alert') {
-                // Nested data (from Redis publish → broadcastToProctors)
-                const realEvent = data.event;
-                const innerData = data.data || data;
+            if (event === 'kick' || event === 'ban') {
+                this.wsStopped = true;
+                this.isConnected = false;
+                if (this.reconnectTimer) {
+                    clearTimeout(this.reconnectTimer);
+                    this.reconnectTimer = null;
+                }
+                try { if (this.ws) this.ws.close(); } catch (err) {}
+                window.location.href = '<?= base_url('login') ?>';
+                return;
+            }
 
-                if (realEvent === 'ban') {
-                    this.triggerCheatAlert(data.user_id);
+            if (event === 'student_connected') {
+                this.updateStudentStatus(Number(data.user_id), true);
+            } else if (event === 'student_disconnected') {
+                this.updateStudentStatus(Number(data.user_id), false);
+            } else if (event === 'proctor_alert') {
+                const innerData = (data && typeof data.data === 'object' && data.data !== null) ? data.data : data;
+                const realEvent = (data.event && data.event !== 'proctor_alert') ? data.event : innerData.event;
+                const targetUserId = Number(innerData.user_id ?? data.user_id ?? 0);
+
+                if (realEvent === 'ban' || realEvent === 'modified_browser') {
+                    this.triggerCheatAlert(targetUserId);
                 } else if (realEvent === 'auto_submit') {
-                    this.triggerAutoSubmitAlert(data.user_id, data.reason);
+                    this.triggerAutoSubmitAlert(targetUserId, innerData.reason ?? data.reason);
                 } else if (realEvent === 'proctor_report_alert') {
                     this.handleProctorReport(innerData);
                 }
             } else if (event === 'proctor_report_alert') {
-                // Direct broadcast (from broadcastEvent else-block)
-                const reportData = data.data || data;
+                const reportData = (data && typeof data.data === 'object' && data.data !== null) ? data.data : data;
                 this.handleProctorReport(reportData);
             }
         },
@@ -278,9 +324,13 @@ function proctorLiveDashboard() {
         handleProctorReport(reportData) {
             <?php if(session('role') === 'admin'): ?>
             this.playBeep(true);
+            const proctorName = this.escapeHtml(reportData.proctor_name || 'N/A');
+            const suggestedAction = this.escapeHtml(String(reportData.suggested_action || 'N/A').toUpperCase());
+            const studentUsername = this.escapeHtml(reportData.student_username || 'N/A');
+            const reason = this.escapeHtml(reportData.reason || 'N/A');
             Swal.fire({
                 title: 'Laporan Pengawas!',
-                html: `Pengawas <strong>${reportData.proctor_name || 'N/A'}</strong> menyarankan tindakan <strong>${(reportData.suggested_action || 'N/A').toUpperCase()}</strong> untuk siswa <strong>${reportData.student_username || 'N/A'}</strong>.<br><br>Alasan: <br><span class="text-danger">"${reportData.reason || 'N/A'}"</span>`,
+                html: `Pengawas <strong>${proctorName}</strong> menyarankan tindakan <strong>${suggestedAction}</strong> untuk siswa <strong>${studentUsername}</strong>.<br><br>Alasan: <br><span class="text-danger">"${reason}"</span>`,
                 icon: 'warning',
                 showConfirmButton: true,
                 confirmButtonText: '<i class="bi bi-shield-lock"></i> Buka Suspend Menu',
@@ -295,14 +345,16 @@ function proctorLiveDashboard() {
         },
 
         updateStudentStatus(userId, isOnline) {
-            const student = this.students.find(s => s.user_id === userId);
+            const targetId = Number(userId);
+            const student = this.students.find(s => s.user_id === targetId);
             if (student) {
                 student.is_online = isOnline;
             }
         },
 
         triggerCheatAlert(userId) {
-            const student = this.students.find(s => s.user_id === userId);
+            const targetId = Number(userId);
+            const student = this.students.find(s => s.user_id === targetId);
             if (student) {
                 student.strikes++;
                 student.banned = true;
@@ -319,7 +371,8 @@ function proctorLiveDashboard() {
         },
 
         triggerAutoSubmitAlert(userId, reason) {
-            const student = this.students.find(s => s.user_id === userId);
+            const targetId = Number(userId);
+            const student = this.students.find(s => s.user_id === targetId);
             if (student) {
                 student.strikes++;
                 student.status = 3; // 3 = finished

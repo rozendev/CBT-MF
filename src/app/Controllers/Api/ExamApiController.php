@@ -239,31 +239,12 @@ class ExamApiController extends BaseController
         $unbannedAt = $user->unbanned_at ?? null;
         $unbannedAtMs = !empty($unbannedAt) ? strtotime($unbannedAt) * 1000 : null;
 
-        $wsToken = bin2hex(random_bytes(16));
-        try {
-            $redis = \App\Libraries\RedisClient::getInstance();
-            if ($redis) {
-                // Invarian SATU token per attempt. init() dipanggil ulang setiap
-                // kali halaman dimuat; tanpa mencabut token sebelumnya, token lama
-                // tetap sah sampai TTL 4 jam habis dan tindakan pengawas
-                // (yang mencabut token) bisa dilewati lewat sesi lama.
-                $previous = $redis->get("attempt_ws_token:{$attempt->id}");
-                if ($previous) {
-                    $redis->del("ws_student_token:{$previous}");
-                }
-
-                $redis->setex("ws_student_token:{$wsToken}", 14400, json_encode([
-                    'user_id' => (int)$userId,
-                    'attempt_id' => (int)$attempt->id,
-                    'test_id' => (int)$test->id
-                ]));
-                // Indeks balik: satu-satunya cara menemukan token milik sebuah
-                // attempt saat pengawas ingin mencabutnya.
-                $redis->setex("attempt_ws_token:{$attempt->id}", 14400, $wsToken);
-            }
-        } catch (\Exception $e) {
-            log_message('error', 'Redis error generating ws_student_token in API: ' . $e->getMessage());
-        }
+        $wsToken = \App\Libraries\WebSocketToken::issueStudentToken(
+            (int) $userId,
+            (int) $attempt->id,
+            (int) $test->id,
+            \App\Libraries\SessionInvalidation::normalizeVersion($user->auth_version ?? session('auth_version') ?? 1)
+        );
 
         return $this->response->setJSON([
             'status' => 'success',

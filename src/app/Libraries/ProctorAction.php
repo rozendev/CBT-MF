@@ -106,11 +106,7 @@ final class ProctorAction
         try {
             $redis = RedisClient::getInstance();
             if ($redis) {
-                $token = $redis->get("attempt_ws_token:{$attemptId}");
-                if ($token) {
-                    $redis->del("ws_student_token:{$token}");
-                }
-                $redis->del("attempt_ws_token:{$attemptId}");
+                WebSocketToken::revokeAttemptToken($attemptId, $redis, false);
 
                 $redis->publish('exam_events', json_encode(
                     self::buildEjectPayload($userId, $attemptId, $testId, $reason)
@@ -142,6 +138,14 @@ final class ProctorAction
     public function lockAccount(int $userId, int $actorId): array
     {
         $db = \Config\Database::connect();
+        $attemptRows = $db->table('test_attempts')
+            ->select('id')
+            ->where('user_id', $userId)
+            ->whereIn('status', [0, 1, 2])
+            ->get()
+            ->getResultArray();
+        $attemptIds = array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), $attemptRows);
+
         $db->transStart();
 
         $db->table('users')
@@ -171,6 +175,7 @@ final class ProctorAction
         try {
             $redis = RedisClient::getInstance();
             if ($redis) {
+                WebSocketToken::revokeUserAttemptTokens($userId, $attemptIds, $redis, false);
                 $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
                 $redis->setex("ban_signal:{$userId}", 120, '1');
                 $redis->publish('exam_events', json_encode([
