@@ -23,9 +23,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install gd
 RUN docker-php-ext-install exif pcntl bcmath zip intl
 
-# Install Redis extension
-RUN pecl install redis \
-    && docker-php-ext-enable redis
+# Redis and libev-backed event loop (avoids stream_select descriptor ceiling).
+RUN pecl install redis ev \
+    && docker-php-ext-enable redis ev
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

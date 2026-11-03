@@ -1,7 +1,7 @@
 ---
 title: Pengerasan Infrastruktur WebSocket Compose/VPS (PR 2)
 date: 2026-11-02
-status: awaiting-spec-review
+status: approved
 branch: fix/websocket-infra-hardening
 base: main@05fca1d
 scope: WS-02, WS-05, WS-08, WS-10
@@ -202,6 +202,6 @@ Jika menggunakan `php -l`, nyatakan bahwa pemeriksaan tersebut hanya memvalidasi
 
 ## 9. Langkah setelah review spec
 
-Spec ini ditulis pada branch fitur dari `main`; pendekatan sudah disetujui, tetapi dokumen ini belum memperoleh persetujuan user. Builder check oleh reviewer terpisah sudah dilakukan pada 2026-11-02 dengan hasil `nothing important left`; hasil tersebut adalah review kelengkapan desain, bukan validasi runtime. Commit spec dengan identitas Git yang ditetapkan handoff dan minta review user sebelum implementasi/TDD.
+User sudah membaca dan menyetujui dokumen ini serta meminta implementasi langsung tanpa dokumen implementation plan terpisah. Ringkasan aktif berada di [SPECS.md](/home/rozen/ARGON/CBT-MF/SPECS.md). Builder check oleh reviewer terpisah sudah dilakukan pada 2026-11-02 dengan hasil `nothing important left`; hasil tersebut adalah review kelengkapan desain, bukan validasi runtime. Persetujuan tidak perlu diminta ulang untuk cakupan ini.
 
 Setelah implementasi diizinkan: verifikasi sesuai bukti yang tersedia, push branch, buka satu PR ke `main` dengan cakupan aktual, kemudian berhenti dan menunggu user melakukan merge. Jangan merge sendiri. Jika user meminta langsung implementasi sesuai spec tanpa dokumen implementation plan terpisah, ikuti instruksi tersebut.
