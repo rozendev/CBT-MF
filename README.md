@@ -196,13 +196,14 @@ untuk memproses job. Panduan dan pengujiannya ada di
 pembacaannya tidak memerlukan pekerjaan PHP maupun kueri database per
 permintaan.
 
-Tujuh service di `docker-compose.yml`:
+Delapan service di `docker-compose.yml`:
 
 | Service | Peran |
 | --- | --- |
 | `nginx` | Reverse proxy dan penyaji berkas statis |
 | `php` | PHP-FPM menjalankan aplikasi CodeIgniter 4 |
 | `websocket` | Daemon `spark websocket:serve` |
+| `import-worker` | Memproses antrean impor siswa/soal; tanpanya impor berhenti di "Menunggu giliran" |
 | `cron` | Menutup attempt kedaluwarsa, probe dependensi, membersihkan kunci kiosk basi |
 | `cloudflared` | Cloudflare Tunnel, aktif bila `CF_TUNNEL_TOKEN` diisi |
 | `mariadb` | Basis data |

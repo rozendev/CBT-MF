@@ -59,6 +59,7 @@ services:
     build:
       context: ./docker/php-fpm
       dockerfile: Dockerfile
+    container_name: ${CONTAINER_PHP}_import_worker
     restart: unless-stopped
     entrypoint: []
     command: ["sh", "-c", "while true; do php -d memory_limit=224M spark imports:work --once --no-header; sleep 2; done"]
@@ -73,6 +74,8 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - ujian_network
     environment:
@@ -81,6 +84,11 @@ services:
       - DB_DATABASE=${DB_DATABASE}
       - DB_USERNAME=${DB_USERNAME}
       - DB_PASSWORD=${DB_PASSWORD}
+      # Tanpa ini boot spark gagal NOAUTH ke Redis tiap siklus worker dan
+      # invalidasi cache auth siswa hasil impor tidak sampai ke Redis.
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
 
   # ─── WebSocket Daemon ───────────────────────────────────────
   websocket:

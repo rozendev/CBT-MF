@@ -3,7 +3,10 @@
 Impor siswa dan soal sekarang memakai satu antrean server. Request upload hanya
 memvalidasi batas file dan menyimpan job; parsing, hashing, serta penulisan data
 dijalankan PHP CLI terpisah. Browser membaca progres dengan GET sekitar 3 detik
-saat berjalan, 10 detik saat antre/retry, dan 3–3,5 menit saat tab tersembunyi.
+saat berjalan, 2 detik untuk 5 poll pertama saat antre/retry lalu 10 detik, dan 3–3,5 menit saat tab tersembunyi.
+Worker menulis `writable/imports/worker.alive` tiap siklus dan checkpoint. Bila
+berkas itu lebih tua dari 90 detik, status job antre menyertakan `worker_alive: false`
+dan pesan agar menjalankan `sudo bash scripts/cbt.sh docker up`; job tetap antre.
 Polling berhenti ketika halaman ditutup. Lihat [kebijakan polling](activity-polling.md).
 Endpoint `users/import-batch` lama hanya membaca status, tidak mengeksekusi batch.
 
