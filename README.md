@@ -158,24 +158,45 @@ dan sistem tidak memunculkan pesan galat apa pun yang memberi tahu Anda. Gunakan
 ## Build APK Android
 
 Kios Android (`cbt-kiosk-app/`) dibangun native di host Linux x86_64 tanpa
-Docker dan tanpa memasang layanan server. Tiga perintahnya:
+Docker dan tanpa memasang layanan server. Perintah yang tersedia:
 
 ```bash
 bash scripts/cbt.sh android doctor   # hitung dependensi; hanya laporan, tanpa memasang
 bash scripts/cbt.sh android setup    # pasang yang belum ada: Python 3, JDK 21, SDK, Gradle
 bash scripts/cbt.sh android build    # bangun APK rilis bertanda tangan lokal
-bash scripts/cbt.sh build-app        # pintasan langsung ke android build
+bash scripts/cbt.sh build-app       # pintasan langsung ke android build
 ```
 
-Pada menu interaktif (`sudo bash scripts/cbt.sh`), pilih **AKSI CEPAT →
-build-app — Build App Android** untuk langsung membangun APK dengan prompt
-nama dan icon. Submenu **Build Android** juga menyediakan `doctor`, `setup`,
-dan `build`.
-
-Jalankan sebagai user biasa, bukan `sudo`; bila tetap dipanggil dari root,
-eksekusinya turun otomatis ke user pemanggil. Perintah memerlukan Python 3.9+,
+Jalankan perintah build langsung sebagai user biasa. Perintah memerlukan Python 3.9+,
 dan saat tidak ada python memakai package manager (apt/dnf/pacman/zypper)
 untuk memasangnya — hanya pada `setup` dan `build`, tidak pada `doctor`.
+
+### Build melalui menu interaktif
+
+1. Dari direktori repo, buka menu dengan `sudo bash scripts/cbt.sh`.
+2. Pada **AKSI CEPAT**, pilih nomor entri **build-app — Build App Android**.
+3. Masukkan nama aplikasi dan path icon PNG/JPEG/WebP. Tekan Enter untuk
+   memakai nilai default yang ditampilkan; isi `default` pada prompt icon
+   untuk kembali ke icon bawaan.
+4. Builder memasang dependensi yang kurang. Ikuti penerimaan lisensi bila
+   SDK perlu dipasang. Setelah build berhasil, lokasi APK final ditampilkan.
+
+Saat menu dibuka melalui `sudo`, builder dijalankan sebagai user pemanggil.
+Submenu **Build Android** juga menyediakan `doctor`, `setup`, dan `build`.
+
+### Build langsung dengan nama dan icon sendiri
+
+```bash
+bash scripts/cbt.sh build-app \
+  --name "Ujian Sekolah Mandiri" \
+  --icon "/home/user/Gambar/icon-sekolah.webp" \
+  --output "dist/android/ujian-sekolah-release.apk" \
+  --yes
+```
+
+Ganti path icon dengan berkas milik Anda. Alias `build-app` menerima opsi
+yang sama dengan `android build`. `--yes` menerima lisensi SDK saat
+pemasangan otomatis, termasuk ketika perintah dijalankan tanpa interaksi.
 
 Nama dan icon aplikasi disesuaikan lewat opsi, atau prompt interaktif saat
 terminal tersedia:
@@ -197,6 +218,19 @@ untuk dicommit. Isinya salinan proyek (`.android-build/project`), resource
 branding generated, cache unduhan JDK/SDK/Gradle ber-checksum, serta hasil
 build. Unduhan tool dari Google diuji SHA-256 sebelum dipakai; Gradle selalu
 diambil pada versi wrapper proyek.
+
+### Validasi hasil build
+
+Sebelum menerbitkan APK final, builder memeriksa alignment, signature,
+package ID, label aplikasi, icon terkemas, dan status debuggable dari
+penanda metadata APK. Nama yang memuat `application-debuggable` tetap
+diterima sebagai nama aplikasi selama APK tidak memiliki flag debug.
+
+Dimensi icon PNG/JPEG/WebP, termasuk WebP lossy dan lossless, dibandingkan
+dengan gambar pilihan Anda. Pemeriksaan ini menerima nama resource hasil
+shrink dan gambar hasil re-encode; kesamaan dimensi belum membuktikan
+kesamaan piksel. Jika kompilasi atau verifikasi gagal, APK final lama
+dipertahankan dan branding baru tidak disimpan.
 
 ### Kunci signing lokal
 
