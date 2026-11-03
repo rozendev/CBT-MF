@@ -93,7 +93,7 @@ administrator. Tidak ada langkah manual yang tersisa sesudahnya.
 | Layanan | Alamat | Keterangan |
 | --- | --- | --- |
 | Aplikasi (Nginx) | `http://localhost:8080` | Satu-satunya port yang terekspos ke jaringan |
-| WebSocket | `127.0.0.1:8060` | Terikat ke localhost, diproksi Nginx lewat `/ws/` |
+| WebSocket | Internal `websocket:8060` | Klien memakai port aplikasi lewat `/ws` atau `/ws/` |
 | MariaDB | Internal | Hanya di dalam jaringan Docker |
 | Redis | Internal | Hanya di dalam jaringan Docker |
 
@@ -207,6 +207,39 @@ Tujuh service di `docker-compose.yml`:
 | `cloudflared` | Cloudflare Tunnel, aktif bila `CF_TUNNEL_TOKEN` diisi |
 | `mariadb` | Basis data |
 | `redis` | Sesi, cache, autosave, dan Pub/Sub |
+
+**WebSocket melalui Nginx.** Klien memakai `/ws` pada port aplikasi (contoh
+`ws://localhost:8080/ws`), diteruskan ke service internal `websocket:8060`.
+Port `8060` tidak dipublikasikan. Periksa `php spark cbt:ws-url` setelah upgrade;
+kosongkan/koreksi setting URL lama yang langsung menuju port tersebut, lalu
+regenerasi halaman statis dan bundle kiosk yang menyimpan URL lama.
+
+Daemon berjalan sebagai `33:33`, PHP dibatasi 256 MB, dan container secara
+bawaan 320 MB (`WEBSOCKET_MEMORY`, tanpa tambahan swap). Frame dan total pesan
+masuk dibatasi 64 KB; event aplikasi tetap 4 KB. `ext-ev` dan slot Nginx yang
+lebih besar memberi ruang koneksi, tetapi kapasitas tetap bergantung RAM/CPU.
+Pastikan direktori serta daily log aktif dapat ditulis UID 33, termasuk saat
+cron root membuat berkas lebih dulu atau tanggal log berganti. Perubahan daemon
+ini tidak memperbaiki otomatis berkas lama maupun seluruh writer root.
+
+Origin handshake wajib cocok dengan origin aplikasi, origin kiosk, atau
+`CORS_ALLOWED_ORIGINS`. Origin kosong/null ditolak. TLS di Cloudflare Tunnel
+memakai `app.baseURL` HTTPS sebagai origin kanonis; daftarkan alias tambahan
+secara eksplisit. Token tetap wajib, termasuk untuk klien non-browser yang
+dapat memalsukan Origin.
+
+Resolver Redis aplikasi dan daemon memakai `redis.*` → `REDIS_*` → default.
+Hapus override lama yang tidak dimaksudkan; session/cache memiliki override
+terpisah. Log error Redis mencatat jenis kegagalan tanpa kredensial. Log request
+dan error per-koneksi Nginx untuk `/ws` dimatikan agar query token tidak
+tercatat; trade-off-nya diagnosis memakai log startup/lifecycle daemon.
+
+Tes integrasi opsional: setelah build image Compose, jalankan
+`node src/tests/Realtime/websocket-infra-smoke.cjs`. Tes ini memakai project
+Docker sementara dengan Redis dan port lokal tersendiri; mencakup handshake,
+Origin, batas payload, penolakan SUBSCRIBE, restart Redis, dan pengiriman event.
+Container serta data fixture dibersihkan sesudahnya. Pemeriksaan cgroup pada
+tes ini memerlukan Docker Linux dengan cgroup v2.
 
 ## Struktur repositori
 

@@ -29,10 +29,9 @@ class WebSocketUrlTest extends TestCase
         $this->assertSame('wss://sekolah.id/ws', WebSocketUrl::derive('https://sekolah.id/cbt'));
     }
 
-    public function testDeriveMapsDevPortToWebsocketPort(): void
+    public function testDeriveKeepsApplicationPortForProxy(): void
     {
-        // Stack dev: nginx di 8080, server Ratchet dipublikasikan di 8060.
-        $this->assertSame('ws://localhost:8060/ws', WebSocketUrl::derive('http://localhost:8080'));
+        $this->assertSame('ws://localhost:8080/ws', WebSocketUrl::derive('http://localhost:8080'));
     }
 
     public function testDeriveKeepsOtherPorts(): void

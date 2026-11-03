@@ -109,7 +109,7 @@ class WebSocketServerHandler implements MessageComponentInterface
 
                 $registerProctor();
             })->catch(function (\Throwable $e) use ($conn): void {
-                log_message('error', 'Async Redis error on proctor handshake: ' . $e->getMessage());
+                log_message('error', 'Async Redis error on proctor handshake (' . get_class($e) . ')');
                 $this->closeAndDetach($conn);
             });
 
@@ -178,7 +178,7 @@ class WebSocketServerHandler implements MessageComponentInterface
                     }
                 );
             })->catch(function (\Throwable $e) use ($conn): void {
-                log_message('error', 'Async Redis error on student handshake: ' . $e->getMessage());
+                log_message('error', 'Async Redis error on student handshake (' . get_class($e) . ')');
                 $this->closeAndDetach($conn);
             });
 
@@ -250,7 +250,7 @@ class WebSocketServerHandler implements MessageComponentInterface
                             );
                         })
                         ->catch(function (\Throwable $e): void {
-                            log_message('error', 'Async Redis kiosk_event_queue error: ' . $e->getMessage());
+                            log_message('error', 'Async Redis kiosk_event_queue error (' . get_class($e) . ')');
                         });
                 }
             }
@@ -275,7 +275,7 @@ class WebSocketServerHandler implements MessageComponentInterface
 
     public function onError(ConnectionInterface $conn, \Exception $e)
     {
-        log_message('error', 'WebSocket Error: ' . $e->getMessage());
+        log_message('error', 'WebSocket Error (' . get_class($e) . ')');
         $this->closeAndDetach($conn);
     }
 

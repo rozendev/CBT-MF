@@ -24,12 +24,6 @@ final class WebSocketUrl
     public const DEFAULT_PATH = '/ws';
 
     /**
-     * Pemetaan port khusus stack pengembangan: nginx dipublikasikan di 8080,
-     * server Ratchet langsung di 8060 tanpa lewat proxy.
-     */
-    public const DEV_PORT_MAP = ['8080' => '8060'];
-
-    /**
      * URL final yang harus dipakai klien. Setting menang; kalau kosong atau
      * masih menunjuk localhost, turunkan dari base URL aplikasi.
      */
@@ -71,10 +65,6 @@ final class WebSocketUrl
         $scheme = (($parts['scheme'] ?? 'http') === 'https') ? 'wss' : 'ws';
         $host   = $parts['host'] ?? 'localhost';
         $port   = isset($parts['port']) ? (string) $parts['port'] : '';
-
-        if ($port !== '' && isset(self::DEV_PORT_MAP[$port])) {
-            $port = self::DEV_PORT_MAP[$port];
-        }
 
         $authority = $host . ($port !== '' ? ':' . $port : '');
 

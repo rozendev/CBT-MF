@@ -152,7 +152,7 @@ function createProctorFixture(options = {}) {
     );
 
     script = script.replace(/<\?=([\s\S]*?)\?>/g, (_, php) => {
-        if (php.includes('$wsUrl')) return 'ws://localhost:8060';
+        if (php.includes('$wsUrl')) return 'ws://localhost:8080/ws';
         if (php.includes('$proctorToken')) return 'proctor-token-123';
         if (php.includes('json_encode($attempts)')) {
             return JSON.stringify(options.attempts || [

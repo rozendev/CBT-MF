@@ -6,7 +6,10 @@ use CodeIgniter\CLI\BaseCommand;
 use CodeIgniter\CLI\CLI;
 use Ratchet\Server\IoServer;
 use Ratchet\Http\HttpServer;
-use Ratchet\WebSocket\WsServer;
+use App\Libraries\BoundedWsServer;
+use App\Libraries\WebSocketOriginGuard;
+use App\Libraries\RedisConnectionConfig;
+use App\Libraries\WebSocketPromiseErrors;
 use React\EventLoop\Loop;
 use React\Socket\SocketServer;
 use Clue\React\Redis\Factory;
@@ -21,24 +24,32 @@ class WebSocketServe extends BaseCommand
 
     public function run(array $params)
     {
+        if (trim((string) ini_get('memory_limit')) === '-1') {
+            if (ini_set('memory_limit', '256M') === false || trim((string) ini_get('memory_limit')) === '-1') {
+                CLI::error('WebSocket requires a finite PHP memory limit.');
+                return 1;
+            }
+        }
         CLI::write("Starting WebSocket Server...", 'green');
+        WebSocketPromiseErrors::install(static function (string $message): void {
+            CLI::error($message);
+        });
 
         // Create the event loop
         $loop = Loop::get();
+        CLI::write('Event loop: ' . get_class($loop) . '; PHP memory_limit=' . ini_get('memory_limit'));
 
         // Redis config
-        $redisHost = env('redis.host', 'redis');
-        $redisPort = env('redis.port', 6379);
-        $redisPassword = env('REDIS_PASSWORD', '');
-        
-        $auth = !empty($redisPassword) ? ":{$redisPassword}@" : "";
-        $redisUrl = "redis://{$auth}{$redisHost}:{$redisPort}";
+        $redisUrl = RedisConnectionConfig::fromEnvironment()->uri();
 
         $factory = new Factory($loop);
         
         // Create lazy async Redis client for token validation.
         // LazyClient reconnects automatically on demand after an outage.
         $asyncRedis = $factory->createLazyClient($redisUrl);
+        $asyncRedis->on('error', static function (\Throwable $e): void {
+            CLI::error('Redis async client error (' . get_class($e) . ')');
+        });
 
         // Create the WebSocket handler
         $wsHandler = new WebSocketServerHandler($asyncRedis);
@@ -58,10 +69,6 @@ class WebSocketServe extends BaseCommand
 
             $factory->createClient($redisUrl)->then(
                 function (Client $client) use ($wsHandler, &$pubSubConnected, &$pubSubConnecting) {
-                    $pubSubConnected = true;
-                    $pubSubConnecting = false;
-                    CLI::write("Connected to Redis for Pub/Sub.", 'green');
-
                     $client->on('message', function ($channel, $payload) use ($wsHandler) {
                         if ($channel === 'exam_events') {
                             $eventData = json_decode($payload, true);
@@ -75,7 +82,7 @@ class WebSocketServe extends BaseCommand
                     // of killing the event loop; the timer below reconnects.
                     $client->on('error', function ($e) use (&$pubSubConnected) {
                         $pubSubConnected = false;
-                        CLI::write("Redis Pub/Sub error: " . $e->getMessage(), 'red');
+                        CLI::write('Redis Pub/Sub error (' . get_class($e) . ')', 'red');
                     });
 
                     $client->on('close', function () use (&$pubSubConnected) {
@@ -83,12 +90,24 @@ class WebSocketServe extends BaseCommand
                         CLI::write("Redis Pub/Sub connection closed. Will reconnect...", 'yellow');
                     });
 
-                    $client->subscribe('exam_events');
+                    $client->subscribe('exam_events')->then(
+                        function () use (&$pubSubConnected, &$pubSubConnecting): void {
+                            $pubSubConnected = true;
+                            $pubSubConnecting = false;
+                            CLI::write('Connected to Redis for Pub/Sub.', 'green');
+                        },
+                        function (\Throwable $e) use ($client, &$pubSubConnected, &$pubSubConnecting): void {
+                            $pubSubConnected = false;
+                            $pubSubConnecting = false;
+                            CLI::error('Redis subscription failed (' . get_class($e) . ')');
+                            $client->close();
+                        }
+                    );
                 },
                 function (\Exception $e) use (&$pubSubConnected, &$pubSubConnecting) {
                     $pubSubConnected = false;
                     $pubSubConnecting = false;
-                    CLI::write("Failed to connect to Redis: " . $e->getMessage(), 'red');
+                    CLI::write('Failed to connect to Redis (' . get_class($e) . ')', 'red');
                 }
             );
         };
@@ -96,7 +115,7 @@ class WebSocketServe extends BaseCommand
         $connectPubSub();
 
         // Every 15s, if the Pub/Sub link is down (initial failure or lost
-        // connection), attempt to recreate it. Safe to call while connected:
+        // connection), attempt to recreate it. While connected,
         // the state flag prevents duplicate subscriptions.
         $loop->addPeriodicTimer(15, function () use (&$pubSubConnected, $connectPubSub) {
             if (!$pubSubConnected) {
@@ -110,8 +129,11 @@ class WebSocketServe extends BaseCommand
         
         $server = new IoServer(
             new HttpServer(
-                new WsServer(
-                    $wsHandler
+                new WebSocketOriginGuard(
+                    new BoundedWsServer($wsHandler),
+                    (string) config('App')->baseURL,
+                    (string) (env('KIOSK_CORS_ORIGIN') ?: 'https://appassets.androidplatform.net'),
+                    explode(',', (string) env('CORS_ALLOWED_ORIGINS', '')),
                 )
             ),
             $socket,
