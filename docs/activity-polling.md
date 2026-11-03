@@ -11,7 +11,7 @@ memiliki jitter deterministik per client/tugas supaya request tidak serentak.
 | Data monitoring kiosk | 10–11 detik, hanya bila ujian dipilih | 30–31 detik | 180–210 detik |
 | Pemeriksaan gangguan layanan pada monitoring | 60–61 detik | 60–61 detik | 180–210 detik |
 | Status ujian ketika WebSocket gagal | Awal 0–1 detik, selanjutnya 10–11 detik | 30–31 detik | 180–210 detik |
-| Progres import | Berjalan 3–3,3 detik; antre/retry 10–11 detik | 15–16 detik | 180–210 detik |
+| Progres import | Berjalan 3–3,3 detik; antre/retry 2–2,2 detik untuk 5 poll pertama lalu 10–11 detik | 15–16 detik | 180–210 detik |
 | Autosave jawaban | Dipicu perubahan jawaban, debounce dan antrean | Tidak ada request tanpa perubahan | Perubahan yang sudah dipicu tetap diamankan |
 | Sync jawaban ke database | Hanya setelah autosave berhasil; jeda normal 60 detik antar sync | Tidak ada flush berulang tanpa perubahan | Sync tertunda 180–210 detik |
 

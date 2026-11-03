@@ -321,7 +321,12 @@ do_docker_up() {
     ok "Layanan siap: ${base:-http://localhost:8080}"
 }
 do_docker_down()    { cd "$PROJECT_DIR" && $COMPOSE down; }
-do_docker_restart() { cd "$PROJECT_DIR" && $COMPOSE restart; ensure_cloudflare_state; }
+do_docker_restart() {
+    # 'compose restart' hanya menyalakan ulang container yang sudah ada. Server hasil
+    # upgrade belum punya import-worker, padahal tanpanya impor selalu antre selamanya.
+    cd "$PROJECT_DIR" && $COMPOSE restart && $COMPOSE up -d --no-recreate import-worker
+    ensure_cloudflare_state
+}
 do_docker_logs()    { cd "$PROJECT_DIR" && $COMPOSE logs -f; }
 do_docker_status()  { cd "$PROJECT_DIR" && $COMPOSE ps; }
 
@@ -1335,6 +1340,7 @@ EOF
     NGINX_CONTAINER="${CONTAINER_NGINX:-${input_prefix}_nginx}"
     REDIS_CONTAINER="${CONTAINER_REDIS:-${input_prefix}_redis}"
     WEBSOCKET_CONTAINER="${CONTAINER_WEBSOCKET:-${input_prefix}_websocket}"
+    IMPORT_WORKER_CONTAINER="${PHP_CONTAINER}_import_worker"
     
     echo -e "${GREEN}✓ Konfigurasi database berhasil disimpan.${NC}"
     
@@ -1411,7 +1417,7 @@ EOF
                         role     = 'admin';
                 "; then
                     echo -e "\n${GREEN}✅ Migrasi dan Setup Selesai!${NC}"
-                    echo -e "\n=== 🛠️ DAFTAR CONTAINER ===\nPHP: $PHP_CONTAINER\nMariaDB: $DB_CONTAINER\nNginx: $NGINX_CONTAINER\nRedis: $REDIS_CONTAINER\nWebSocket: $WEBSOCKET_CONTAINER"
+                    echo -e "\n=== 🛠️ DAFTAR CONTAINER ===\nPHP: $PHP_CONTAINER\nMariaDB: $DB_CONTAINER\nNginx: $NGINX_CONTAINER\nRedis: $REDIS_CONTAINER\nWebSocket: $WEBSOCKET_CONTAINER\nImport Worker: $IMPORT_WORKER_CONTAINER"
                     echo -e "\nInstalasi berhasil. Silakan login ke aplikasi menggunakan:"
                     echo -e "URL: ${CYAN}$input_baseurl${NC}"
                     echo -e "Username: $input_admin_user"
