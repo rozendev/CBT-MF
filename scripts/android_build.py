@@ -352,7 +352,7 @@ def image_dimensions(data):
                 return int.from_bytes(payload[4:7], 'little') + 1, int.from_bytes(payload[7:10], 'little') + 1
             if fourcc == b'VP8 ' and len(payload) >= 10 and payload[3:6] == b'\x9d\x01\x2a':
                 width, height = struct.unpack_from('<HH', payload, 6)
-                return (width & 0x3FFF) + 1, (height & 0x3FFF) + 1
+                return width & 0x3FFF, height & 0x3FFF
             if fourcc == b'VP8L' and len(payload) >= 5 and payload[0] == 0x2F:
                 bits = int.from_bytes(payload[1:5], 'little')
                 return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
@@ -411,7 +411,7 @@ def verify_packaged_apk(metadata, members, name, icon=None):
     labels = [decode_badging_value(line) for line in re.findall(r"^application-label:'(.*)'$", metadata, re.M)]
     if labels != [name]:
         raise BuildError('Label APK tidak sesuai nama aplikasi.')
-    if 'application-debuggable' in metadata:
+    if re.search(r'^application-debuggable$', metadata, re.M):
         raise BuildError('APK hasil build masih debuggable.')
     paths = set(re.findall(r"^application-icon-\d+:'(.*)'$", metadata, re.M))
     if not paths or any(path not in members or not members[path] for path in paths):

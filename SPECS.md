@@ -10,3 +10,5 @@
 - Periksa penerimaan lisensi SDK bila diperlukan; instalasi otomatis tidak mengubah konfigurasi server, dependensi Composer, maupun Railway.
 - Trade-off: setup awal memerlukan internet, ruang disk, dan kadang hak instalasi paket OS; cache mempercepat build berikutnya. Nama/icon tidak mengubah package ID atau menggantikan kunci signing APK lama.
 - Uji dispatch/prasyarat/branding/signing dengan fixture, lalu build APK rilis nyata, verifikasi label/icon/signature dan regresi CLI. Pemeriksaan perangkat fisik tetap terpisah.
+- Perbaikan audit: deteksi debuggable hanya dari baris penanda aapt; nama yang memuat `application-debuggable` tetap diterima. Baca dimensi WebP VP8 langsung, pertahankan encoding minus-satu VP8L/VP8X; tambahkan regresi kedua kasus.
+- Menu utama menyediakan aksi cepat `build-app` untuk langsung membangun APK dengan prompt nama/icon, di samping submenu Android. Alias CLI `build-app` juga berjalan tanpa root/server. Uji render menu, pemilihan aksi, dan penerusan argumen.

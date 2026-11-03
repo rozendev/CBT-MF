@@ -37,10 +37,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Android is a native developer command: do not read server .env or require root.
-if [ "${1:-}" = android ]; then
-    shift
-    exec bash "$SCRIPT_DIR/cbt-android.sh" "$@"
-fi
+case "${1:-}" in
+    android)   shift; exec bash "$SCRIPT_DIR/cbt-android.sh" "$@" ;;
+    build-app) shift; exec bash "$SCRIPT_DIR/cbt-android.sh" build "$@" ;;
+esac
 
 [ "$EUID" -eq 0 ] || die "Script ini harus dijalankan sebagai root (gunakan sudo).
 Contoh: sudo bash scripts/cbt.sh"
@@ -245,6 +245,7 @@ reg migrate rollback    do_migrate_rollback 1 "Mundurkan batch migrasi terakhir"
 reg tune    show        do_tune_show        0 "Tampilkan setelan kapasitas yang berlaku"
 reg tune    set         do_tune_set         0 "Setel PHP_FPM_MAX_CHILDREN atau DB_BUFFER_POOL"
 
+reg ""      build-app   do_android_build    0 "Build App Android — nama/icon sendiri, APK rilis"
 reg ""      backup      run_backup          0 "Backup database dan Redis"
 reg ""      log-rotate  run_log_rotate      0 "Rotasi log aplikasi"
 reg ""      reset-install run_reset         1 "Reset instalasi (hapus semua data)"

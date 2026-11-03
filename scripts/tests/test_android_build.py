@@ -4,6 +4,7 @@ import importlib.util
 import io
 import os
 from pathlib import Path
+import re
 import stat
 import struct
 import subprocess
@@ -19,6 +20,14 @@ PNG = bytes.fromhex('89504e470d0a1a0a0000000d4948445200000001000000010806000000'
 NAME = 'Ujian "Mandiri" & O\'Brien'
 # The label as aapt prints it in `dump badging`: quotes and backslashes escaped.
 AAPT_LABEL = 'Ujian \\"Mandiri\\" & O\'Brien'
+# Complete 64x64 red images; VP8 stores dimensions directly, VP8L stores minus one.
+WEBP_LOSSY = bytes.fromhex(
+    '524946465600000057454250565038204a0000001004009d012a400040003e6d3698'
+    '49242322a1220800800d8969007600fc0000206ea6a00af10b720000fef09b43fffe'
+    '4172c2eb91affffc80ff901ff203ffe3df16e3a3c71080000000')
+WEBP_LOSSLESS = bytes.fromhex(
+    '5249464622000000574542505650384c150000002f3fc00f000710fd8ffe078084f0ff'
+    'bd16d1ffd40f00')
 
 
 def png(width, height, color_type=6):
@@ -123,6 +132,11 @@ class AndroidBuildTest(unittest.TestCase):
         self.assertEqual((12, 34), self.builder.image_dimensions(webp(12, 34)))
         self.assertIsNone(self.builder.image_dimensions(b'not an image'))
 
+    def test_webp_dimensions_agree_for_lossy_lossless_and_extended_headers(self):
+        for data in [WEBP_LOSSY, WEBP_LOSSLESS, webp(64, 64)]:
+            with self.subTest(chunk=data[12:16]):
+                self.assertEqual((64, 64), self.builder.image_dimensions(data))
+
     def test_packaged_metadata_accepts_aapt_escaped_label_and_icon(self):
         icon = self.tmp / 'photo.png'
         icon.write_bytes(PNG)
@@ -132,6 +146,21 @@ class AndroidBuildTest(unittest.TestCase):
     def test_packaged_metadata_accepts_default_branding(self):
         self.builder.verify_packaged_apk(
             badging('CBT-MF Kiosk'), {'res/Q6.png': b'packaged image bytes'}, 'CBT-MF Kiosk')
+
+    def test_debuggable_word_in_label_is_not_a_debug_flag(self):
+        for name in ['application-debuggable', 'Ujian application-debuggable Sekolah',
+                     'Ujian\u2028application-debuggable\u2028Sekolah']:
+            with self.subTest(name=name):
+                self.builder.verify_packaged_apk(badging(name), {'res/Q6.png': PNG}, name)
+                with self.assertRaises(self.builder.BuildError):
+                    self.builder.verify_packaged_apk(
+                        badging(name, debuggable=True), {'res/Q6.png': PNG}, name)
+
+    def test_custom_webp_icon_can_match_another_webp_header_variant(self):
+        icon = self.tmp / 'photo.webp'
+        icon.write_bytes(WEBP_LOSSY)
+        self.builder.verify_packaged_apk(
+            badging(AAPT_LABEL, icon_path='res/Q6.webp'), {'res/Q6.webp': WEBP_LOSSLESS}, NAME, icon)
 
     def test_packaged_metadata_rejects_the_wrong_name_package_escaping_or_debuggable(self):
         icon = self.tmp / 'photo.png'
@@ -163,6 +192,9 @@ class AndroidBuildTest(unittest.TestCase):
     def test_gradle_failure_does_not_publish_or_touch_previous_output(self):
         source = self.source()
         state = self.tmp / 'state'
+        unsigned = state / 'project/app/build/outputs/apk/release/app-release-unsigned.apk'
+        unsigned.parent.mkdir(parents=True)
+        unsigned.write_bytes(b'stale unsigned apk')
         sdk = self.tmp / 'sdk'
         self.sdk(sdk)
         output = self.tmp / 'dist' / 'form.apk'
@@ -320,6 +352,48 @@ class AndroidBuildTest(unittest.TestCase):
 
 
 class AndroidCliTest(unittest.TestCase):
+    def test_build_app_alias_forwards_options_without_server_root_or_env(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            scripts = Path(temporary) / 'scripts'
+            scripts.mkdir()
+            cli = scripts / 'cbt.sh'
+            cli.write_text((ROOT / 'scripts/cbt.sh').read_text())
+            (scripts / 'cbt-android.sh').write_text(
+                '#!/bin/bash\nprintf "ANDROID_ARGS"\nprintf " <%s>" "$@"\nprintf "\\n"\n')
+            result = subprocess.run(
+                ['bash', str(cli), 'build-app', '--name', 'Sekolah Mandiri',
+                 '--icon', '/tmp/my icon.webp', '--output', '/tmp/release.apk', '--yes'],
+                capture_output=True, text=True, timeout=20)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn(
+                'ANDROID_ARGS <build> <--name> <Sekolah Mandiri> <--icon> </tmp/my icon.webp>'
+                ' <--output> </tmp/release.apk> <--yes>', result.stdout)
+
+    def test_interactive_quick_action_dispatches_android_build(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            scripts = Path(temporary) / 'scripts'
+            scripts.mkdir()
+            cli = scripts / 'cbt.sh'
+            script = (ROOT / 'scripts/cbt.sh').read_text()
+            # Only bypass the root boundary in this fixture; execute the actual menu and handlers.
+            guard = ('[ "$EUID" -eq 0 ] || die "Script ini harus dijalankan sebagai root (gunakan sudo).\n'
+                     'Contoh: sudo bash scripts/cbt.sh"')
+            self.assertIn(guard, script)
+            cli.write_text(script.replace(guard, ':', 1))
+            (scripts / 'cbt-android.sh').write_text(
+                '#!/bin/bash\nprintf "ANDROID_ARGS"\nprintf " <%s>" "$@"\nprintf "\\n"\n')
+            first = subprocess.run(['bash', str(cli)], input='00\n',
+                                   capture_output=True, text=True, timeout=20)
+            self.assertEqual(0, first.returncode, first.stderr)
+            quick_actions = first.stdout.split('AKSI CEPAT', 1)[1]
+            entry = re.search(r'^\s*\[(\d+)\]\s+build-app\s+.*Build App Android', quick_actions, re.M)
+            self.assertIsNotNone(entry, first.stdout)
+            selected = subprocess.run(['bash', str(cli)], input=entry.group(1) + '\n\n00\n',
+                                      capture_output=True, text=True, timeout=20)
+            self.assertEqual(0, selected.returncode, selected.stderr)
+            self.assertEqual(1, selected.stdout.count('ANDROID_ARGS <build>'))
+            self.assertIn('Selesai.', selected.stdout)
+
     def test_android_help_runs_without_server_root_or_env(self):
         result = subprocess.run(['bash', str(ROOT / 'scripts/cbt.sh'), 'android', '--help'],
                                 capture_output=True, text=True, timeout=20)

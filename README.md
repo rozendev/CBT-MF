@@ -125,10 +125,10 @@ sudo bash scripts/cbt.sh <grup> <perintah>
 | `data` | `images`, `optimize`, `cache-clear`, `finalize`, `prune-kiosk` |
 | `migrate` | `up`, `status`, `rollback` |
 | `tune` | `show`, `set` |
-| `android` | `doctor`, `setup` (build APK; tanpa server/docker — lihat di bawah) |
+| `android` | `doctor`, `setup`, `build` (build APK; tanpa server/docker — lihat di bawah) |
 
 Perintah tingkat atas tanpa grup: `backup`, `log-rotate`, `reset-install`,
-`test-k6`, `install`, `help`.
+`test-k6`, `install`, `help`, `build-app` (tanpa sudo).
 
 Perintah yang merusak data (`db import`, `redis flush`, `data optimize`,
 `migrate rollback`, `reset-install`) menuntut Anda mengetik ulang nama
@@ -164,7 +164,13 @@ Docker dan tanpa memasang layanan server. Tiga perintahnya:
 bash scripts/cbt.sh android doctor   # hitung dependensi; hanya laporan, tanpa memasang
 bash scripts/cbt.sh android setup    # pasang yang belum ada: Python 3, JDK 21, SDK, Gradle
 bash scripts/cbt.sh android build    # bangun APK rilis bertanda tangan lokal
+bash scripts/cbt.sh build-app        # pintasan langsung ke android build
 ```
+
+Pada menu interaktif (`sudo bash scripts/cbt.sh`), pilih **AKSI CEPAT →
+build-app — Build App Android** untuk langsung membangun APK dengan prompt
+nama dan icon. Submenu **Build Android** juga menyediakan `doctor`, `setup`,
+dan `build`.
 
 Jalankan sebagai user biasa, bukan `sudo`; bila tetap dipanggil dari root,
 eksekusinya turun otomatis ke user pemanggil. Perintah memerlukan Python 3.9+,
@@ -182,7 +188,7 @@ terminal tersedia:
 | `--yes` | Menerima lisensi Android SDK bila SDK perlu dipasang; tanpa opsi ini, pelaksanaan non-interaktif berhenti sebelum lisensi |
 
 Nilai `--name`/`--icon` tersimpan setelah build sukses dan dipakai sebagai
-defawt build berikutnya. `--icon default` mengembalikan icon bawaan. Package
+default build berikutnya. `--icon default` mengembalikan icon bawaan. Package
 ID tidak berubah: tetap `id.sch.cbt.kiosk`.
 
 Builder menyimpan seluruh state build di `.android-build/` relatif repo
