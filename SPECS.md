@@ -1,11 +1,12 @@
-# WebSocket PR 2 — disetujui
+# Build APK Android melalui cbt.sh
 
-- Cakupan: WS-02, WS-05, WS-08, WS-10 pada Compose/VPS; Railway dikecualikan.
-- Klien memakai Nginx `/ws` atau `/ws/` pada port aplikasi, tanpa redirect; daemon tetap internal `8060` tanpa publikasi port host.
-- PHP 256 MB, container 320 MB tanpa tambahan swap; frame dan total pesan masuk maksimal 64 KB sebelum autentikasi selesai; batas event aplikasi tetap 4 KB.
-- Pertahankan Ratchet/vendor; tambahkan adapter pembatas buffer dan guard Origin utuh (skema, host, port). Origin kosong/null/invalid ditolak; web aplikasi, kiosk Exambro, dan daftar tambahan diterima. Token tetap wajib.
-- Pasang ext-ev; catat loop aktif. Nginx memakai 8192 slot/worker dan nofile 65536. Kapasitas tetap perlu diukur.
-- Satukan resolusi Redis sinkron/async: redis.* → REDIS_* → default; encode password URI, pertahankan timeout dan reconnect, hindari rahasia dalam log.
-- Daemon berjalan sebagai 33:33, melewati entrypoint FPM. Entrypoint hanya merender tuning untuk FPM. Izin log bersama/berkas root lama tetap prasyarat rollout.
-- Uji frame nyata, fragmentasi, Origin, konfigurasi Redis, dispatch entrypoint, proxy, serta regresi PHP/Node. Laporkan pemeriksaan perangkat/load yang belum dilakukan.
-- Rincian desain yang telah disetujui: [spec sebelumnya](/home/rozen/ARGON/CBT-MF/docs/superpowers/specs/2026-11-02-websocket-infra-hardening-design.md).
+- Perintah `android doctor`, `android setup`, dan `android build` tersedia pada CLI/menu; build tidak memerlukan instalasi server atau Docker.
+- Target awal Linux x86_64. Periksa Python 3.9+, JDK 21, Android SDK/platform/build-tools, dan Gradle; setup/build memasang komponen yang kurang. Python memakai standard library untuk unduhan/archive, tanpa paket pip/curl/unzip tambahan. Sudo hanya bila Python perlu dipasang; doctor hanya melaporkan.
+- Nama dan icon diterima melalui `--name`/`--icon` atau prompt interaktif; icon PNG/JPEG/WebP. Nilai tanpa override tetap memakai branding bawaan.
+- Default yang dipilih user: APK rilis bertanda tangan; buat kunci lokal sekali dan gunakan ulang, tanpa menimpa kunci yang sudah ada atau mencetak password. Kunci/password berada di area runtime privat yang tidak masuk Git; dokumentasikan backup untuk pembaruan APK berikutnya.
+- Branding dan build memakai workspace privat `.android-build/` yang diabaikan Git, agar resource sumber, local.properties, dan konfigurasi signing pengembang tidak ditulis ulang. Package ID bawaan tetap.
+- SDK/JDK yang sudah sesuai dipakai ulang; SDK lokal proyek menjadi fallback bila SDK sistem tidak dapat dilengkapi. Unduhan tool Android berasal dari Google dengan checksum; Gradle memakai versi wrapper proyek.
+- Selaraskan APK sebelum signing, verifikasi tanda tangan dan metadata hasil; tampilkan lokasi APK final. Kegagalan langkah apa pun menghasilkan status nonzero dan tidak melaporkan hasil lama sebagai sukses.
+- Periksa penerimaan lisensi SDK bila diperlukan; instalasi otomatis tidak mengubah konfigurasi server, dependensi Composer, maupun Railway.
+- Trade-off: setup awal memerlukan internet, ruang disk, dan kadang hak instalasi paket OS; cache mempercepat build berikutnya. Nama/icon tidak mengubah package ID atau menggantikan kunci signing APK lama.
+- Uji dispatch/prasyarat/branding/signing dengan fixture, lalu build APK rilis nyata, verifikasi label/icon/signature dan regresi CLI. Pemeriksaan perangkat fisik tetap terpisah.

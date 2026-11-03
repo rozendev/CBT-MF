@@ -125,6 +125,7 @@ sudo bash scripts/cbt.sh <grup> <perintah>
 | `data` | `images`, `optimize`, `cache-clear`, `finalize`, `prune-kiosk` |
 | `migrate` | `up`, `status`, `rollback` |
 | `tune` | `show`, `set` |
+| `android` | `doctor`, `setup` (build APK; tanpa server/docker — lihat di bawah) |
 
 Perintah tingkat atas tanpa grup: `backup`, `log-rotate`, `reset-install`,
 `test-k6`, `install`, `help`.
@@ -153,6 +154,65 @@ sudo bash scripts/cbt.sh bundle build
 Tanpa langkah itu, perangkat yang memakai EXAMBRO tetap menerima artefak lama,
 dan sistem tidak memunculkan pesan galat apa pun yang memberi tahu Anda. Gunakan
 `bundle status` untuk membandingkan versi bundle lokal, server, dan zip publik.
+
+## Build APK Android
+
+Kios Android (`cbt-kiosk-app/`) dibangun native di host Linux x86_64 tanpa
+Docker dan tanpa memasang layanan server. Tiga perintahnya:
+
+```bash
+bash scripts/cbt.sh android doctor   # hitung dependensi; hanya laporan, tanpa memasang
+bash scripts/cbt.sh android setup    # pasang yang belum ada: Python 3, JDK 21, SDK, Gradle
+bash scripts/cbt.sh android build    # bangun APK rilis bertanda tangan lokal
+```
+
+Jalankan sebagai user biasa, bukan `sudo`; bila tetap dipanggil dari root,
+eksekusinya turun otomatis ke user pemanggil. Perintah memerlukan Python 3.9+,
+dan saat tidak ada python memakai package manager (apt/dnf/pacman/zypper)
+untuk memasangnya — hanya pada `setup` dan `build`, tidak pada `doctor`.
+
+Nama dan icon aplikasi disesuaikan lewat opsi, atau prompt interaktif saat
+terminal tersedia:
+
+| Opsi | Peran |
+| --- | --- |
+| `--name NAMA` | Nama aplikasi (1–80 karakter, tanpa karakter kontrol); ikut mengganti judul halaman setup dan pesan launcher |
+| `--icon BERKAS` | Icon PNG/JPEG/WebP maksimal 10 MiB untuk icon launcher, round, dan ikon halaman setup |
+| `--output FILE.apk` | Lokasi APK final; tanpa opsi ini: `dist/android/<nama-slug>-release.apk` |
+| `--yes` | Menerima lisensi Android SDK bila SDK perlu dipasang; tanpa opsi ini, pelaksanaan non-interaktif berhenti sebelum lisensi |
+
+Nilai `--name`/`--icon` tersimpan setelah build sukses dan dipakai sebagai
+defawt build berikutnya. `--icon default` mengembalikan icon bawaan. Package
+ID tidak berubah: tetap `id.sch.cbt.kiosk`.
+
+Builder menyimpan seluruh state build di `.android-build/` relatif repo
+(override dengan `CBT_ANDROID_STATE_DIR`); folder itu diabaikan Git dan tidak
+untuk dicommit. Isinya salinan proyek (`.android-build/project`), resource
+branding generated, cache unduhan JDK/SDK/Gradle ber-checksum, serta hasil
+build. Unduhan tool dari Google diuji SHA-256 sebelum dipakai; Gradle selalu
+diambil pada versi wrapper proyek.
+
+### Kunci signing lokal
+
+Build pertama membuat pasangan kunci PKCS12 (store alias `cbt-local`) di
+`.android-build/signing/release.p12` dan berkas passwordnya di
+`.android-build/signing/password`, masing-masing berpermission `600` di
+direktori `700`, dan menolak menimpa kunci yang sudah ada. **Backup keduanya bersama** bila APK berikutnya masih perlu
+terpasang sebagai upgrade di perangkat yang sama: Android menolak pembaruan
+yang ditandatangani kunci berbeda, meskipun package ID sama. Bila pasangan
+key/password ketinggal satu saja, builder berhenti dan tidak membuat kunci
+baru; pulihkan dari backup, jangan hapus manual.
+
+### Batas dan kebutuhan
+
+- Unduhan pertama membutuhkan internet (toolchain sekitar 2 GB) dan beberapa
+  GB ruang disk; cache mempercepat build berikutnya. RAM 4 GB cukup.
+- Target host build: Linux x86_64. APK diuji host-side lewat zipalign,
+  `apksigner verify`, dan pembacaan metadata `aapt` (package, label terkemas,
+  icon terkemas, bukan debuggable).
+- Pemasangan dan perilaku launcher/perangkat fisik, penambahan waktu, serta
+  upgrade antar-versi dengan kunci tersimpan belum diuji oleh builder ini —
+  lakukan uji perangkat sebelum disebarkan ke siswa.
 
 ## Arsitektur
 

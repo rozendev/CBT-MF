@@ -8,6 +8,11 @@ plugins {
 android {
     namespace = "id.sch.cbt.kiosk"
     compileSdk = 36
+    buildToolsVersion = "35.0.0"
+
+    providers.gradleProperty("CBT_BRANDING_RES_DIR").orNull?.let { directory ->
+        sourceSets.getByName("release").res.srcDir(directory)
+    }
 
     defaultConfig {
         applicationId = "id.sch.cbt.kiosk"
@@ -34,7 +39,8 @@ android {
         // CI, kontributor baru — varian rilis tetap bisa dibangun, hanya keluar
         // tanpa tanda tangan. Lebih baik begitu daripada build yang gagal total
         // hanya karena tidak memegang kunci.
-        val storePath = providers.gradleProperty("CBT_KIOSK_STORE_FILE").orNull
+        val storePath = if (providers.gradleProperty("CBT_CLI_UNSIGNED").orNull == "true") null
+            else providers.gradleProperty("CBT_KIOSK_STORE_FILE").orNull
         if (storePath != null) {
             create("release") {
                 storeFile = file(storePath)

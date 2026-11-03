@@ -121,3 +121,7 @@ src/writable/maintenance*
 # Salinan runtime yang dihasilkan cbt.sh: berisi INTRUDER_TOKEN asli
 # hasil substitusi per-pemasangan, jadi tidak boleh masuk repo publik.
 .runtime/
+
+# Native Android build workspace, downloads, branding, and local signing material.
+.android-build/
+.worktrees/

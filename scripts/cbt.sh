@@ -33,11 +33,18 @@ warn() { printf '%b\n' "${YELLOW}$*${NC}" >&2; }
 info() { printf '%b\n' "${CYAN}$*${NC}"; }
 ok()   { printf '%b\n' "${GREEN}$*${NC}"; }
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Android is a native developer command: do not read server .env or require root.
+if [ "${1:-}" = android ]; then
+    shift
+    exec bash "$SCRIPT_DIR/cbt-android.sh" "$@"
+fi
+
 [ "$EUID" -eq 0 ] || die "Script ini harus dijalankan sebagai root (gunakan sudo).
 Contoh: sudo bash scripts/cbt.sh"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 COMPOSE="docker compose"
 
 # Pembaca .env yang tidak mengeksekusi isinya. 'source' akan menjalankan
@@ -163,6 +170,7 @@ menu_group_label() {
         db)      printf 'Database' ;;
         redis)   printf 'Redis' ;;
         bundle)  printf 'Bundle Kiosk' ;;
+        android) printf 'Build Android' ;;
         data)    printf 'Pemeliharaan Data' ;;
         migrate) printf 'Migrasi' ;;
         tune)    printf 'Performa' ;;
@@ -178,6 +186,7 @@ menu_group_hint() {
         db)      printf 'Operasi database, ekspor, impor, dan akun admin' ;;
         redis)   printf 'Kelola cache dan sesi aplikasi' ;;
         bundle)  printf 'Bangun dan periksa bundle UI kiosk' ;;
+        android) printf 'Nama/icon sendiri, dependensi, dan APK rilis bertanda tangan' ;;
         data)    printf 'Rawat data ujian dan cache aplikasi' ;;
         migrate) printf 'Kelola skema database CodeIgniter' ;;
         tune)    printf 'Sesuaikan kapasitas PHP-FPM dan MariaDB' ;;
@@ -218,6 +227,10 @@ reg redis   flush       do_redis_flush      1 "Hapus seluruh isi Redis"
 
 reg bundle  build       do_bundle_build     0 "Bangun ulang bundle UI kiosk"
 reg bundle  status      do_bundle_status    0 "Bandingkan versi bundle lokal, server, dan zip publik"
+
+reg android doctor      do_android_doctor   0 "Periksa dependensi build Android"
+reg android setup       do_android_setup    0 "Pasang dependensi build yang kurang"
+reg android build       do_android_build    0 "Bangun APK dengan nama dan icon sendiri"
 
 reg data    images      do_data_images      0 "Keluarkan gambar base64 dari teks soal"
 reg data    optimize    do_data_optimize    1 "OPTIMIZE TABLE (mengunci tabel)"
@@ -276,6 +289,10 @@ run_entry() {
 }
 
 # --- Command Functions ---
+
+do_android_doctor() { bash "$SCRIPT_DIR/cbt-android.sh" doctor "$@"; }
+do_android_setup() { bash "$SCRIPT_DIR/cbt-android.sh" setup "$@"; }
+do_android_build() { bash "$SCRIPT_DIR/cbt-android.sh" build "$@"; }
 
 # 1. Docker
 # Compose tetap mendefinisikan cloudflared agar instalasi lama kompatibel.

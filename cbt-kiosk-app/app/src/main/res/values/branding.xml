@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="drawable" name="cbt_launcher_icon">@drawable/ic_launcher</item>
+    <item type="drawable" name="cbt_launcher_round">@drawable/ic_launcher_round</item>
+    <item type="drawable" name="cbt_setup_icon">@drawable/ic_shield</item>
+</resources>
