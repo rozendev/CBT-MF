@@ -37,7 +37,7 @@
                     android:layout_height="@dimen/logo_size"
                     android:layout_marginBottom="@dimen/spacing_md"
                     android:contentDescription="@string/app_name"
-                    android:src="@drawable/ic_shield" />
+                    android:src="@drawable/cbt_setup_icon" />
 
                 <!-- TITLE -->
                 <TextView
