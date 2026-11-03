@@ -70,12 +70,27 @@ final class ImportQueue
         return null;
     }
 
+    /** Worker liveness marker, so the browser can tell "queued" from "nobody is processing". */
+    public function beat(): void
+    {
+        $path = $this->dir . '/worker.alive';
+        if (@touch($path, (int) ($this->clock)())) @chmod($path, 0600);
+    }
+
+    public function workerAlive(int $maxAgeSeconds = 90): bool
+    {
+        clearstatcache(true, $this->dir . '/worker.alive');
+        $time = @filemtime($this->dir . '/worker.alive');
+        return $time !== false && $time >= (int) ($this->clock)() - $maxAgeSeconds;
+    }
+
     /** The lock spans parsing, hashing, DB writes and checkpointing across all job types. */
     public function runOne(callable $processor): bool
     {
         $lock = $this->lock('worker', true);
         if ($lock === null) return false;
         try {
+            $this->beat();
             $submitLock = $this->lock('submit', false);
             try { $this->prune(); } finally { $this->unlock($submitLock); }
             foreach ($this->jobs() as $job) {
@@ -93,6 +108,7 @@ final class ImportQueue
                     $result = $processor($job, function (array $progress) use (&$job): void {
                         $job['progress'] = $progress;
                         $this->write($job);
+                        $this->beat();
                     });
                     $job['status'] = 'completed';
                     $job['result'] = $result;

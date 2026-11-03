@@ -359,6 +359,8 @@
             const percent = p.total ? Math.round((p.processed || 0) / p.total * 100) : 0;
             progressBar.style.width = percent + '%';
             progressBar.textContent = percent + '%';
+            // Worker mati: modal tidak boleh mengunci halaman. Job tetap antre dan terpantau ulang saat halaman dibuka.
+            btnCancel.disabled = job.worker_alive !== false;
             progressText.textContent = job.status === 'running' && p.total
                 ? `Memproses ${p.processed || 0} dari ${p.total} baris. Proses tetap berjalan jika halaman ditutup.`
                 : (job.message || 'Menunggu giliran impor.');

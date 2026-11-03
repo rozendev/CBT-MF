@@ -71,7 +71,7 @@
     }
 
     async function poll(statusBase, key, update, state, first) {
-        let job = first;
+        let job = first, quick = 0;
         const jobId = state.job_id; // Never reread a shared, mutable browser key while polling.
         try {
             if (!job && typeof document !== 'undefined' && document.visibilityState === 'hidden' && window.CbtPolling) await window.CbtPolling.wait('import', jobId, 0);
@@ -81,8 +81,11 @@
                 if (job.status === 'completed') { storage.clear(key, state); return job.result; }
                 if (job.status === 'failed') { storage.clear(key, state); throw new Error(job.message || 'Impor gagal.'); }
                 if (!['queued', 'running', 'retrying'].includes(job.status)) throw new Error(job.message || 'Respons progres impor tidak valid.');
-                if (window.CbtPolling) await window.CbtPolling.wait('import', jobId, job.status === 'running' ? 3000 : 10000);
-                else await sleep((job.status === 'queued' ? 10000 : 3000) + delay(jobId, 0, null) % 1000);
+                // Worker menyambar job dalam ~2 detik: beberapa poll pertama cepat agar
+                // tidak tampak macet, lalu kembali ke jadwal antre 10 detik.
+                const waiting = job.status === 'running' ? 3000 : (quick++ < 5 ? 2000 : 10000);
+                if (window.CbtPolling) await window.CbtPolling.wait('import', jobId, waiting);
+                else await sleep(waiting + delay(jobId, 0, null) % 1000);
                 job = null;
             }
         } catch (error) {
