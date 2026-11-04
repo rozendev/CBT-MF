@@ -47,7 +47,7 @@ namespace {
         if ($db->query($schema) === false) throw new RuntimeException('Cannot isolate '.$table.': '.json_encode($db->error()));
     }
     $uid = 900001; $tid = 900001; $aid = 900001;
-    $db->table('users')->insert(['id'=>$uid,'username'=>'diagnosis_fixture','password'=>'not-a-real-login','firstname'=>'Fixture','role'=>'siswa','is_active'=>1]);
+    $db->table('users')->insert(['id'=>$uid,'username'=>'diagnosis_fixture','password'=>password_hash('fixture-only-not-a-real-password', PASSWORD_BCRYPT, ['cost'=>4]),'firstname'=>'Fixture','role'=>'siswa','is_active'=>1]);
     $db->table('tests')->insert(['id'=>$tid,'name'=>'Diagnosis fixture','user_id'=>$uid,'duration_minutes'=>60,'begin_time'=>date('Y-m-d H:i:s'),'is_enabled'=>1,'auto_submit_on_cheat'=>0]);
     $db->table('test_attempts')->insert(['id'=>$aid,'test_id'=>$tid,'user_id'=>$uid,'status'=>1,'cheat_strikes'=>0,'started_at'=>date('Y-m-d H:i:s',time()-60)]);
     foreach (['anti_cheat_enabled'=>1,'anti_cheat_force_logout'=>0,'max_cheat_strikes'=>3,'suspend_timer_seconds'=>30] as $key=>$value) {
@@ -59,6 +59,8 @@ namespace {
         $request->setMethod('POST');
         $request->setHeader('Accept','application/json');
         $request->setGlobal('post',$post);
+        // CI Controller::validate() reads getVar()/REQUEST, while login reads POST.
+        $request->setGlobal('request',$post);
         Config\Services::injectMock('request',$request);
         return $request;
     };
@@ -103,7 +105,9 @@ namespace {
         $expect($session->destroyed,true,'ban ends session');
         $auth = new App\Controllers\Auth\AuthController();
         $auth->initController($requestFor(['username'=>'diagnosis_fixture','password'=>'fixture-only-not-a-real-password']),new CodeIgniter\HTTP\Response(new Config\App()),service('logger'));
-        $expect($auth->attemptLogin()->getStatusCode(),401,'login denied after committed ban');
+        $login = $auth->attemptLogin();
+        $expect($login->getStatusCode(),401,'login denied after committed ban');
+        $expect(json_decode($login->getBody(),true)['message']??null,'Akun Anda telah dinonaktifkan. Hubungi administrator.','inactive guard denies valid credentials');
     };
     $run('threshold commits ban','tab_switch',60,2,$ban);
     $db->table('settings')->where('key','anti_cheat_force_logout')->update(['value'=>'1']);

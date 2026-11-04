@@ -50,6 +50,12 @@ function fixture(file) {
         vm.runInContext(helpers, c);
     }
     vm.runInContext(source.slice(begin, end).replace(/\/\/ ═+\s*$/, ''), c);
+    const methods = ['initRealtimeLifecycle', 'stopRealtime'].map(name => {
+        const match = new RegExp('^([ ]+)' + name + '\\(', 'm').exec(source);
+        return source.slice(match.index, source.indexOf('\n' + match[1] + '}', match.index) + match[1].length + 2);
+    });
+    const realtime = vm.runInContext('({' + methods.join(',\n') + '})', c);
+    Object.assign(realtime, { stopStatusPolling() {}, initWebSocket() {}, scheduleAutoSync() {}, enqueueRequest() {} });
     function fire(target, name) { for (const fn of handlers[target][name] || []) fn(); }
     async function flush() { for (let i = 0; i < 40; i++) await Promise.resolve(); }
     async function respond(data, status = 200) {
@@ -72,7 +78,7 @@ function fixture(file) {
         }
         now = until; await flush();
     }
-    return { c, calls, alerts, redirects, elements, fire, flush, respond, advance };
+    return { c, calls, alerts, redirects, elements, fire, flush, respond, advance, realtime };
 }
 
 for (const file of files) {
@@ -120,6 +126,24 @@ for (const file of files) {
         assert.equal(f.elements.examContent.style.display, 'none');
         assert.equal(f.elements.suspendOverlay.style.display, 'none');
         f.fire('window', 'blur'); await f.flush(); assert.equal(f.calls.length, 1);
+    });
+    test(file + ': pagehide and BFCache restore keep the exam usable', async () => {
+        const f = fixture(file); f.realtime.initRealtimeLifecycle();
+        f.fire('window', 'pagehide'); f.fire('window', 'pageshow');
+        assert.equal(f.elements.examContent.style.display, 'block');
+        f.fire('window', 'blur'); await f.flush(); assert.equal(f.calls.length, 1);
+        f.realtime.stopRealtime();
+        assert.equal(f.elements.examContent.style.display, 'none');
+    });
+    test(file + ': BFCache return preserves an ongoing suspend', async () => {
+        const f = fixture(file); f.realtime.initRealtimeLifecycle();
+        f.fire('window', 'blur'); await f.flush();
+        await f.respond({ status: 'success', action: 'suspend', current_strikes: 1, timer: 30 });
+        f.fire('window', 'pagehide'); f.fire('window', 'pageshow');
+        assert.equal(f.elements.suspendOverlay.style.display, 'flex');
+        await f.advance(30000);
+        assert.equal(f.elements.examContent.style.display, 'block');
+        assert.equal(f.calls.length, 1);
     });
     test(file + ': none keeps working, lock logs out, auto-submit goes to results', async () => {
         for (const action of ['none', 'lock', 'auto_submitted']) {

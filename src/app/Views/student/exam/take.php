@@ -1165,7 +1165,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     window.addEventListener('pagehide', () => {
                         this.realtimePaused = !this.realtimeStopped;
                         clearTimeout(this.syncTimeout);
-                        this.stopRealtime();
+                        this.stopRealtime(false);
                     });
                     window.addEventListener('pageshow', () => {
                         if (!this.realtimePaused) return;
@@ -1438,8 +1438,8 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                     }, remainingMs);
                 },
 
-                stopRealtime() {
-                    window.__antiCheat?.stop();
+                stopRealtime(terminal = true) {
+                    if (terminal) window.__antiCheat?.stop();
                     this.realtimeStopped = true;
                     this.stopStatusPolling();
                     clearTimeout(this.wsReconnectTimeout);
