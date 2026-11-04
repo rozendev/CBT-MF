@@ -125,9 +125,10 @@ sudo bash scripts/cbt.sh <grup> <perintah>
 | `data` | `images`, `optimize`, `cache-clear`, `finalize`, `prune-kiosk` |
 | `migrate` | `up`, `status`, `rollback` |
 | `tune` | `show`, `set` |
+| `android` | `doctor`, `setup`, `build` (build APK; tanpa server/docker — lihat di bawah) |
 
 Perintah tingkat atas tanpa grup: `backup`, `log-rotate`, `reset-install`,
-`test-k6`, `install`, `help`.
+`test-k6`, `install`, `help`, `build-app` (tanpa sudo).
 
 Perintah yang merusak data (`db import`, `redis flush`, `data optimize`,
 `migrate rollback`, `reset-install`) menuntut Anda mengetik ulang nama
@@ -153,6 +154,105 @@ sudo bash scripts/cbt.sh bundle build
 Tanpa langkah itu, perangkat yang memakai EXAMBRO tetap menerima artefak lama,
 dan sistem tidak memunculkan pesan galat apa pun yang memberi tahu Anda. Gunakan
 `bundle status` untuk membandingkan versi bundle lokal, server, dan zip publik.
+
+## Build APK Android
+
+Kios Android (`cbt-kiosk-app/`) dibangun native di host Linux x86_64 tanpa
+Docker dan tanpa memasang layanan server. Perintah yang tersedia:
+
+```bash
+bash scripts/cbt.sh android doctor   # hitung dependensi; hanya laporan, tanpa memasang
+bash scripts/cbt.sh android setup    # pasang yang belum ada: Python 3, JDK 21, SDK, Gradle
+bash scripts/cbt.sh android build    # bangun APK rilis bertanda tangan lokal
+bash scripts/cbt.sh build-app       # pintasan langsung ke android build
+```
+
+Jalankan perintah build langsung sebagai user biasa. Perintah memerlukan Python 3.9+,
+dan saat tidak ada python memakai package manager (apt/dnf/pacman/zypper)
+untuk memasangnya — hanya pada `setup` dan `build`, tidak pada `doctor`.
+
+### Build melalui menu interaktif
+
+1. Dari direktori repo, buka menu dengan `sudo bash scripts/cbt.sh`.
+2. Pada **AKSI CEPAT**, pilih nomor entri **build-app — Build App Android**.
+3. Masukkan nama aplikasi dan path icon PNG/JPEG/WebP. Tekan Enter untuk
+   memakai nilai default yang ditampilkan; isi `default` pada prompt icon
+   untuk kembali ke icon bawaan.
+4. Builder memasang dependensi yang kurang. Ikuti penerimaan lisensi bila
+   SDK perlu dipasang. Setelah build berhasil, lokasi APK final ditampilkan.
+
+Saat menu dibuka melalui `sudo`, builder dijalankan sebagai user pemanggil.
+Submenu **Build Android** juga menyediakan `doctor`, `setup`, dan `build`.
+
+### Build langsung dengan nama dan icon sendiri
+
+```bash
+bash scripts/cbt.sh build-app \
+  --name "Ujian Sekolah Mandiri" \
+  --icon "/home/user/Gambar/icon-sekolah.webp" \
+  --output "dist/android/ujian-sekolah-release.apk" \
+  --yes
+```
+
+Ganti path icon dengan berkas milik Anda. Alias `build-app` menerima opsi
+yang sama dengan `android build`. `--yes` menerima lisensi SDK saat
+pemasangan otomatis, termasuk ketika perintah dijalankan tanpa interaksi.
+
+Nama dan icon aplikasi disesuaikan lewat opsi, atau prompt interaktif saat
+terminal tersedia:
+
+| Opsi | Peran |
+| --- | --- |
+| `--name NAMA` | Nama aplikasi (1–80 karakter, tanpa karakter kontrol); ikut mengganti judul halaman setup dan pesan launcher |
+| `--icon BERKAS` | Icon PNG/JPEG/WebP maksimal 10 MiB untuk icon launcher, round, dan ikon halaman setup |
+| `--output FILE.apk` | Lokasi APK final; tanpa opsi ini: `dist/android/<nama-slug>-release.apk` |
+| `--yes` | Menerima lisensi Android SDK bila SDK perlu dipasang; tanpa opsi ini, pelaksanaan non-interaktif berhenti sebelum lisensi |
+
+Nilai `--name`/`--icon` tersimpan setelah build sukses dan dipakai sebagai
+default build berikutnya. `--icon default` mengembalikan icon bawaan. Package
+ID tidak berubah: tetap `id.sch.cbt.kiosk`.
+
+Builder menyimpan seluruh state build di `.android-build/` relatif repo
+(override dengan `CBT_ANDROID_STATE_DIR`); folder itu diabaikan Git dan tidak
+untuk dicommit. Isinya salinan proyek (`.android-build/project`), resource
+branding generated, cache unduhan JDK/SDK/Gradle ber-checksum, serta hasil
+build. Unduhan tool dari Google diuji SHA-256 sebelum dipakai; Gradle selalu
+diambil pada versi wrapper proyek.
+
+### Validasi hasil build
+
+Sebelum menerbitkan APK final, builder memeriksa alignment, signature,
+package ID, label aplikasi, icon terkemas, dan status debuggable dari
+penanda metadata APK. Nama yang memuat `application-debuggable` tetap
+diterima sebagai nama aplikasi selama APK tidak memiliki flag debug.
+
+Dimensi icon PNG/JPEG/WebP, termasuk WebP lossy dan lossless, dibandingkan
+dengan gambar pilihan Anda. Pemeriksaan ini menerima nama resource hasil
+shrink dan gambar hasil re-encode; kesamaan dimensi belum membuktikan
+kesamaan piksel. Jika kompilasi atau verifikasi gagal, APK final lama
+dipertahankan dan branding baru tidak disimpan.
+
+### Kunci signing lokal
+
+Build pertama membuat pasangan kunci PKCS12 (store alias `cbt-local`) di
+`.android-build/signing/release.p12` dan berkas passwordnya di
+`.android-build/signing/password`, masing-masing berpermission `600` di
+direktori `700`, dan menolak menimpa kunci yang sudah ada. **Backup keduanya bersama** bila APK berikutnya masih perlu
+terpasang sebagai upgrade di perangkat yang sama: Android menolak pembaruan
+yang ditandatangani kunci berbeda, meskipun package ID sama. Bila pasangan
+key/password ketinggal satu saja, builder berhenti dan tidak membuat kunci
+baru; pulihkan dari backup, jangan hapus manual.
+
+### Batas dan kebutuhan
+
+- Unduhan pertama membutuhkan internet (toolchain sekitar 2 GB) dan beberapa
+  GB ruang disk; cache mempercepat build berikutnya. RAM 4 GB cukup.
+- Target host build: Linux x86_64. APK diuji host-side lewat zipalign,
+  `apksigner verify`, dan pembacaan metadata `aapt` (package, label terkemas,
+  icon terkemas, bukan debuggable).
+- Pemasangan dan perilaku launcher/perangkat fisik, penambahan waktu, serta
+  upgrade antar-versi dengan kunci tersimpan belum diuji oleh builder ini —
+  lakukan uji perangkat sebelum disebarkan ke siswa.
 
 ## Arsitektur
 
