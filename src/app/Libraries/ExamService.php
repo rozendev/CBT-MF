@@ -412,267 +412,145 @@ LUA;
             return ['status' => 'success', 'action' => 'none', 'current_strikes' => (int)($attempt->cheat_strikes ?? 0)];
         }
 
-        // ─── Early Violation Bypass Detection ───
-        // Jika pelanggaran terjadi di 30 detik pertama, ini adalah anomali "race condition"
-        // yang disebabkan oleh aplikasi floating window/split screen saat memaksa masuk fullscreen.
-        $forcedDetail = null;
-        if (in_array($cheatType, ['tab_switch', 'fullscreen_exit'])) {
-            if (!empty($attempt->started_at)) {
-                $startTime = strtotime($attempt->started_at);
-                $elapsedSeconds = time() - $startTime;
-                
-                if ($elapsedSeconds >= 0 && $elapsedSeconds <= 30) {
-                    $cheatType = 'modified_browser';
-                    $forcedDetail = 'early_violation_bypass_in_' . $elapsedSeconds . 's';
-                }
-            }
-        }
-
-        // ─── Modified Browser Detection (immediate ban, bypasses strikes) ───
-        if ($cheatType === 'modified_browser') {
-            $request = \Config\Services::request();
-            $detail = $forcedDetail ?? ($request->getPost('detail') ?? 'unknown');
-
-
-            // Flush answers before banning
-            $this->flushRedisAnswersToDb($attemptId);
-
-            // Calculate and save score
-            $scorer = new \App\Libraries\ScoringEngine();
-            $scorer->calculateAndSaveScore($attemptId);
-
-            // Deactivate user account & bump auth_version so SessionGuardFilter revokes immediately
-            \Config\Database::connect()->table('users')
-                ->set('auth_version', 'auth_version + 1', false)
-                ->set('is_active', 0)
-                ->set('cred_grace_until', null)
-                ->set('updated_at', date('Y-m-d H:i:s'))
-                ->where('id', $userId)
-                ->update();
-            \App\Libraries\UserAuthState::invalidateCache((int) $userId);
-
-            // Lock the attempt
-            $this->attemptModel->update($attemptId, [
-                'status' => 2,
-                'cheat_strikes' => 999, // Flag as modified browser
-            ]);
-
-            // Redis ban signals
-            try {
-                $redis = \App\Libraries\RedisClient::getInstance();
-                if ($redis) {
-                    \App\Libraries\WebSocketToken::revokeAttemptToken((int) $attemptId, $redis, false);
-                    $redis->setex("user_login_token:{$userId}", 7200, 'BANNED');
-                    $redis->setex("ban_signal:{$userId}", 120, '1');
-
-                    $redis->publish('exam_events', json_encode([
-                        'event' => 'ban',
-                        'user_id' => $userId,
-                        'message' => "Akun dikunci: terdeteksi menggunakan browser modifikasi ($detail)"
-                    ]));
-
-                    $redis->publish('exam_events', json_encode([
-                        'event'   => 'proctor_alert',
-                        'test_id' => (int)$attempt->test_id,
-                        'data'    => [
-                            'user_id' => $userId,
-                            'test_id' => (int)$attempt->test_id,
-                            'event'   => 'modified_browser',
-                            'detail'  => $detail,
-                        ]
-                    ]));
-
-                    // Destroy all sessions for this user
-                    $currentSessionKey = 'ci_session:' . session_id();
-                    $iterator = null;
-                    do {
-                        $keys = $redis->scan($iterator, 'ci_session:*', 100);
-                        if ($keys === false) break;
-                        if ($keys) {
-                            foreach ($keys as $key) {
-                                if ($key === $currentSessionKey) continue;
-                                $data = $redis->get($key);
-                                if ($data && (strpos($data, "user_id|i:{$userId};") !== false ||
-                                              strpos($data, "user_id|s:" . strlen((string)$userId) . ":\"{$userId}\";") !== false)) {
-                                    $redis->del($key);
-                                }
-                            }
-                        }
-                    } while ($iterator > 0);
-
-                    if (session('user_id') == $userId) {
-                        session()->destroy();
-                    }
-                }
-            } catch (\Exception $e) {
-                log_message('error', 'Redis error on modified_browser ban: ' . $e->getMessage());
-            }
-
-            $this->activityLog->log('modified_browser_ban', $userId, 'test', $attempt->test_id,
-                "AUTO-BAN: Browser modifikasi terdeteksi (detail: $detail)");
-
-            return [
-                'status'  => 'success',
-                'action'  => 'lock',
-                'message' => 'Akun Anda telah dikunci karena terdeteksi menggunakan browser modifikasi/tidak resmi.',
-                'redirect' => base_url('/login'),
-                'current_strikes' => 999,
-                'max_strikes' => 0,
-            ];
-        }
-
         if (!$isAntiCheatEnabled && !$isAutoSubmitOnCheat) {
             return ['status' => 'success', 'action' => 'none', 'current_strikes' => (int)($attempt->cheat_strikes ?? 0)];
         }
 
-        // ─── Auto-Submit on Cheat (per-test feature) ───
+        // Auto-submit is an explicit per-test policy, independent of account bans.
         if ($isAutoSubmitOnCheat) {
-            // Flush Redis answers to DB first
-            $this->flushRedisAnswersToDb($attemptId);
-            
-            // Calculate and save score (this also sets status = 3 / finished)
-            $scorer = new \App\Libraries\ScoringEngine();
-            $scored = $scorer->calculateAndSaveScore($attemptId);
-            
-            $label = match($cheatType) {
-                'tab_switch' => 'membuka tab lain',
-                'fullscreen_exit' => 'keluar dari layar penuh',
-                default => 'pelanggaran saat ujian',
-            };
-
-            if (!$scored) {
-                // Already scored/finished by another concurrent request
-                return [
-                    'status' => 'success',
-                    'action' => 'auto_submitted',
-                    'message' => 'Ujian Anda telah diselesaikan.',
-                    'redirect' => base_url('/student/results/view/' . $test->id),
-                ];
-            }
-            
-            // Increment cheat_strikes for tracking purposes
-            $this->attemptModel->update($attemptId, [
-                'cheat_strikes' => (int)($attempt->cheat_strikes ?? 0) + 1,
-            ]);
-
-            // Real-time Proctor WebSocket Alert
-            try {
-                $redis = \App\Libraries\RedisClient::getInstance();
-                if ($redis) {
-                    $redis->publish('exam_events', json_encode([
-                        'event'   => 'proctor_alert',
-                        'test_id' => (int)$test->id,
-                        'data'    => [
-                            'user_id' => $userId,
-                            'test_id' => (int)$test->id,
-                            'event'   => 'auto_submit',
-                            'reason'  => $label
-                        ]
-                    ]));
-                }
-            } catch (\Exception $e) {
-                log_message('error', 'Redis error publishing auto_submit proctor alert: ' . $e->getMessage());
-            }
-            
-            $this->activityLog->log('exam_auto_submit', $userId, 'test', $test->id,
-                "AUTO-SUBMIT: Siswa $label saat fitur auto-submit aktif");
-            
-            return [
-                'status' => 'success',
-                'action' => 'auto_submitted',
-                'message' => 'Ujian Anda telah otomatis dikumpulkan dan dinilai karena terdeteksi ' . $label . '.',
-                'redirect' => base_url('/student/results/view/' . $test->id),
-            ];
+            return $this->autoSubmitCheat($attempt, $test, $userId, $cheatType);
         }
 
-        $maxStrikes = (int) $settingModel->getValue('max_cheat_strikes', 2);
+        $maxStrikes = max(1, min(255, (int) $settingModel->getValue('max_cheat_strikes', 2)));
         $forceLogout = (bool) $settingModel->getValue('anti_cheat_force_logout', false);
+        $db = Database::connect();
 
-        $currentStrikes = (int)($attempt->cheat_strikes ?? 0);
+        try {
+            if (!$db->transBegin()) {
+                throw new \RuntimeException('Cannot begin violation transaction');
+            }
+            // Serialize concurrent reports against the current persisted count.
+            $attempt = $db->query('SELECT * FROM test_attempts WHERE id = ? AND user_id = ? FOR UPDATE', [$attemptId, $userId])->getRow();
+            if (!$attempt || !in_array((int) $attempt->status, [0, 1, 2], true)) {
+                $db->transRollback();
+                return ['status' => 'error', 'action' => 'kick', 'message' => 'Sesi ujian tidak valid.'];
+            }
+            if ((int) $attempt->status === 2) {
+                $db->transRollback();
+                // An already locked attempt is not another violation or a new account ban.
+                return ['status' => 'success', 'action' => 'lock', 'account_banned' => !(int) $user->is_active,
+                    'message' => 'Ujian telah dikunci. Hubungi pengawas.',
+                    'current_strikes' => (int) $attempt->cheat_strikes, 'max_strikes' => $maxStrikes];
+            }
 
-        if ($attempt->status == 2) {
-            $currentStrikes++;
-            $this->attemptModel->update($attemptId, [
-                'cheat_strikes' => $currentStrikes,
-            ]);
-
-            $reason = 'melakukan pelanggaran tambahan saat ujian sudah dikunci';
-
-            $this->activityLog->log('exam_violation', $userId, 'test', $attempt->test_id,
-                "Additional violation while banned (Strike: $currentStrikes/$maxStrikes)");
-
-            return [
-                'status' => 'success',
-                'action' => 'lock',
-                'message' => "Ujian dikunci karena Anda terdeteksi $reason.",
-                'current_strikes' => $currentStrikes,
-                'max_strikes' => $maxStrikes,
-            ];
+            $currentStrikes = min(255, max(0, (int) $attempt->cheat_strikes) + 1);
+            $isBanned = $currentStrikes >= $maxStrikes || $forceLogout;
+            if ($isBanned && !$db->table('users')
+                ->set('auth_version', 'auth_version + 1', false)
+                ->set('is_active', 0)->set('cred_grace_until', null)
+                ->set('updated_at', date('Y-m-d H:i:s'))->where('id', $userId)->update()) {
+                throw new \RuntimeException('Cannot persist account ban');
+            }
+            $change = ['cheat_strikes' => $currentStrikes, 'updated_at' => date('Y-m-d H:i:s')];
+            if ($isBanned) {
+                $change['status'] = 2;
+            }
+            if (!$db->table('test_attempts')->where('id', $attemptId)->update($change)) {
+                throw new \RuntimeException('Cannot persist violation counter');
+            }
+            $this->commitCheatChange($db);
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'Violation transaction failed for attempt ' . $attemptId . ': ' . $e->getMessage());
+            return $this->cheatWriteError();
         }
 
-        $currentStrikes++;
-        $isBanned = ($currentStrikes >= $maxStrikes) || $forceLogout;
-
+        // All externally visible enforcement happens only after a successful commit.
+        $this->attemptModel->clearCacheForAttempt($attemptId, $attempt->test_id, $userId);
         if ($isBanned) {
-            return $this->triggerBan($userId, $attemptId, $currentStrikes, $cheatType, $forceLogout);
-        } else {
-            $this->attemptModel->update($attemptId, [
-                'cheat_strikes' => $currentStrikes
-            ]);
+            \App\Libraries\UserAuthState::invalidateCache($userId);
+            return $this->notifyCheatBan($userId, $attemptId, (int) $attempt->test_id, $currentStrikes, $maxStrikes, $cheatType, $forceLogout);
+        }
+        $this->logCheat('exam_suspended', $userId, (int) $attempt->test_id,
+            "WARNING: $cheatType (Strike: $currentStrikes/$maxStrikes)");
+        return ['status' => 'success', 'action' => 'suspend',
+            'timer' => (int) $settingModel->getValue('suspend_timer_seconds', 30),
+            'strike' => $currentStrikes, 'current_strikes' => $currentStrikes, 'max_strikes' => $maxStrikes];
+    }
 
-            $label = match($cheatType) {
-                'tab_switch' => 'membuka tab lain',
-                'fullscreen_exit' => 'keluar dari fullscreen',
-                'suspend_bypass' => 'melewati hukuman suspend',
-                default => 'pelanggaran tidak diketahui',
-            };
-
-            $this->activityLog->log('exam_suspended', $userId, 'test', $attempt->test_id,
-                "WARNING: Siswa $label (Strike: $currentStrikes/$maxStrikes)");
-
-            $suspendTimer = (int) $settingModel->getValue('suspend_timer_seconds', 30);
-
-            return [
-                'status' => 'success',
-                'action' => 'suspend',
-                'timer' => $suspendTimer,
-                'strike' => $currentStrikes,
-                'current_strikes' => $currentStrikes,
-                'max_strikes' => $maxStrikes,
-            ];
+    private function commitCheatChange(\CodeIgniter\Database\BaseConnection $db): void
+    {
+        if ($db->transStatus() === false || !$db->transCommit()) {
+            throw new \RuntimeException('Violation transaction did not commit');
         }
     }
 
-    /**
-     * Trigger ban mechanism
-     */
-    private function triggerBan(int $userId, int $attemptId, int $serverStrikes, string $violationType, bool $forceLogout): array
+    private function cheatWriteError(): array
     {
-        $db = \Config\Database::connect();
-        $userModel = new \App\Models\UserModel();
-        $maxStrikes = (int) (new \App\Models\SettingModel())->getValue('max_cheat_strikes', 2);
-        
-        $attempt = $this->attemptModel->find($attemptId);
-        $testId = $attempt ? (int)$attempt->test_id : 0;
+        return ['status' => 'error', 'message' => 'Laporan pelanggaran belum dapat disimpan. Hubungi pengawas.'];
+    }
 
-        $db->transStart();
+    private function logCheat(string $action, int $userId, int $testId, string $message): void
+    {
+        try {
+            $this->activityLog->log($action, $userId, 'test', $testId, $message);
+        } catch (\Throwable $e) {
+            log_message('error', 'Violation audit failed: ' . $e->getMessage());
+        }
+    }
 
-        $db->table('users')
-            ->set('auth_version', 'auth_version + 1', false)
-            ->set('is_active', 0)
-            ->set('cred_grace_until', null)
-            ->set('updated_at', date('Y-m-d H:i:s'))
-            ->where('id', $userId)
-            ->update();
-        $this->attemptModel->update($attemptId, [
-            'cheat_strikes' => $serverStrikes,
-            'status' => 2
-        ]);
+    private function autoSubmitCheat(object $attempt, object $test, int $userId, string $cheatType): array
+    {
+        $attemptId = (int) $attempt->id;
+        // Flush commits answers before scoring. Do not delete Redis answers inside
+        // an outer transaction that could later roll back the durable answer copy.
+        if (!$this->flushRedisAnswersToDb($attemptId)) {
+            return $this->cheatWriteError();
+        }
+        $db = Database::connect();
+        try {
+            if (!$db->transBegin()) {
+                throw new \RuntimeException('Cannot begin auto-submit transaction');
+            }
+            $fresh = $db->query('SELECT * FROM test_attempts WHERE id = ? AND user_id = ? FOR UPDATE', [$attemptId, $userId])->getRow();
+            if (!$fresh || !in_array((int) $fresh->status, [0, 1, 2, 3], true)) {
+                throw new \RuntimeException('Invalid auto-submit attempt');
+            }
+            if ((int) $fresh->status !== 3) {
+                if (!(new \App\Libraries\ScoringEngine())->calculateAndSaveScore($attemptId)
+                    || !$db->table('test_attempts')->where('id', $attemptId)->update([
+                        'cheat_strikes' => min(255, max(0, (int) $fresh->cheat_strikes) + 1),
+                    ])) {
+                    throw new \RuntimeException('Cannot persist auto-submit score');
+                }
+            }
+            $this->commitCheatChange($db);
+        } catch (\Throwable $e) {
+            $db->transRollback();
+            log_message('error', 'Auto-submit transaction failed for attempt ' . $attemptId . ': ' . $e->getMessage());
+            return $this->cheatWriteError();
+        }
+        $this->attemptModel->clearCacheForAttempt($attemptId, $test->id, $userId);
+        if ((int) $fresh->status !== 3) {
+            $this->logCheat('exam_auto_submit', $userId, (int) $test->id, "AUTO-SUBMIT: $cheatType");
+            try {
+                $redis = \App\Libraries\RedisClient::getInstance();
+                if ($redis) {
+                    $redis->publish('exam_events', json_encode(['event' => 'proctor_alert', 'test_id' => (int) $test->id,
+                        'data' => ['user_id' => $userId, 'test_id' => (int) $test->id, 'event' => 'auto_submit', 'reason' => $cheatType]]));
+                }
+            } catch (\Throwable $e) {
+                log_message('error', 'Auto-submit notification failed: ' . $e->getMessage());
+            }
+        }
+        return ['status' => 'success', 'action' => 'auto_submitted',
+            'message' => 'Ujian Anda telah otomatis dikumpulkan dan dinilai.',
+            'redirect' => base_url('/student/results/view/' . $test->id)];
+    }
 
-        $db->transComplete();
-
-        \App\Libraries\UserAuthState::invalidateCache((int) $userId);
-
+    /** Notify an account ban already committed to the database. */
+    private function notifyCheatBan(int $userId, int $attemptId, int $testId, int $serverStrikes, int $maxStrikes, string $violationType, bool $forceLogout): array
+    {
         try {
             $redis = \App\Libraries\RedisClient::getInstance();
             if ($redis) {
@@ -732,12 +610,13 @@ LUA;
             log_message('error', 'Redis error on ban: ' . $e->getMessage());
         }
 
-        $this->activityLog->log('exam_locked', $userId, 'test', $testId,
+        $this->logCheat('exam_locked', $userId, $testId,
             "AUTO-BAN: System reported $serverStrikes strikes (violation: $violationType)");
 
         return [
             'status' => 'success',
             'action' => 'lock',
+            'account_banned' => true,
             'message' => 'Ujian dikunci karena pelanggaran berulang.',
             'current_strikes' => $serverStrikes,
             'max_strikes' => $maxStrikes,

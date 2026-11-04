@@ -1,4 +1,4 @@
-# Violation dan ban ujian — usulan, belum disetujui
+# Violation dan ban ujian — disetujui 2026-11-04
 
 - Tujuan: peringatan di bawah batas tidak mengeluarkan siswa; satu kejadian tidak melipatgandakan strike; alert ban sesuai status akun yang tersimpan.
 - Branch: `fix/exam-violation-flow`, dari `origin/main` (`85ce9de`). Berkas alur ujian identik dengan checkout awal `d41d85b`. Seluruh investigasi lanjutan, implementasi, dan pengujian dilakukan lokal; user melakukan rollout/uji staging. Railway dan konfigurasi Cloudflare di luar cakupan.
@@ -6,7 +6,7 @@
 - Bukti lokal Node kedua mode: monitor integritas melaporkan `fullscreen_exit_no_event` setelah 20 detik suspend, meskipun event fullscreen sudah tercatat.
 - Bukti lokal PHP + MariaDB sementara: keluar tab/fullscreen dalam 30 detik pertama diubah menjadi `modified_browser` lalu langsung ban; cabang ini mendahului sakelar anticheat. Nilai strike `999` juga melebihi `TINYINT UNSIGNED` (lokal menyimpan 255).
 - Bukti lokal PHP + MariaDB sementara: transaksi ban gagal/rollback tetap menerbitkan event `ban` dan sentinel Redis `BANNED`, padahal akun aktif dan strike lama. Simulasi kolom migrasi auth hilang menghasilkan keadaan yang sama. `SessionTakeover` mengizinkan sentinel ditimpa setelah cek akun aktif. Kegagalan SQL/migrasi di staging belum dibuktikan.
-- Kebijakan usulan: seluruh sinyal browser, termasuk heuristik integritas, mengikuti counter server. Hapus eskalasi ban berdasarkan umur attempt 30 detik. Anticheat nonaktif menghasilkan `none`, kecuali opsi per-ujian auto-submit aktif. Bypass admin dipertahankan.
+- Kebijakan disetujui: seluruh sinyal browser, termasuk heuristik integritas, mengikuti counter server. Hapus eskalasi ban berdasarkan umur attempt 30 detik. Anticheat nonaktif menghasilkan `none`, kecuali opsi per-ujian auto-submit aktif. Bypass admin dipertahankan.
 - Opsi eksplisit `anti_cheat_force_logout` tetap mengunci pada pelanggaran pertama; `auto_submit_on_cheat` tetap mengumpulkan/menilai tanpa menonaktifkan akun dan diprioritaskan sebelum counter/force-logout.
 - Kedua frontend menyatukan burst event dengan debounce 2 detik dan guard request berjalan/suspend/terminal. Laporan cheat tidak diretry otomatis setelah timeout/5xx karena belum idempoten. Kegagalan jaringan ditampilkan sebagai kegagalan pelaporan, tanpa klaim akun diban.
 - Handler normal/static mengikuti `action`: `none` lanjut, `suspend` tampilkan timer lalu lanjut, `auto_submitted` menuju hasil, `lock` tampilkan penjelasan lalu logout. Status `success` saja tidak boleh mengunci.
@@ -16,3 +16,7 @@
 - Dampak yang ditelusuri: `Student/ExamController::reportCheat` dan `Api/ExamApiController::reportCheat` memanggil `ExamService::handleCheat`; dipakai web normal, static, dan bundle kiosk. State bersama: `users`, `test_attempts`, cache attempt/auth, token login/WS, session, kanal Redis `exam_events`. Regresi mencakup autosave/resume, polling/WS, auto-submit, admin bypass, dan ban manual `ProctorAction`.
 - Uji wajib: peringatan 1/3 tanpa redirect; satu burst menjadi satu strike; suspend selesai tanpa laporan integritas palsu; pelanggaran awal; anticheat mati; force logout/auto-submit; batas final menolak login; rollback/kolom auth hilang tanpa ghost ban; event terpisah tetap dihitung. Jalankan Node dan runtime PHP/MariaDB lokal, lalu regresi realtime/auth yang relevan.
 - Trade-off: mengurangi ban palsu berarti heuristik browser tidak lagi cukup untuk ban instan; debounce bisa menggabungkan kejadian berjarak kurang dari 2 detik; meniadakan retry otomatis mengurangi laporan ganda tetapi sebagian laporan saat jaringan putus perlu ditangani pengawas. Validasi perangkat/browser nyata serta keadaan data staging tetap diperlukan dari user; reproduksi dengan Redis tiruan belum membuktikan integrasi daemon nyata.
+
+- Batas tambahan dari user: jangan patch HTML ujian hasil generate atau artifact bundle. Setelah pull, user meregenerasi halaman static; bila memakai Android, rebuild UI bundle dari source baru.
+- Validasi lokal implementasi: Node 119 tes lulus; suite PHPUnit utama 262 tes / 927 assertion lulus; runtime PHP/MariaDB sementara 58 pemeriksaan lulus, termasuk login ditolak setelah ban commit dan kedua endpoint mengembalikan HTTP 503 saat write gagal. Harness Redis tiruan; daemon/perangkat nyata dan staging belum diuji.
+- Perintah regresi khusus: `node src/tests/Resilience/exam-cheat-flow.test.cjs`; dalam container PHP: `php tests/Exam/cheat-flow.integration.php`. Migrasi auth yang sudah ada tetap prasyarat rollout; perbaikan ini tidak menambahkan migrasi baru.

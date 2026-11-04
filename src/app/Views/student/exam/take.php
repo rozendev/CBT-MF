@@ -956,7 +956,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         let fullscreenNoticeShown = false;
         ['click', 'touchstart', 'keydown'].forEach(evt => {
             document.addEventListener(evt, function() {
-                if (!document.fullscreenElement && !isLocked && !isSuspended) {
+                if (!document.fullscreenElement && !isLocked && !isSuspended && !window.__antiCheat?.isBusy()) {
                     const el = document.documentElement;
                     const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
                     if (rfs) {
@@ -1439,6 +1439,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                 },
 
                 stopRealtime() {
+                    window.__antiCheat?.stop();
                     this.realtimeStopped = true;
                     this.stopStatusPolling();
                     clearTimeout(this.wsReconnectTimeout);
@@ -1691,6 +1692,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                              .done((res) => {
                                  this.isSaving = false;
                                  if (res && res.status === 'kicked') {
+                                     window.__antiCheat?.stop();
                                      if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                                      Swal.fire('Informasi', res.message, 'info').then(() => {
                                          redirectReplace(LOGIN_URL);
@@ -1713,6 +1715,7 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
                              })
                              .fail((err) => {
                                  if (err.status === 401 || err.status === 403) {
+                                     window.__antiCheat?.stop();
                                      this.isSaving = false;
                                      if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                                      Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
@@ -1977,269 +1980,153 @@ $antiCheatLogo = $settingModel->getValue('anti_cheat_logo', '');
         // ═══════════════════════════════════════════════════════
         
         (function() {
-            let lastTabSwitchReportTime = 0;
-            const TAB_SWITCH_DEBOUNCE_MS = 2000;
+            let reportInFlight = false;
+            let lastReportAt = -Infinity;
+            let suspendInterval = null;
+            // Read fresh configuration after static/bundle initialization.
+            const getAC = window.getAC = function() { return <?= json_encode(['enabled' => (bool) $isAntiCheatEnabled,
+                    'auto_submit_on_cheat' => !empty($test->auto_submit_on_cheat),
+                    'max_strikes' => (int) $settingModel->getValue('max_cheat_strikes', 2),
+                    'suspend_timer' => (int) $settingModel->getValue('suspend_timer_seconds', 30)]) ?>; };
+            const enabled = () => getAC().enabled !== false || !!getAC().auto_submit_on_cheat;
+            const busy = () => reportInFlight || isSuspended || isLocked || !!window.isSubmitting;
 
-            function triggerTabSwitchReport(reasonMsg) {
-                const now = Date.now();
-                if (now - lastTabSwitchReportTime < TAB_SWITCH_DEBOUNCE_MS) return;
-                lastTabSwitchReportTime = now;
+            function stop() {
+                isLocked = true;
+                isSuspended = false;
+                clearInterval(suspendInterval);
+                document.getElementById('suspendOverlay').style.display = 'none';
+                document.getElementById('examContent').style.display = 'none';
+            }
 
-                if (!examStarted || isLocked || isSuspended || window.isSubmitting) return;
-                <?php if (!$isAntiCheatEnabled && empty($test->auto_submit_on_cheat)): ?>return;<?php endif; ?>
-
-                $.ajax({
-                    url: REPORT_CHEAT_URL,
-                    type: 'POST',
-                    data: { attempt_id: ATTEMPT_ID, type: 'tab_switch' },
-                    dataType: 'json',
-                    timeout: FETCH_TIMEOUT_MS,
-                    success: function(res) {
-                        if (res.action === 'auto_submitted') {
-                            window.isSubmitting = true;
-                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                            
-                            Swal.fire({
-                                title: 'Ujian Dikumpulkan Otomatis',
-                                html: '<div class="text-center"><p>' + (res.message || reasonMsg) + '</p></div>',
-                                icon: 'warning',
-                                allowOutsideClick: false,
-                                allowEscapeKey: false,
-                                confirmButtonText: 'Lihat Hasil Ujian',
-                                confirmButtonColor: '#dc3545'
-                            }).then(() => {
-                                redirectReplace(res.redirect || DASHBOARD_URL);
-                            });
-                            return;
-                        }
-
-                        if (res.action !== 'lock' && res.status !== 'success' && res.status !== 'suspended') return;
-
-                        isLocked = true;
-                        if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-
-                        if (res.status === 'success') {
-                            Swal.fire('Peringatan', res.message || 'Anda terdeteksi membuka tab/jendela lain. Ujian dikunci.', 'warning').then(() => {
-                                redirectReplace(DASHBOARD_URL);
-                            });
-                        } else if (res.status === 'suspended') {
-                            Swal.fire('Dihentikan', 'Sesi Anda telah dihentikan oleh Admin.', 'error').then(() => {
-                                redirectReplace(DASHBOARD_URL);
-                            });
-                        } else if (res.action === 'lock') {
-                            logoutAndRedirect(LOGIN_URL);
-                        }
-                    },
-                    error: function() {
-                        isLocked = true;
-                        Swal.fire('Error', 'Kecurangan terdeteksi. Ujian dikunci.', 'error').then(() => {
-                            redirectReplace(DASHBOARD_URL);
-                        });
+            function suspend(data) {
+                isSuspended = true;
+                document.getElementById('examContent').style.display = 'none';
+                document.getElementById('suspendOverlay').style.display = 'flex';
+                document.getElementById('strikeCount').innerText = data.current_strikes ?? data.strike ?? 0;
+                document.getElementById('maxStrikes').innerText = data.max_strikes ?? getAC().max_strikes;
+                let seconds = Math.max(1, Number(data.timer ?? getAC().suspend_timer ?? 30));
+                const timer = document.getElementById('suspendTimerDisplay');
+                timer.innerText = seconds;
+                clearInterval(suspendInterval);
+                suspendInterval = setInterval(function() {
+                    timer.innerText = --seconds;
+                    if (seconds <= 0) {
+                        clearInterval(suspendInterval);
+                        isSuspended = false;
+                        document.getElementById('suspendOverlay').style.display = 'none';
+                        document.getElementById('examContent').style.display = 'block';
                     }
+                }, 1000);
+            }
+
+            async function sendReport(type, detail) {
+                return new Promise((resolve, reject) => {
+                    $.ajax({ url: REPORT_CHEAT_URL, type: 'POST',
+                        data: { attempt_id: ATTEMPT_ID, type, detail: detail || '' },
+                        dataType: 'json', timeout: FETCH_TIMEOUT_MS,
+                        success: resolve,
+                        error: err => reject(new Error(err.responseJSON?.message || 'Laporan pelanggaran belum dapat disimpan. Hubungi pengawas.'))
+                    });
                 });
             }
 
-            // ── TAB SWITCH & WINDOW BLUR ──
-            document.addEventListener('visibilitychange', function() {
-                if (document.hidden) {
-                    triggerTabSwitchReport('Terdeteksi kecurangan. Ujian Anda telah otomatis dikumpulkan dan dinilai.');
-                }
-            });
-
-            window.addEventListener('blur', function() {
-                triggerTabSwitchReport('Terdeteksi kehilangan fokus layar. Ujian Anda telah otomatis dikumpulkan dan dinilai.');
-            });
-
-            // ── FULLSCREEN EXIT ──
-            document.addEventListener('fullscreenchange', function() {
-                if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
-                
-                <?php if (!$isAntiCheatEnabled && empty($test->auto_submit_on_cheat)): ?>
-                return;
-                <?php endif; ?>
-
-                isSuspended = true;
-                document.getElementById('examContent').style.display = 'none';
-                var overlay = document.getElementById('suspendOverlay');
-                overlay.style.display = 'flex';
-
-                $.ajax({
-                    url: REPORT_CHEAT_URL,
-                    type: 'POST',
-                    data: { attempt_id: ATTEMPT_ID, type: 'fullscreen_exit' },
-                    dataType: 'json',
-                    timeout: FETCH_TIMEOUT_MS,
-                    success: function(res) {
-                        if (res.action === 'auto_submitted') {
-                            overlay.style.display = 'none';
-                            window.isSubmitting = true;
-                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                            
-                            Swal.fire({
-                                title: 'Ujian Dikumpulkan Otomatis',
-                                html: '<div class="text-center"><p>' + (res.message || 'Terdeteksi keluar dari layar penuh. Ujian Anda telah otomatis dikumpulkan dan dinilai.') + '</p></div>',
-                                icon: 'warning',
-                                allowOutsideClick: false,
-                                allowEscapeKey: false,
-                                confirmButtonText: 'Lihat Hasil Ujian',
-                                confirmButtonColor: '#dc3545'
-                            }).then(() => {
-                                redirectReplace(res.redirect || DASHBOARD_URL);
-                            });
-                            return;
-                        }
-
-                        if (res.action === 'lock') {
-                            isLocked = true;
-                            logoutAndRedirect(LOGIN_URL);
-                        } else if (res.action === 'suspend') {
-                            document.getElementById('strikeCount').innerText = res.strike;
-                            var sec = parseInt(res.timer);
-                            var timerEl = document.getElementById('suspendTimerDisplay');
-                            timerEl.innerText = sec;
-
-                            var cd = setInterval(function() {
-                                sec--;
-                                timerEl.innerText = sec;
-                                if (sec <= 0) {
-                                    clearInterval(cd);
-                                    document.getElementById('suspendOverlay').style.display = 'none';
-                                    isSuspended = false;
-                                    document.getElementById('examContent').style.display = 'block';
-                                }
-                            }, 1000);
-                        } else if (res.action === 'none') {
-                            overlay.style.display = 'none';
-                            isSuspended = false;
-                            document.getElementById('examContent').style.display = 'block';
-                        }
-                    },
-                    error: function() {
-                        overlay.style.display = 'none';
-                        isSuspended = false;
-                        document.getElementById('examContent').style.display = 'block';
+            async function reportCheat(type, detail) {
+                if (!ATTEMPT_ID || !examStarted || !enabled() || busy()) return;
+                const now = Date.now();
+                if (now - lastReportAt < 2000) return;
+                // Reserve the incident BEFORE exitFullscreen dispatches more events.
+                lastReportAt = now;
+                reportInFlight = true;
+                if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+                try {
+                    const data = await sendReport(type, detail);
+                    if (isLocked || window.isSubmitting) return;
+                    if (typeof updateCsrf === 'function') updateCsrf(data);
+                    if (!data || data.status !== 'success') {
+                        throw new Error(data?.message || 'Laporan pelanggaran belum dapat disimpan. Hubungi pengawas.');
                     }
-                });
+                    if (data.action === 'none') return;
+                    if (data.action === 'suspend') {
+                        suspend(data);
+                        return;
+                    }
+                    if (data.action === 'lock' || data.action === 'auto_submitted') {
+                        stop();
+                        window.isSubmitting = true;
+                        const submitted = data.action === 'auto_submitted';
+                        await Swal.fire({
+                            title: submitted ? 'Ujian Dikumpulkan Otomatis' : 'Ujian Dikunci',
+                            text: data.message,
+                            icon: submitted ? 'warning' : 'error',
+                            allowOutsideClick: false, allowEscapeKey: false,
+                            confirmButtonText: submitted ? 'Lihat Hasil Ujian' : 'OK'
+                        });
+                        if (submitted) window.location.href = data.redirect || DASHBOARD_URL;
+                        else await logoutAndRedirect(LOGIN_URL);
+                        return;
+                    }
+                    throw new Error('Respons laporan tidak dikenali. Hubungi pengawas.');
+                } catch (err) {
+                    if (isLocked || window.isSubmitting) return;
+                    console.warn('Violation report failed:', err);
+                    await Swal.fire('Laporan Belum Terkirim', err.message || 'Hubungi pengawas untuk memeriksa koneksi.', 'warning');
+                } finally {
+                    reportInFlight = false;
+                }
+            }
+
+            window.__antiCheat = { isBusy: busy, stop, report: reportCheat };
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) reportCheat('tab_switch');
             });
-        })();
-
-        // ═══════════════════════════════════════════════════════
-        //  3b. BROWSER INTEGRITY MONITOR
-        //      Detects modified browsers (floating bubble, split-screen bypass, event suppression)
-        // ═══════════════════════════════════════════════════════
-        <?php if ($isAntiCheatEnabled || !empty($test->auto_submit_on_cheat)): ?>
-        (function() {
-            let integrityReported = false;
-            let rafTimestamps = [];
-            let slowRafCount = 0;
-            let eventLog = { blur: 0, visibilitychange: 0, fullscreenchange: 0 };
-            let expectedScreenW = 0, expectedScreenH = 0;
-
-            // Track when security events actually fire
-            window.addEventListener('blur', function() { eventLog.blur = Date.now(); }, true);
-            document.addEventListener('visibilitychange', function() { eventLog.visibilitychange = Date.now(); }, true);
+            window.addEventListener('blur', function() { reportCheat('tab_switch'); });
             document.addEventListener('fullscreenchange', function() {
-                eventLog.fullscreenchange = Date.now();
+                if (!document.fullscreenElement) reportCheat('fullscreen_exit');
+            });
+
+            // BROWSER INTEGRITY: stale event timestamps do not prove suppression.
+            // Heuristics share the incident guard and the server's normal counter.
+            let integrityReported = false;
+            let expectedScreenW = 0, expectedScreenH = 0;
+            let lastFrame = 0, frameDeltas = [], slowChecks = 0;
+            document.addEventListener('fullscreenchange', function() {
                 if (document.fullscreenElement) {
                     expectedScreenW = screen.width;
                     expectedScreenH = screen.height;
                 }
-            }, true);
-
-            // rAF timing monitor — foreground tab runs at ~60fps (~16ms per frame)
-            let lastRafTime = 0;
-            function rafLoop(timestamp) {
-                if (lastRafTime > 0) {
-                    const delta = timestamp - lastRafTime;
-                    rafTimestamps.push(delta);
-                    if (rafTimestamps.length > 30) rafTimestamps.shift();
+            });
+            function frame(timestamp) {
+                if (busy() || document.hidden || !document.hasFocus() || !enabled()) {
+                    lastFrame = 0;
+                    frameDeltas = [];
+                    slowChecks = 0;
+                } else {
+                    if (lastFrame > 0) frameDeltas.push(timestamp - lastFrame);
+                    if (frameDeltas.length > 30) frameDeltas.shift();
+                    lastFrame = timestamp;
                 }
-                lastRafTime = timestamp;
-                if (!integrityReported) requestAnimationFrame(rafLoop);
+                if (!isLocked && !window.isSubmitting) requestAnimationFrame(frame);
             }
-            requestAnimationFrame(rafLoop);
-
-            function reportModifiedBrowser(detail) {
-                if (integrityReported || !examStarted || isLocked || window.isSubmitting) return;
-                integrityReported = true;
-
-                $.ajax({
-                    url: REPORT_CHEAT_URL,
-                    type: 'POST',
-                    data: { attempt_id: ATTEMPT_ID, type: 'modified_browser', detail: detail },
-                    dataType: 'json',
-                    timeout: FETCH_TIMEOUT_MS,
-                    success: function(res) {
-                        if (res.action === 'lock') {
-                            window.isSubmitting = true;
-                            isLocked = true;
-                            if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
-                            document.getElementById('examContent').style.display = 'none';
-
-                            Swal.fire({
-                                title: 'Akun Dikunci',
-                                html: '<div class="text-center"><p>' + (res.message || 'Browser modifikasi terdeteksi.') + '</p></div>',
-                                icon: 'error',
-                                allowOutsideClick: false,
-                                allowEscapeKey: false,
-                                showConfirmButton: false,
-                                timer: 5000,
-                                timerProgressBar: true
-                            }).then(function() {
-                                window.location.href = res.redirect || LOGIN_URL;
-                            });
-                        }
-                    }
-                });
-            }
-
-            // Main integrity check — runs every 10 seconds
+            requestAnimationFrame(frame);
             setInterval(function() {
-                if (integrityReported || !examStarted || isLocked || window.isSubmitting) return;
-                var now = Date.now();
-
-                // ── Layer 1: Window Dimension Integrity ──
-                if (document.fullscreenElement && expectedScreenW > 0) {
-                    var wDiff = Math.abs(window.innerWidth - expectedScreenW);
-                    var hDiff = Math.abs(window.innerHeight - expectedScreenH);
-                    if (wDiff > 100 || hDiff > 100) {
-                        reportModifiedBrowser('dimension_mismatch:' + window.innerWidth + 'x' + window.innerHeight + '_vs_' + expectedScreenW + 'x' + expectedScreenH);
-                        return;
-                    }
+                if (integrityReported || !examStarted || busy() || !enabled() || document.hidden || !document.hasFocus()) return;
+                let detail = '';
+                if (document.fullscreenElement && expectedScreenW > 0
+                    && (Math.abs(window.innerWidth - expectedScreenW) > 100 || Math.abs(window.innerHeight - expectedScreenH) > 100)) {
+                    detail = 'dimension_mismatch';
                 }
-
-                // ── Layer 2: Event Suppression Cross-Check ──
-                if (!document.hasFocus() && (now - eventLog.blur > 15000)) {
-                    reportModifiedBrowser('focus_loss_no_blur_event');
-                    return;
+                if (frameDeltas.length >= 10) {
+                    const average = frameDeltas.reduce((sum, delta) => sum + delta, 0) / frameDeltas.length;
+                    slowChecks = average > 200 ? slowChecks + 1 : 0;
+                    if (slowChecks >= 3) detail = 'raf_timing_anomaly';
                 }
-                if (document.visibilityState === 'hidden' && (now - eventLog.visibilitychange > 15000)) {
-                    reportModifiedBrowser('hidden_no_visibility_event');
-                    return;
-                }
-                if (expectedScreenW > 0 && !document.fullscreenElement && (now - eventLog.fullscreenchange > 15000)) {
-                    reportModifiedBrowser('fullscreen_exit_no_event');
-                    return;
-                }
-
-                // ── Layer 3: rAF Timing Analysis ──
-                if (rafTimestamps.length >= 10) {
-                    var sum = 0;
-                    for (var i = 0; i < rafTimestamps.length; i++) sum += rafTimestamps[i];
-                    var avgDelta = sum / rafTimestamps.length;
-                    if (avgDelta > 200) {
-                        slowRafCount++;
-                        if (slowRafCount >= 3) {
-                            reportModifiedBrowser('raf_timing_anomaly:avg_' + Math.round(avgDelta) + 'ms');
-                            return;
-                        }
-                    } else {
-                        slowRafCount = 0;
-                    }
+                if (detail && Date.now() - lastReportAt >= 2000) {
+                    integrityReported = true;
+                    reportCheat('modified_browser', detail);
                 }
             }, 10000);
         })();
-        <?php endif; ?>
 
         // ═══════════════════════════════════════════════════════
         //  4. IMAGE LIGHTBOX PREVIEW

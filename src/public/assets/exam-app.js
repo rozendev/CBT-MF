@@ -4,6 +4,8 @@
  * EXAM_CONFIG (inline di HTML) dijamin sudah ada.
  * Jangan edit manual — hasil ekstraksi static_exam_template.php. */
     let examStarted = false;
+    let isSuspended = false;
+    let isLocked = false;
     let ATTEMPT_ID  = null;
     let USER_ID     = null;
     let CSRF_NAME   = '';
@@ -302,7 +304,7 @@
     ['click', 'touchstart', 'keydown'].forEach(evt => {
         document.addEventListener(evt, function() {
             if (EXAM_CONFIG.antiCheat && EXAM_CONFIG.antiCheat.enabled === false && !EXAM_CONFIG.antiCheat.auto_submit_on_cheat) return;
-            if (!document.fullscreenElement && examStarted && !window.isSubmitting) {
+            if (!document.fullscreenElement && examStarted && !window.isSubmitting && !window.__antiCheat?.isBusy()) {
                 const el = document.documentElement;
                 const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
                 if (rfs) rfs.call(el).catch(()=>{});
@@ -947,6 +949,7 @@
             },
 
             stopRealtime() {
+                    window.__antiCheat?.stop();
                 this.realtimeStopped = true;
                 this.stopStatusPolling();
                 clearTimeout(this.wsReconnectTimeout);
@@ -1165,6 +1168,7 @@
                                 // dengan {status:'error'}. Menampilkan toast "tersimpan"
                                 // di sini membuat jawaban hilang tanpa disadari siswa.
                                 if (res && res.status === 'kicked') {
+                                     window.__antiCheat?.stop();
                                     this.isSaving = false;
                                     if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                                     Swal.fire('Informasi', res.message, 'info').then(() => {
@@ -1190,6 +1194,7 @@
                             },
                             error: (err) => {
                                 if (err.status === 401 || err.status === 403) {
+                                     window.__antiCheat?.stop();
                                     this.isSaving = false;
                                     if (document.fullscreenElement) document.exitFullscreen().catch(function(){});
                                     Swal.fire('Sesi Berakhir', 'Sesi Anda telah habis atau dihentikan.', 'error').then(() => {
@@ -1621,258 +1626,143 @@
 
     // ═══ ANTI-CHEAT ENGINE (SERVER-AUTHORITATIVE) ═══
     (function() {
-        let isSuspended = false;
-        let isLocked    = false;
-        let suspendTimerInterval = null;
-        let strikes = 0;
+        let reportInFlight = false;
+        let lastReportAt = -Infinity;
+        let suspendInterval = null;
+        // Read fresh configuration after static/bundle initialization.
+        const getAC = window.getAC = function() { return (typeof EXAM_CONFIG !== 'undefined' && EXAM_CONFIG.antiCheat) || {}; };
+        const enabled = () => getAC().enabled !== false || !!getAC().auto_submit_on_cheat;
+        const busy = () => reportInFlight || isSuspended || isLocked || !!window.isSubmitting;
 
-        // Use a getter so we always read the LATEST antiCheat config
-        // (initExam overwrites EXAM_CONFIG.antiCheat after API response)
-        window.getAC = function() { return (typeof EXAM_CONFIG !== 'undefined' && EXAM_CONFIG.antiCheat) || {}; };
-
-        function clearSuspend() {
+        function stop() {
+            isLocked = true;
             isSuspended = false;
-            if (suspendTimerInterval) {
-                clearInterval(suspendTimerInterval);
-                suspendTimerInterval = null;
-            }
+            clearInterval(suspendInterval);
+            document.getElementById('suspendOverlay').style.display = 'none';
+            document.getElementById('examContent').style.display = 'none';
         }
 
-        function showSuspendOverlay(currentStrikes, remainingSec) {
+        function suspend(data) {
             isSuspended = true;
             document.getElementById('examContent').style.display = 'none';
-            var overlay = document.getElementById('suspendOverlay');
-            overlay.style.display = 'flex';
-
-            document.getElementById('strikeCount').innerText = currentStrikes;
-            document.getElementById('maxStrikes').innerText = getAC().max_strikes;
-
-            var sec = remainingSec;
-            var timerEl = document.getElementById('suspendTimerDisplay');
-            timerEl.innerText = sec;
-
-            if (suspendTimerInterval) clearInterval(suspendTimerInterval);
-
-            suspendTimerInterval = setInterval(function() {
-                sec--;
-                timerEl.innerText = sec;
-                if (sec <= 0) {
-                    clearInterval(suspendTimerInterval);
-                    suspendTimerInterval = null;
-                    overlay.style.display = 'none';
+            document.getElementById('suspendOverlay').style.display = 'flex';
+            document.getElementById('strikeCount').innerText = data.current_strikes ?? data.strike ?? 0;
+            document.getElementById('maxStrikes').innerText = data.max_strikes ?? getAC().max_strikes;
+            let seconds = Math.max(1, Number(data.timer ?? getAC().suspend_timer ?? 30));
+            const timer = document.getElementById('suspendTimerDisplay');
+            timer.innerText = seconds;
+            clearInterval(suspendInterval);
+            suspendInterval = setInterval(function() {
+                timer.innerText = --seconds;
+                if (seconds <= 0) {
+                    clearInterval(suspendInterval);
                     isSuspended = false;
+                    document.getElementById('suspendOverlay').style.display = 'none';
                     document.getElementById('examContent').style.display = 'block';
-                    clearSuspend();
                 }
             }, 1000);
         }
 
-        async function reportCheat(type) {
-            if (!ATTEMPT_ID) return;
+        async function sendReport(type, detail) {
+            // A violation changes a counter; retrying it can count the same incident twice.
+            const fd = buildFormData({ attempt_id: ATTEMPT_ID, type, detail });
+            const response = await fetchWithRetry(API + '/api/exam/report-cheat', { method: 'POST', body: fd }, 0, FETCH_TIMEOUT_MS);
+            return response.json();
+        }
 
+        async function reportCheat(type, detail) {
+            if (!ATTEMPT_ID || !examStarted || !enabled() || busy()) return;
+            const now = Date.now();
+            if (now - lastReportAt < 2000) return;
+            // Reserve the incident BEFORE exitFullscreen dispatches more events.
+            lastReportAt = now;
+            reportInFlight = true;
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
             try {
-                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: type });
-                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
-                    method: 'POST',
-                    body: fd
-                }, 2, 5000);
-
-                const data = await res.json();
-                updateCsrf(data);
-
-                if (data.current_strikes !== undefined) {
-                    strikes = data.current_strikes;
+                const data = await sendReport(type, detail);
+                if (isLocked || window.isSubmitting) return;
+                if (typeof updateCsrf === 'function') updateCsrf(data);
+                if (!data || data.status !== 'success') {
+                    throw new Error(data?.message || 'Laporan pelanggaran belum dapat disimpan. Hubungi pengawas.');
                 }
-
-                if (data.action === 'auto_submitted') {
-                    isLocked = true;
-                    clearSuspend();
-                    document.getElementById('examContent').style.display = 'none';
-                    await Swal.fire({
-                        title: 'Ujian Dikumpulkan Otomatis',
-                        html: (data.message || 'Ujian dikumpulkan otomatis oleh server.') + '<br><br>Menuju halaman hasil...',
-                        icon: 'warning',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        confirmButtonText: 'Lihat Hasil Ujian',
-                        confirmButtonColor: '#dc3545'
-                    });
-                    window.location.href = data.redirect || (API + '/student/dashboard');
+                if (data.action === 'none') return;
+                if (data.action === 'suspend') {
+                    suspend(data);
                     return;
                 }
-
-                if (data.action === 'lock') {
-                    isLocked = true;
-                    clearSuspend();
-                    document.getElementById('examContent').style.display = 'none';
+                if (data.action === 'lock' || data.action === 'auto_submitted') {
+                    stop();
+                    window.isSubmitting = true;
+                    const submitted = data.action === 'auto_submitted';
                     await Swal.fire({
-                        title: 'Ujian Dikunci Permanen',
-                        html: (data.message || 'Ujian dikunci oleh server.') + '<br><br>Pelanggaran: <strong>' + strikes + '/' + getAC().max_strikes + '</strong><br><br>Akun Anda telah <strong>dinonaktifkan</strong>. Menuju halaman login...',
-                        icon: 'error',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        showConfirmButton: false,
-                        timer: 5000,
-                        timerProgressBar: true
+                        title: submitted ? 'Ujian Dikumpulkan Otomatis' : 'Ujian Dikunci',
+                        text: data.message,
+                        icon: submitted ? 'warning' : 'error',
+                        allowOutsideClick: false, allowEscapeKey: false,
+                        confirmButtonText: submitted ? 'Lihat Hasil Ujian' : 'OK'
                     });
-                    await logoutAndRedirect(API + '/login');
-                } else if (data.action === 'suspend') {
-                    showSuspendOverlay(data.current_strikes || data.strike || strikes, data.timer || 30);
+                    if (submitted) window.location.href = data.redirect || API + '/student/dashboard';
+                    else await logoutAndRedirect(window.__KIOSK_BUNDLE__ ? 'login.html' : (API + '/login'));
+                    return;
                 }
+                throw new Error('Respons laporan tidak dikenali. Hubungi pengawas.');
             } catch (err) {
-                console.error('Failed to report cheat to server:', err);
+                if (isLocked || window.isSubmitting) return;
+                console.warn('Violation report failed:', err);
+                await Swal.fire('Laporan Belum Terkirim', err.message || 'Hubungi pengawas untuk memeriksa koneksi.', 'warning');
+            } finally {
+                reportInFlight = false;
             }
         }
 
-
-
-        window.__antiCheat = {
-            maxStrikes: getAC().max_strikes,
-        };
-
-        // ── Tab Switch Detection ──
+        window.__antiCheat = { isBusy: busy, stop, report: reportCheat };
         document.addEventListener('visibilitychange', function() {
-            if (!document.hidden || !examStarted || isLocked || isSuspended || window.isSubmitting) return;
-            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
-
-            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-
-            reportCheat('tab_switch');
+            if (document.hidden) reportCheat('tab_switch');
         });
-
-        // ── Window Focus Loss (Alt-Tab / Minimize) ──
-        window.addEventListener('blur', function() {
-            if (!examStarted || isLocked || isSuspended || window.isSubmitting) return;
-            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
-
-            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-
-            reportCheat('tab_switch'); // Treat focus loss as tab switch
-        });
-
-        // ── Fullscreen Exit Detection ──
+        window.addEventListener('blur', function() { reportCheat('tab_switch'); });
         document.addEventListener('fullscreenchange', function() {
-            if (document.fullscreenElement || !examStarted || isSuspended || isLocked || window.isSubmitting) return;
-
-            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) {
-                return;
-            }
-
-            reportCheat('fullscreen_exit');
+            if (!document.fullscreenElement) reportCheat('fullscreen_exit');
         });
-    })();
 
-    // ═══ BROWSER INTEGRITY MONITOR ═══
-    // Detects modified browsers (floating bubble, split-screen bypass, event suppression)
-    (function() {
+        // BROWSER INTEGRITY: stale event timestamps do not prove suppression.
+        // Heuristics share the incident guard and the server's normal counter.
         let integrityReported = false;
-        let rafTimestamps = [];
-        let slowRafCount = 0;
-        let eventLog = { blur: 0, visibilitychange: 0, fullscreenchange: 0 };
         let expectedScreenW = 0, expectedScreenH = 0;
-
-        // Track when security events actually fire
-        window.addEventListener('blur', function() { eventLog.blur = Date.now(); }, true);
-        document.addEventListener('visibilitychange', function() { eventLog.visibilitychange = Date.now(); }, true);
+        let lastFrame = 0, frameDeltas = [], slowChecks = 0;
         document.addEventListener('fullscreenchange', function() {
-            eventLog.fullscreenchange = Date.now();
             if (document.fullscreenElement) {
                 expectedScreenW = screen.width;
                 expectedScreenH = screen.height;
             }
-        }, true);
-
-        // rAF timing monitor
-        let lastRafTime = 0;
-        function rafLoop(timestamp) {
-            if (lastRafTime > 0) {
-                const delta = timestamp - lastRafTime;
-                rafTimestamps.push(delta);
-                if (rafTimestamps.length > 30) rafTimestamps.shift();
+        });
+        function frame(timestamp) {
+            if (busy() || document.hidden || !document.hasFocus() || !enabled()) {
+                lastFrame = 0;
+                frameDeltas = [];
+                slowChecks = 0;
+            } else {
+                if (lastFrame > 0) frameDeltas.push(timestamp - lastFrame);
+                if (frameDeltas.length > 30) frameDeltas.shift();
+                lastFrame = timestamp;
             }
-            lastRafTime = timestamp;
-            if (!integrityReported) requestAnimationFrame(rafLoop);
+            if (!isLocked && !window.isSubmitting) requestAnimationFrame(frame);
         }
-        requestAnimationFrame(rafLoop);
-
-        async function reportModifiedBrowser(detail) {
-            if (integrityReported || !examStarted || window.isSubmitting) return;
-            integrityReported = true;
-
-            try {
-                const fd = buildFormData({ attempt_id: ATTEMPT_ID, type: 'modified_browser', detail: detail });
-                const res = await fetchWithRetry(API + '/api/exam/report-cheat', {
-                    method: 'POST',
-                    body: fd
-                }, 2, 5000);
-
-                const data = await res.json();
-                if (data.action === 'lock') {
-                    window.isSubmitting = true;
-                    if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
-                    document.getElementById('examContent').style.display = 'none';
-
-                    await Swal.fire({
-                        title: 'Akun Dikunci',
-                        html: (data.message || 'Browser modifikasi terdeteksi.') + '<br><br>Menuju halaman login...',
-                        icon: 'error',
-                        allowOutsideClick: false,
-                        allowEscapeKey: false,
-                        showConfirmButton: false,
-                        timer: 5000,
-                        timerProgressBar: true
-                    });
-                    await logoutAndRedirect(API + '/login');
-                }
-            } catch (err) {
-                console.error('Failed to report integrity violation:', err);
-            }
-        }
-
-        // Main integrity check — runs every 10 seconds
+        requestAnimationFrame(frame);
         setInterval(function() {
-            if (integrityReported || !examStarted || window.isSubmitting) return;
-            if (getAC().enabled === false && !getAC().auto_submit_on_cheat) return;
-            var now = Date.now();
-
-            // ── Layer 1: Window Dimension Integrity ──
-            if (document.fullscreenElement && expectedScreenW > 0) {
-                var wDiff = Math.abs(window.innerWidth - expectedScreenW);
-                var hDiff = Math.abs(window.innerHeight - expectedScreenH);
-                if (wDiff > 100 || hDiff > 100) {
-                    reportModifiedBrowser('dimension_mismatch:' + window.innerWidth + 'x' + window.innerHeight + '_vs_' + expectedScreenW + 'x' + expectedScreenH);
-                    return;
-                }
+            if (integrityReported || !examStarted || busy() || !enabled() || document.hidden || !document.hasFocus()) return;
+            let detail = '';
+            if (document.fullscreenElement && expectedScreenW > 0
+                && (Math.abs(window.innerWidth - expectedScreenW) > 100 || Math.abs(window.innerHeight - expectedScreenH) > 100)) {
+                detail = 'dimension_mismatch';
             }
-
-            // ── Layer 2: Event Suppression Cross-Check ──
-            if (!document.hasFocus() && (now - eventLog.blur > 15000)) {
-                reportModifiedBrowser('focus_loss_no_blur_event');
-                return;
+            if (frameDeltas.length >= 10) {
+                const average = frameDeltas.reduce((sum, delta) => sum + delta, 0) / frameDeltas.length;
+                slowChecks = average > 200 ? slowChecks + 1 : 0;
+                if (slowChecks >= 3) detail = 'raf_timing_anomaly';
             }
-            if (document.visibilityState === 'hidden' && (now - eventLog.visibilitychange > 15000)) {
-                reportModifiedBrowser('hidden_no_visibility_event');
-                return;
-            }
-            if (expectedScreenW > 0 && !document.fullscreenElement && (now - eventLog.fullscreenchange > 15000)) {
-                reportModifiedBrowser('fullscreen_exit_no_event');
-                return;
-            }
-
-            // ── Layer 3: rAF Timing Analysis ──
-            if (rafTimestamps.length >= 10) {
-                var sum = 0;
-                for (var i = 0; i < rafTimestamps.length; i++) sum += rafTimestamps[i];
-                var avgDelta = sum / rafTimestamps.length;
-                if (avgDelta > 200) {
-                    slowRafCount++;
-                    if (slowRafCount >= 3) {
-                        reportModifiedBrowser('raf_timing_anomaly:avg_' + Math.round(avgDelta) + 'ms');
-                        return;
-                    }
-                } else {
-                    slowRafCount = 0;
-                }
+            if (detail && Date.now() - lastReportAt >= 2000) {
+                integrityReported = true;
+                reportCheat('modified_browser', detail);
             }
         }, 10000);
     })();
