@@ -666,6 +666,9 @@ class ExamApiController extends BaseController
 
             $examService = new \App\Libraries\ExamService();
             $result = $examService->handleCheat((int)$attemptId, (int)$userId, $cheatType);
+            if (($result['status'] ?? '') === 'error' && ($result['action'] ?? '') !== 'kick') {
+                return $this->response->setStatusCode(503)->setJSON($result);
+            }
 
             return $this->response->setJSON($result);
         } catch (\Throwable $e) {

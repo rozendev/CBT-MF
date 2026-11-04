@@ -423,6 +423,9 @@ class ExamController extends BaseController
 
         $examService = new \App\Libraries\ExamService();
         $result = $examService->handleCheat((int)$attemptId, (int)$userId, $cheatType);
+        if (($result['status'] ?? '') === 'error' && ($result['action'] ?? '') !== 'kick') {
+            return $this->response->setStatusCode(503)->setJSON($result);
+        }
 
         if (isset($result['action']) && $result['action'] === 'lock') {
             session()->destroy();
