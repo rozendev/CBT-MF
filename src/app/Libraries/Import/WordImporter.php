@@ -29,6 +29,8 @@ final class WordImporter
     /** Batas jumlah baris yang dikirim ke modal hasil, supaya responsnya wajar. */
     private const MAX_REPORTED_ROWS = 100;
 
+    public const FONT_SIZES = ['12', '14', '16', '18', '20', '24', '28', '32', '40', '48'];
+
     protected $moduleModel;
     protected $subjectModel;
     protected $questionModel;
@@ -61,6 +63,10 @@ final class WordImporter
         $moduleId = (string) ($job['options']['module_id'] ?? '');
         $newModuleName = trim((string) ($job['options']['new_module_name'] ?? ''));
         $subjectName = trim((string) ($job['options']['subject_name'] ?? ''));
+        $fontSize = (string) ($job['options']['font_size'] ?? '');
+        if ($fontSize !== '' && !in_array($fontSize, self::FONT_SIZES, true)) {
+            return $this->validationError(['Ukuran font tidak valid. Pilih ukuran yang tersedia.']);
+        }
         if ($subjectName === '') return $this->validationError(['Nama subjek wajib diisi.']);
         $errors = $this->validateTarget($moduleId, $newModuleName, $subjectName);
         if ($errors !== []) return $this->validationError($errors);
@@ -69,6 +75,14 @@ final class WordImporter
         $extractor = new WordBlockExtractor();
         try {
             $parsed = $this->readQuestions($job['source'], $extractor);
+            foreach ($parsed as &$question) {
+                $question['question'] = $this->formatText($question['question'], $fontSize);
+                foreach ($question['options'] as &$option) {
+                    $option = $this->formatText($option, $fontSize);
+                }
+                unset($option);
+            }
+            unset($question);
         } catch (\Throwable $error) {
             throw new ImportFailure('File Word tidak bisa dibaca. Periksa format dan isi dokumen.');
         }
@@ -210,6 +224,25 @@ final class WordImporter
         $blocks = $extractor->extract($phpWord, $filepath);
 
         return (new WordQuestionParser())->parse($blocks);
+    }
+
+    private function formatText(string $html, string $fontSize): string
+    {
+        $styles = $fontSize === '' ? [] : ['font-size: ' . $fontSize . 'px'];
+        $plain = html_entity_decode(strip_tags($html), ENT_QUOTES, 'UTF-8');
+        $rtl = preg_match('/^[^\p{L}]*\p{Arabic}/u', $plain) === 1;
+        if ($rtl) {
+            // Direction/align style dikenali Quill dan ikut tersimpan saat
+            // diedit. dir="auto" saja hilang karena whitelist Quill hanya rtl.
+            $styles[] = 'direction: rtl';
+            $styles[] = 'text-align: right';
+        }
+        $attributes = $styles === [] ? '' : ' style="' . implode('; ', $styles) . ';"';
+        if ($rtl) $attributes .= ' dir="rtl"';
+
+        // Inline style ikut tersimpan dan tampil di preview/ujian tanpa
+        // membutuhkan CSS Quill. Kunci isian dan pasangan tetap teks biasa.
+        return $attributes === '' ? $html : '<div' . $attributes . '>' . $html . '</div>';
     }
 
     /**

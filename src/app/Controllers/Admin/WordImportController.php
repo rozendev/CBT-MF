@@ -24,6 +24,7 @@ class WordImportController extends BaseController
                     'module_id' => (string) $this->request->getPost('module_id'),
                     'new_module_name' => trim((string) $this->request->getPost('new_module_name')),
                     'subject_name' => trim((string) $this->request->getPost('subject_name')),
+                    'font_size' => (string) $this->request->getPost('font_size'),
                 ], (string) $this->request->getPost('import_request_id')
             );
             return $this->response->setStatusCode(202)->setHeader('Cache-Control', 'no-store')->setJSON($job);

@@ -87,7 +87,7 @@ class WordBlockExtractor
 
         if (method_exists($element, 'getText')) {
             $text = trim($element->getText());
-            return $text === '' ? [] : [$this->line(htmlspecialchars($text, ENT_QUOTES, 'UTF-8'), false, 0)];
+            return $text === '' ? [] : [$this->line($this->escapeText($text), false, 0)];
         }
 
         return [];
@@ -106,7 +106,7 @@ class WordBlockExtractor
 
         if ($element instanceof ListItem) {
             // ListItem (beda dari ListItemRun) membungkus satu Text tunggal.
-            $paragraphText = htmlspecialchars($element->getText(), ENT_QUOTES, 'UTF-8');
+            $paragraphText = $this->escapeText($element->getText());
         } else {
             $paragraphText = '';
             foreach ($element->getElements() as $child) {
@@ -118,7 +118,7 @@ class WordBlockExtractor
                         $paragraphText .= '<br>' . $tag . '<br>';
                     }
                 } elseif (method_exists($child, 'getText')) {
-                    $paragraphText .= htmlspecialchars($child->getText(), ENT_QUOTES, 'UTF-8');
+                    $paragraphText .= $this->escapeText($child->getText());
                 }
             }
         }
@@ -151,6 +151,13 @@ class WordBlockExtractor
             'list_depth'   => $depth,
             'list_format'  => $format,
         ];
+    }
+
+    private function escapeText(string $text): string
+    {
+        // Reader Word2007 sudah meng-escape teks XML. Jangan mengubah &quot;
+        // menjadi &amp;quot;: satu render HTML harus menampilkan karakter aslinya.
+        return htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8', false);
     }
 
     /**
@@ -232,7 +239,7 @@ class WordBlockExtractor
     private function numFmtToKind(string $numFmt): ?string
     {
         return match ($numFmt) {
-            'upperLetter', 'lowerLetter' => 'letter',
+            'upperLetter', 'lowerLetter', 'arabicAlpha', 'arabicAbjad' => 'letter',
             'decimal', 'decimalZero', 'ordinal' => 'number',
             'bullet' => 'bullet',
             default => null,
@@ -325,7 +332,7 @@ class WordBlockExtractor
                     $cellBlocks
                 ));
                 $rawCells[] = trim(implode(' ', array_map(
-                    fn (array $b) => trim(strip_tags($b['kind'] === 'table' ? $b['html'] : $b['text'])),
+                    fn (array $b) => html_entity_decode(trim(strip_tags($b['kind'] === 'table' ? $b['html'] : $b['text'])), ENT_QUOTES, 'UTF-8'),
                     $cellBlocks
                 )));
             }

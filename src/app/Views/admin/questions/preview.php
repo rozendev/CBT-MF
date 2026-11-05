@@ -54,7 +54,7 @@ $difficultyBadgeColor = $diffColors[$question->difficulty] ?? 'secondary';
                 <div class="list-group-item list-group-item-action <?= $ans->is_correct ? 'list-group-item-success' : '' ?>">
                     <div class="d-flex w-100 justify-content-between align-items-center">
                         <div class="mb-0 fs-6 text-dark" style="word-wrap: break-word; overflow: hidden; max-width: 90%;">
-                            <?= $ans->description ?>
+                            <?= in_array((int) $question->type, [3, 4, 5], true) ? nl2br(esc($ans->description)) : $ans->description ?>
                         </div>
                         <?php if ($ans->is_correct): ?>
                             <span class="badge bg-success rounded-pill px-2 py-1"><i class="bi bi-check2"></i> Benar</span>

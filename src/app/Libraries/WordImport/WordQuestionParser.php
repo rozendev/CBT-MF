@@ -11,8 +11,12 @@ namespace App\Libraries\WordImport;
  */
 class WordQuestionParser
 {
-    private const QUESTION_NUMBER_RE = '/^\d+\s*[.\-):]+\s*(.*)$/';
-    private const OPTION_LETTER_RE   = '/^(\*?)([A-Za-z])\s*[.\-):]+\s*(.*)$/';
+    private const QUESTION_NUMBER_RE = '/^\p{Nd}+\s*[.\-):]+\s*(.*)$/u';
+    private const OPTION_LETTER_RE   = '/^(\*?)([A-Za-zأإآابجدهو])ـ?\s*[.\-):]+\s*(.*)$/u';
+    private const ARABIC_OPTION_LETTERS = [
+        'أ' => 'A', 'إ' => 'A', 'آ' => 'A', 'ا' => 'A',
+        'ب' => 'B', 'ج' => 'C', 'د' => 'D', 'ه' => 'E', 'و' => 'F',
+    ];
     private const JAWABAN_RE         = '/^Jawaban\s*:\s*(.*)$/i';
     private const TIPE_RE            = '/^Tipe\s*:\s*(Menjodohkan|Benar\s*\/?\s*Salah|Esai|Essay|Uraian)/i';
 
@@ -31,7 +35,9 @@ class WordQuestionParser
                 continue;
             }
 
-            $text = trim($block['text']);
+            // Word menyisipkan penanda bidi yang tidak terlihat di sekitar
+            // nomor/huruf daftar RTL. Penanda ini bukan bagian teks soal.
+            $text = trim(preg_replace('/[\x{061C}\x{200E}\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u', '', $block['text']) ?? $block['text']);
             if ($text === '') {
                 continue;
             }
@@ -52,7 +58,9 @@ class WordQuestionParser
 
             if (preg_match(self::JAWABAN_RE, $text, $m)) {
                 if ($current !== null) {
-                    $current['answer_key'] = trim($m[1]);
+                    // Kunci isian adalah teks biasa, dibandingkan langsung
+                    // dengan jawaban siswa; bukan fragmen HTML seperti opsi PG.
+                    $current['answer_key'] = html_entity_decode(trim($m[1]), ENT_QUOTES, 'UTF-8');
                 }
                 $section = 'none';
                 continue;
@@ -171,7 +179,7 @@ class WordQuestionParser
 
         if (preg_match(self::OPTION_LETTER_RE, $text, $m)) {
             return [
-                'letter'     => strtoupper($m[2]),
+                'letter'     => self::ARABIC_OPTION_LETTERS[$m[2]] ?? strtoupper($m[2]),
                 'text'       => trim($m[3]),
                 'is_correct' => $m[1] === '*',
                 'explicit'   => true,

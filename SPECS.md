@@ -22,3 +22,12 @@
 - Perintah regresi khusus: `node src/tests/Resilience/exam-cheat-flow.test.cjs`; dalam container PHP: `php tests/Exam/cheat-flow.integration.php`. Migrasi auth yang sudah ada tetap prasyarat rollout; perbaikan ini tidak menambahkan migrasi baru.
 - Review akhir: regresi BFCache diperbaiki dengan memisahkan pause `pagehide` dari terminal stop; tes kedua mode aktif dan sedang suspend gagal sebelum perbaikan lalu lulus. Tes login diperkuat dengan hash/password fixture yang cocok dan pesan akun nonaktif agar 401 karena validasi form/password salah tidak meloloskan tes.
 - Batas review: `ProctorAction::lockAccount` manual belum diubah; kegagalan transaksi pada jalur lama itu masih dapat menerbitkan notifikasi keliru dan perlu tindak lanjut terpisah. Suspend tetap ditegakkan klien; idempotency server, outbox DB/Redis, dan cache race lama di luar cakupan yang disetujui, sehingga tidak ada jaminan pengiriman tepat sekali saat kegagalan infrastruktur.
+
+# Import dan editor soal — diminta langsung
+
+- Ukuran font 12–48 px pada import (teks pertanyaan/opsi PG) dan editor pertanyaan/penjelasan, disimpan sebagai style tanpa heading.
+- Import mempertahankan teks Arab/harakat, mengenali angka Arab/Persia dan opsi Arab, serta menghindari escape ganda tanda baca. Kunci isian/pasangan disimpan sebagai teks biasa.
+- Validasi hanya sintaksis dan perilaku import; pengujian editor dilakukan user. Railway di luar cakupan.
+- Trade-off: ukuran import berlaku seragam, bukan menyalin ukuran tiap run Word; data lama tidak diubah massal. Tidak ada migrasi skema/auth/cache.
+- Jalur terdampak: form import → WordImportController → antrean → WordImporter → extractor/parser/validator → questions/answers; preview dan form edit mengikuti kontrak HTML PG versus teks biasa isian/pasangan.
+- Validasi lokal: 18 cek import DOCX → importer worker → database Docker lulus dengan rollback, serta pemeriksaan sintaksis PHP/JS. Interaksi editor dan tampilan browser belum diuji.
