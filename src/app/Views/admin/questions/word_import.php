@@ -56,6 +56,17 @@ Import Soal dari Word
                         </div>
 
                         <div class="mb-4">
+                            <label class="form-label fw-semibold" for="importFontSize">Ukuran Font</label>
+                            <select name="font_size" class="form-select" id="importFontSize">
+                                <option value="">Normal</option>
+                                <?php foreach (\App\Libraries\Import\WordImporter::FONT_SIZES as $size): ?>
+                                    <option value="<?= $size ?>"><?= $size ?> px</option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="form-text">Ukuran teks pertanyaan dan pilihan ganda, tanpa mengubahnya menjadi heading. Kunci isian dan pasangan tetap berupa teks biasa.</div>
+                        </div>
+
+                        <div class="mb-4">
                             <label class="form-label fw-semibold">File Dokumen Soal (.docx)</label>
                             <input type="file" name="word_file" class="form-control form-control-lg" accept=".docx">
                             <div class="form-text">Maksimal ukuran file: 5MB. Hanya mendukung file .docx.</div>
@@ -110,6 +121,7 @@ Tipe: Benar/Salah<br>
                         <li class="mb-1"><strong>Benar/Salah:</strong> sama seperti Menjodohkan, tapi tulis <code>Tipe: Benar/Salah</code> dan isi kolom kanan tabel dengan "Benar" atau "Salah".</li>
                         <li class="mb-1">Tabel biasa (tanpa <code>Tipe:</code> di atasnya) tetap bisa dipakai sebagai data pendukung soal, seperti sebelumnya.</li>
                         <li class="mb-1">Mendukung teks multi-baris, gambar yang disisipkan di dalam dokumen, dan opsi/soal lewat list bawaan Word.</li>
+                        <li class="mb-1">Teks Arab beserta harakat didukung. Nomor soal boleh memakai <code>١.</code> / <code>۱.</code>; opsi boleh memakai <code>أ.</code>, <code>ب.</code>, <code>ج.</code>, dan seterusnya. Penanda <code>Jawaban:</code> dan <code>Tipe:</code> tetap mengikuti contoh di atas.</li>
                     </ul>
                 </div>
             </div>
@@ -145,9 +157,12 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>`;
     }
 
-    // Teks soal dari server sudah lolos htmlspecialchars waktu dokumen dibaca,
-    // jadi aman ditempel apa adanya -- meng-escape ulang malah bikin tanda
-    // kurang dari dan sejenisnya tampil sebagai entitas mentah.
+    // Ringkasan berisi teks biasa, termasuk kutip dan simbol dari sel tabel.
+    // Escape tepat di batas HTML agar karakter tampil tanpa menjadi markup.
+    function escapeImportText(value) {
+        return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
     function listSection(title, rows, more, tone, renderReason) {
         if (!rows || rows.length === 0) {
             return '';
@@ -159,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         rows.forEach(row => {
             html += `<li class="list-group-item px-2 py-2">
-                <div class="fw-semibold">${row.soal}</div>
+                <div class="fw-semibold" dir="auto">${escapeImportText(row.soal)}</div>
                 <div class="text-muted">${renderReason(row)}</div>
             </li>`;
         });
@@ -177,7 +192,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const masuk = s.masuk || 0;
 
         let html = `<p class="text-muted mb-3">${s.total} soal terbaca dari dokumen untuk Subjek
-            <strong>${res.subject || ''}</strong>.</p>
+            <strong>${escapeImportText(res.subject)}</strong>.</p>
             <div class="row g-2 text-center">
                 ${statCard(masuk, 'Masuk', 'success', 'bi-check-circle')}
                 ${statCard(s.duplikat || 0, 'Duplikat', 'warning', 'bi-files')}
@@ -186,11 +201,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         html += listSection(
             'Duplikat (tidak disimpan)', res.duplicates, res.duplicates_more, 'warning',
-            row => row.alasan
+            row => escapeImportText(row.alasan)
         );
         html += listSection(
             'Ditolak (perlu diperbaiki)', res.rejected, res.rejected_more, 'danger',
-            row => (row.alasan || []).join('<br>')
+            row => (row.alasan || []).map(escapeImportText).join('<br>')
         );
 
         Swal.fire({

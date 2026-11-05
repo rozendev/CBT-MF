@@ -142,7 +142,8 @@ class WordImportValidator
     /** Cuplikan teks soal untuk dikutip di pesan, tanpa tag dan tanpa gambar. */
     public function snippet(string $html): string
     {
-        $text = trim(preg_replace('/\s+/', ' ', strip_tags($html)) ?? '');
+        $plain = html_entity_decode(strip_tags($html), ENT_QUOTES, 'UTF-8');
+        $text = trim(preg_replace('/[\pZ\s]+/u', ' ', $plain) ?? '');
         if ($text === '') {
             return '(soal tanpa teks / berisi gambar)';
         }

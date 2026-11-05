@@ -11,6 +11,9 @@
     .ql-editor { font-size: 1rem; min-height: 150px; }
     .ql-editor img { max-width: 100%; height: auto; cursor: zoom-in; }
     .ql-toolbar.ql-snow { border: none; border-bottom: 1px solid #dee2e6; }
+    .ql-snow .ql-picker.ql-size { width: 80px; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value]::before { content: attr(data-value); }
     .image-limit-hint {
         font-size: 11px;
         color: #6c757d;
@@ -201,14 +204,24 @@
             loadTopics(this.value, false);
         });
 
+        // Simpan ukuran sebagai inline style agar tetap tampil di luar editor.
+        const fontSizes = <?= json_encode(array_map(static fn ($size) => $size . 'px', \App\Libraries\Import\WordImporter::FONT_SIZES)) ?>;
+        const SizeStyle = Quill.import('attributors/style/size');
+        SizeStyle.whitelist = fontSizes;
+        Quill.register(SizeStyle, true);
+        Quill.register(Quill.import('attributors/style/direction'), true);
+        Quill.register(Quill.import('attributors/style/align'), true);
+
         // Quill Toolbar configuration
         const toolbarOptions = [
+            [{ 'size': [false, ...fontSizes] }],
             [{ 'header': [1, 2, 3, false] }],
             ['bold', 'italic', 'underline', 'strike'],
             [{ 'color': [] }, { 'background': [] }],
             [{ 'script': 'sub'}, { 'script': 'super' }],
             [{ 'list': 'ordered'}, { 'list': 'bullet' }],
             [{ 'indent': '-1'}, { 'indent': '+1' }],
+            [{ 'direction': 'rtl' }, { 'align': [] }],
             ['link', 'image', 'video', 'formula'],
             ['clean']
         ];
@@ -363,6 +376,23 @@
             $('#explanation').val(explHtml);
 
             const type = parseInt($('#question_type').val());
+            if (type === 1 || type === 2) {
+                $('#answers-container .pg-answer').each(function() {
+                    const original = this.dataset.originalHtml;
+                    if (this.value === this.dataset.originalText) {
+                        this.value = original;
+                    } else if (this.dataset.answerFormat === 'plain') {
+                        const parsed = new DOMParser().parseFromString(original, 'text/html');
+                        const wrapper = parsed.body.firstElementChild;
+                        if (wrapper) {
+                            wrapper.textContent = this.value;
+                            this.value = wrapper.outerHTML;
+                        } else {
+                            this.value = escapeAnswerValue(this.value);
+                        }
+                    }
+                });
+            }
             if (type === 4 || type === 5) {
                 $('.matching-hidden').remove();
                 $('#answers-container .answer-row').each(function(i) {
@@ -375,16 +405,29 @@
                     }
                     let combined = left + '|::|' + right;
                     // append to form
-                    $(this).append(`<input type="hidden" name="answers[${i}]" value="${combined.replace(/"/g, '&quot;')}" class="matching-hidden">`);
-                    $(this).append(`<input type="hidden" name="correct_answers[]" value="${i}" class="matching-hidden">`);
+                    $('<input>', { type: 'hidden', name: `answers[${i}]`, value: combined, class: 'matching-hidden' }).appendTo(this);
+                    $('<input>', { type: 'hidden', name: 'correct_answers[]', value: i, class: 'matching-hidden' }).appendTo(this);
                 });
             }
         });
     });
 
     // Existing Answers from PHP to JS
-    const existingAnswers = <?= json_encode($answers ?? []) ?>;
+    const existingAnswers = <?= json_encode($answers ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     let answerCount = existingAnswers.length > 0 ? existingAnswers.length : 4; 
+
+    function escapeAnswerValue(value) {
+        return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function editableAnswer(html) {
+        const parsed = new DOMParser().parseFromString(html, 'text/html');
+        const wrapper = parsed.body.firstElementChild;
+        // Opsi teks biasa atau wrapper typography import dapat diedit sebagai
+        // teks. Konten kaya lama (gambar/tabel/dll.) tetap mempertahankan HTML.
+        const plain = !wrapper || (parsed.body.childNodes.length === 1 && wrapper.tagName === 'DIV' && wrapper.children.length === 0);
+        return { text: plain ? parsed.body.textContent : html, format: plain ? 'plain' : 'html' };
+    }
 
     function renderAnswerUI() {
         const type = parseInt($('#question_type').val());
@@ -402,7 +445,7 @@
             }
 
             const manual = $('#answer_mode').val() === 'manual';
-            const safeDesc = desc.replace(/"/g, '&quot;');
+            const safeDesc = escapeAnswerValue(desc);
 
             container.html(manual ? `
                 <div class="p-4 bg-light rounded-3">
@@ -443,7 +486,7 @@
                         <div class="flex-grow-1 row g-3 align-items-center">
                             <div class="col-md-8">
                                 <label class="form-label small text-muted mb-1">Pernyataan</label>
-                                <input type="text" class="form-control match-left" value="${left.replace(/"/g, '&quot;')}" placeholder="Contoh: Matahari terbit dari timur" required>
+                                <input type="text" class="form-control match-left" value="${escapeAnswerValue(left)}" dir="auto" placeholder="Contoh: Matahari terbit dari timur" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label small text-muted mb-1 d-block">Kunci Jawaban</label>
@@ -485,11 +528,11 @@
                         <div class="flex-grow-1 row g-2">
                             <div class="col-md-6">
                                 <label class="form-label small text-muted mb-1">Kiri (Premis)</label>
-                                <input type="text" class="form-control match-left" value="${left.replace(/"/g, '&quot;')}" placeholder="Contoh: Ibukota Indonesia" required>
+                                <input type="text" class="form-control match-left" value="${escapeAnswerValue(left)}" dir="auto" placeholder="Contoh: Ibukota Indonesia" required>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label small text-muted mb-1">Kanan (Jawaban)</label>
-                                <input type="text" class="form-control match-right" value="${right.replace(/"/g, '&quot;')}" placeholder="Contoh: Jakarta" required>
+                                <input type="text" class="form-control match-right" value="${escapeAnswerValue(right)}" dir="auto" placeholder="Contoh: Jakarta" required>
                             </div>
                         </div>
                         <div class="ms-3 pe-2 mt-4">
@@ -522,6 +565,8 @@
                 id = existingAnswers[i].id;
             }
 
+            const editable = editableAnswer(desc);
+
             html += `
                 <div class="answer-row d-flex align-items-center p-3 border-bottom" id="ans-row-${i}">
                     <div class="me-3 ps-2">
@@ -529,7 +574,7 @@
                     </div>
                     <div class="flex-grow-1">
                         <input type="hidden" name="answer_ids[${i}]" value="${id}">
-                        <input type="text" class="form-control" name="answers[${i}]" value="${desc.replace(/"/g, '&quot;')}" placeholder="Ketik pilihan jawaban..." required>
+                        <input type="text" class="form-control pg-answer" name="answers[${i}]" value="${escapeAnswerValue(editable.text)}" data-original-html="${escapeAnswerValue(desc)}" data-original-text="${escapeAnswerValue(editable.text)}" data-answer-format="${editable.format}" dir="auto" placeholder="Ketik pilihan jawaban..." required>
                     </div>
                     <div class="ms-3 pe-2">
                         <button type="button" class="btn btn-sm btn-outline-danger" onclick="$('#ans-row-${i}').remove()"><i class="bi bi-x-lg"></i></button>
@@ -600,7 +645,7 @@
                     </div>
                     <div class="flex-grow-1">
                         <input type="hidden" name="answer_ids[${i}]" value="">
-                        <input type="text" class="form-control" name="answers[${i}]" placeholder="Ketik pilihan jawaban..." required>
+                        <input type="text" class="form-control pg-answer" name="answers[${i}]" data-original-html="" data-original-text="" data-answer-format="plain" dir="auto" placeholder="Ketik pilihan jawaban..." required>
                     </div>
                     <div class="ms-3 pe-2">
                         <button type="button" class="btn btn-sm btn-outline-danger" onclick="$('#ans-row-${i}').remove()"><i class="bi bi-x-lg"></i></button>
